@@ -1,0 +1,789 @@
+cmake_minimum_required(VERSION 3.20)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# C++ and CUDA standards
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(OpenGL REQUIRED)
+
+# GLFW
+find_package(glfw3 QUIET)
+if(NOT glfw3_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
+
+# GLAD
+find_package(glad QUIET)
+if(NOT glad_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+    )
+    FetchContent_MakeAvailable(glad)
+endif()
+
+# GLM
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 0.9.9.8
+    )
+    FetchContent_MakeAvailable(glm)
+endif()
+
+# Set CUDA architectures
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
+
+# Include directories
+include_directories(include)
+
+# Gather all source and header files
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cu")
+file(GLOB_RECURSE HEADERS "include/*.h" "include/*.cuh")
+
+# Separate game vs validation sources
+set(GAME_SOURCES ${SOURCES})
+list(REMOVE_ITEM GAME_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidationMain.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/VisualAnimationDemo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SimpleAnimationDemo.cpp"
+)
+set(VALIDATION_SOURCES ${SOURCES})
+list(REMOVE_ITEM VALIDATION_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidation.cpp"
+)
+
+# Executable targets
+add_executable(CudaGame ${GAME_SOURCES} ${HEADERS})
+add_executable(PlayerValidation src/SimpleValidation.cpp)
+add_executable(VisualAnimationDemo src/VisualAnimationDemo.cpp)
+add_executable(InteractiveAnimationDemo
+    src/animation/InteractiveAnimationDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(EnhancedInteractiveDemo
+    src/animation/EnhancedInteractiveDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(FinalEnhancedDemo
+    src/animation/FinalEnhancedDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Link libraries
+foreach(target CudaGame PlayerValidation VisualAnimationDemo InteractiveAnimationDemo EnhancedInteractiveDemo FinalEnhancedDemo RhythmArenaDemo)
+    target_link_libraries(${target}
+        ${OPENGL_LIBRARIES}
+        glfw
+        glad
+        glm::glm
+    )
+enforeach()
+
+# Include directories for animation demos
+target_include_directories(InteractiveAnimationDemo PRIVATE src/animation)
+target_include_directories(EnhancedInteractiveDemo PRIVATE src/animation)
+target_include_directories(FinalEnhancedDemo PRIVATE src/animation)
+target_include_directories(RhythmArenaDemo PRIVATE src/animation)
+
+# Public includes for main and validation
+target_include_directories(CudaGame PUBLIC include)
+target_include_directories(PlayerValidation PUBLIC include)
+
+# Disable CUDA separable compilation for main game
+set_property(TARGET CudaGame PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
+
+# End CMakeLists
+
+cmake_minimum_required(VERSION 3.20)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# C++ and CUDA standards
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(OpenGL REQUIRED)
+
+# GLFW
+find_package(glfw3 QUIET)
+if(NOT glfw3_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
+
+# GLAD
+find_package(glad QUIET)
+if(NOT glad_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+    )
+    FetchContent_MakeAvailable(glad)
+endif()
+
+# GLM
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 0.9.9.8
+    )
+    FetchContent_MakeAvailable(glm)
+endif()
+
+# Set CUDA architectures
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
+
+# Include directories
+include_directories(include)
+
+# Gather all source and header files
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cu")
+file(GLOB_RECURSE HEADERS "include/*.h" "include/*.cuh")
+
+# Separate game vs validation sources
+set(GAME_SOURCES ${SOURCES})
+list(REMOVE_ITEM GAME_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidationMain.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/VisualAnimationDemo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SimpleAnimationDemo.cpp"
+)
+set(VALIDATION_SOURCES ${SOURCES})
+list(REMOVE_ITEM VALIDATION_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidation.cpp"
+)
+
+# Executable targets
+add_executable(CudaGame ${GAME_SOURCES} ${HEADERS})
+add_executable(PlayerValidation src/SimpleValidation.cpp)
+add_executable(VisualAnimationDemo src/VisualAnimationDemo.cpp)
+add_executable(InteractiveAnimationDemo
+    src/animation/InteractiveAnimationDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(EnhancedInteractiveDemo
+    src/animation/EnhancedInteractiveDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(FinalEnhancedDemo
+    src/animation/FinalEnhancedDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Link libraries for all targets
+targets_link_libraries(
+    CudaGame
+    PlayerValidation
+    VisualAnimationDemo
+    InteractiveAnimationDemo
+    EnhancedInteractiveDemo
+    FinalEnhancedDemo
+    RhythmArenaDemo
+) {
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+}
+
+# Include directories for animation demos
+target_include_directories(InteractiveAnimationDemo PRIVATE src/animation)
+target_include_directories(EnhancedInteractiveDemo PRIVATE src/animation)
+target_include_directories(FinalEnhancedDemo PRIVATE src/animation)
+target_include_directories(RhythmArenaDemo PRIVATE src/animation)
+
+# Public includes for main and validation
+target_include_directories(CudaGame PUBLIC include)
+target_include_directories(PlayerValidation PUBLIC include)
+
+target_link_libraries(PlayerValidation glm::glm)
+
+# Disable CUDA separable compilation for main game
+target_set_property(CudaGame PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# Set C++ and CUDA standards
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# C++ and CUDA standards
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(OpenGL REQUIRED)
+
+# GLFW
+find_package(glfw3 QUIET)
+if(NOT glfw3_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
+
+# GLAD
+find_package(glad QUIET)
+if(NOT glad_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+    )
+    FetchContent_MakeAvailable(glad)
+endif()
+
+# GLM
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 0.9.9.8
+    )
+    FetchContent_MakeAvailable(glm)
+endif()
+
+# Set CUDA architectures
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
+
+# Include directories
+include_directories(include)
+
+# Gather all source and header files
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cu")
+file(GLOB_RECURSE HEADERS "include/*.h" "include/*.cuh")
+
+# Separate game vs validation sources
+set(GAME_SOURCES ${SOURCES})
+list(REMOVE_ITEM GAME_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidationMain.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/VisualAnimationDemo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SimpleAnimationDemo.cpp"
+)
+set(VALIDATION_SOURCES ${SOURCES})
+list(REMOVE_ITEM VALIDATION_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidation.cpp"
+)
+
+# Executables
+add_executable(CudaGame ${GAME_SOURCES} ${HEADERS})
+add_executable(PlayerValidation src/SimpleValidation.cpp)
+add_executable(VisualAnimationDemo src/VisualAnimationDemo.cpp)
+add_executable(InteractiveAnimationDemo
+    src/animation/InteractiveAnimationDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(EnhancedInteractiveDemo
+    src/animation/EnhancedInteractiveDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(FinalEnhancedDemo
+    src/animation/FinalEnhancedDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Link libraries
+foreach(target CudaGame PlayerValidation VisualAnimationDemo InteractiveAnimationDemo EnhancedInteractiveDemo FinalEnhancedDemo RhythmArenaDemo)
+    target_link_libraries(${target}
+        ${OPENGL_LIBRARIES}
+        glfw
+        glad
+        glm::glm
+    )
+enforeach()
+
+# Include directories for animation demos
+target_include_directories(InteractiveAnimationDemo PRIVATE src/animation)
+target_include_directories(EnhancedInteractiveDemo PRIVATE src/animation)
+target_include_directories(FinalEnhancedDemo PRIVATE src/animation)
+target_include_directories(RhythmArenaDemo PRIVATE src/animation)
+
+# Public include for main and validation targets
+target_include_directories(CudaGame PUBLIC include)
+target_include_directories(PlayerValidation PUBLIC include)
+
+# Disable CUDA separable compilation for main game
+target_property(CudaGame CUDA_SEPARABLE_COMPILATION OFF)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(OpenGL REQUIRED)
+
+# Find GLFW
+find_package(glfw3 QUIET)
+if(NOT glfw3_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
+
+# Find GLAD
+find_package(glad QUIET)
+if(NOT glad_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+    )
+    FetchContent_MakeAvailable(glad)
+endif()
+
+# Find GLM
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 0.9.9.8
+    )
+    FetchContent_MakeAvailable(glm)
+endif()
+
+# Set CUDA architectures
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
+
+# Include directories
+include_directories(include)
+
+# Gather sources
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cu")
+file(GLOB_RECURSE HEADERS "include/*.h" "include/*.cuh")
+
+# Filter game vs validation sources
+set(GAME_SOURCES ${SOURCES})
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidationMain.cpp")
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/VisualAnimationDemo.cpp")
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/SimpleAnimationDemo.cpp")
+
+set(VALIDATION_SOURCES ${SOURCES})
+list(REMOVE_ITEM VALIDATION_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+list(REMOVE_ITEM VALIDATION_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidation.cpp")
+
+# Main game executable
+add_executable(${PROJECT_NAME} ${GAME_SOURCES} ${HEADERS})
+
+# Validation executables
+add_executable(PlayerValidation src/SimpleValidation.cpp)
+add_executable(VisualAnimationDemo src/VisualAnimationDemo.cpp)
+add_executable(InteractiveAnimationDemo
+    src/animation/InteractiveAnimationDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(EnhancedInteractiveDemo
+    src/animation/EnhancedInteractiveDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+add_executable(FinalEnhancedDemo
+    src/animation/FinalEnhancedDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Rhythm arena demo
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Link libraries
+foreach(target ${PROJECT_NAME} PlayerValidation VisualAnimationDemo InteractiveAnimationDemo EnhancedInteractiveDemo FinalEnhancedDemo RhythmArenaDemo)
+    target_link_libraries(${target}
+        ${OPENGL_LIBRARIES}
+        glfw
+        glad
+        glm::glm
+    )
+endforeach()
+
+# Include directories for animation targets
+target_include_directories(InteractiveAnimationDemo PRIVATE src/animation)
+target_include_directories(EnhancedInteractiveDemo PRIVATE src/animation)
+target_include_directories(FinalEnhancedDemo PRIVATE src/animation)
+target_include_directories(RhythmArenaDemo PRIVATE src/animation)
+
+# Include for main and validation
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(PlayerValidation PUBLIC include)
+
+target_link_libraries(PlayerValidation glm::glm)
+
+# Disable CUDA separable compilation
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
+project(CudaGame LANGUAGES CXX CUDA)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Find required packages
+find_package(OpenGL REQUIRED)
+
+# Find GLFW
+find_package(glfw3 QUIET)
+if(NOT glfw3_FOUND)
+    # Download and build GLFW if not found
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.3.8
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
+
+# Find GLAD
+find_package(glad QUIET)
+if(NOT glad_FOUND)
+    # Download and build GLAD if not found
+    FetchContent_Declare(
+        glad
+        GIT_REPOSITORY https://github.com/Dav1dde/glad.git
+        GIT_TAG v0.1.36
+    )
+    FetchContent_MakeAvailable(glad)
+endif()
+
+# Find GLM
+find_package(glm QUIET)
+if(NOT glm_FOUND)
+    # Download GLM if not found
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG 0.9.9.8
+    )
+    FetchContent_MakeAvailable(glm)
+endif()
+
+# Set CUDA architecture - only use newer architectures to avoid warnings
+set(CMAKE_CUDA_ARCHITECTURES 75 86)
+
+# Include directories
+include_directories(include)
+
+# Source files
+file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cu")
+file(GLOB_RECURSE HEADERS "include/*.h" "include/*.cuh")
+
+# Separate source files for main game and validation
+file(GLOB_RECURSE GAME_SOURCES "src/*.cpp" "src/*.cu")
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidationMain.cpp")
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/VisualAnimationDemo.cpp")
+list(REMOVE_ITEM GAME_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/SimpleAnimationDemo.cpp")
+
+file(GLOB_RECURSE VALIDATION_SOURCES "src/*.cpp")
+list(REMOVE_ITEM VALIDATION_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+list(REMOVE_ITEM VALIDATION_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/PlayerValidation.cpp")
+
+# Create main game executable
+add_executable(${PROJECT_NAME} ${GAME_SOURCES} ${HEADERS})
+
+# Create simple validation executable (headless)
+add_executable(PlayerValidation src/SimpleValidation.cpp)
+
+# Create visual animation demo executable
+add_executable(VisualAnimationDemo src/VisualAnimationDemo.cpp)
+
+# Create interactive animation demo executable (enhanced with controls and collision)
+add_executable(InteractiveAnimationDemo 
+    src/animation/InteractiveAnimationDemo.cpp 
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Create enhanced interactive demo executable (combat, double jump, expanded world)
+add_executable(EnhancedInteractiveDemo 
+    src/animation/EnhancedInteractiveDemo.cpp 
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Create final enhanced demo executable (proper ground system, flip animation, tight camera)
+add_executable(FinalEnhancedDemo 
+    src/animation/FinalEnhancedDemo.cpp 
+    src/animation/SimpleAnimationController.cpp
+)
+
+# Set target properties
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
+
+# Link libraries for main game
+target_link_libraries(${PROJECT_NAME} 
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+
+# Link libraries for validation (minimal dependencies)
+target_link_libraries(PlayerValidation 
+    glm::glm
+)
+
+# Link libraries for visual animation demo
+target_link_libraries(VisualAnimationDemo 
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+
+# Link libraries for interactive animation demo
+target_link_libraries(InteractiveAnimationDemo 
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+
+# Set include directories for interactive demo
+target_include_directories(InteractiveAnimationDemo PRIVATE
+    src/animation
+)
+
+# Link libraries for enhanced interactive demo
+target_link_libraries(EnhancedInteractiveDemo 
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+
+# Set include directories for enhanced demo
+target_include_directories(EnhancedInteractiveDemo PRIVATE
+    src/animation
+)
+
+# Link libraries for final enhanced demo
+target_link_libraries(FinalEnhancedDemo 
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+
+# Set include directories for final demo
+target_include_directories(FinalEnhancedDemo PRIVATE
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+target_include_directories(FinalEnhancedDemo PRIVATE
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+target_include_directories(FinalEnhancedDemo PRIVATE
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+
+# Create rhythm arena demo executable
+add_executable(RhythmArenaDemo
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)
+
+# Create rhythm arena demo executable
+
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+    src/animation
+)
+
+    src/animation/RhythmArenaDemo.cpp
+    src/animation/SimpleAnimationController.cpp
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+    src/animation
+)
+target_link_libraries(RhythmArenaDemo
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    glm::glm
+)
+target_include_directories(RhythmArenaDemo PRIVATE
+    src/animation
+)

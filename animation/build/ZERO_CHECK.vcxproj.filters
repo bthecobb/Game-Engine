@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Brandon\CudaGame\animation\build\CMakeFiles\0a9a6165bac5e97c0744fd4d72bc80ad\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{88A640D2-853E-3A7C-A548-4CF108DE7312}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

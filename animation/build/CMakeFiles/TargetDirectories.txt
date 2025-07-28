@@ -1,0 +1,8 @@
+C:/Users/Brandon/CudaGame/animation/build/CMakeFiles/AnimationSystem.dir
+C:/Users/Brandon/CudaGame/animation/build/CMakeFiles/SimpleAnimationDemo.dir
+C:/Users/Brandon/CudaGame/animation/build/CMakeFiles/INSTALL.dir
+C:/Users/Brandon/CudaGame/animation/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/Brandon/CudaGame/animation/build/CMakeFiles/ZERO_CHECK.dir
+C:/Users/Brandon/CudaGame/animation/build/_deps/glm-build/CMakeFiles/INSTALL.dir
+C:/Users/Brandon/CudaGame/animation/build/_deps/glm-build/CMakeFiles/ALL_BUILD.dir
+C:/Users/Brandon/CudaGame/animation/build/_deps/glm-build/glm/CMakeFiles/INSTALL.dir

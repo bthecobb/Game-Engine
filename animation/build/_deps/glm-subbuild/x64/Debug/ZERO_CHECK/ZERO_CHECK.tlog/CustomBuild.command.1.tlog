@@ -1,0 +1,10 @@
+^C:\USERS\BRANDON\CUDAGAME\ANIMATION\BUILD\_DEPS\GLM-SUBBUILD\CMAKEFILES\C88349A003B5D6EB5039CC0527532692\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Brandon/CudaGame/animation/build/_deps/glm-subbuild -BC:/Users/Brandon/CudaGame/animation/build/_deps/glm-subbuild --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Brandon/CudaGame/animation/build/_deps/glm-subbuild/glm-populate.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

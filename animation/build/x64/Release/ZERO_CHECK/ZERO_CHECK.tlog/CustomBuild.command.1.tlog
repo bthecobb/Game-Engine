@@ -1,0 +1,10 @@
+^C:\USERS\BRANDON\CUDAGAME\ANIMATION\BUILD\CMAKEFILES\0A9A6165BAC5E97C0744FD4D72BC80AD\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Brandon/CudaGame/animation -BC:/Users/Brandon/CudaGame/animation/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Brandon/CudaGame/animation/build/EnhancedAnimationSystem.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
