@@ -266,7 +266,7 @@ struct RhythmState {
 };
 
 // Game structures
-struct Player {
+struct RhythmPlayer {
     glm::vec3 position;
     glm::vec3 velocity;
     glm::vec3 size;
@@ -914,6 +914,7 @@ struct ArenaBoundary {
 // Debug system
 struct DebugInfo {
     bool enabled = true;
+    bool debugEnabled = true;  // Added missing field
     bool verbose = false;
     glm::vec3 lastCameraPos;
     glm::vec3 lastCameraTarget;
@@ -984,7 +985,7 @@ struct DebugInfo {
 
 // Global game objects
 DebugInfo debugInfo;
-Player player;
+RhythmPlayer player;
 std::vector<Platform> platforms;
 std::vector<Wall> walls;
 std::vector<Enemy> enemies;

@@ -1,6 +1,29 @@
 #include "GameEngine.h"
 #include <iostream>
 #include <cstring>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "Core/Coordinator.h"
+#include "Physics/PhysicsComponents.h"
+#include "Physics/PhysicsSystem.h"
+#include "Physics/CudaPhysicsSystem.h"
+#include "Physics/WallRunningSystem.h"
+#include "Rendering/RenderComponents.h"
+#include "Rendering/RenderSystem.h"
+#include "Rendering/CudaRenderingSystem.h"
+#include "Rendering/LightingSystem.h"
+#include "../include_refactored/Rendering/Camera.h"
+#include "Animation/AnimationSystem.h"
+#include "Animation/IK.h"
+#include "Animation/IKSystem.h"
+#include "Combat/CombatSystem.h"
+#include "GameFeel/GameFeelSystem.h"
+#include "Particles/ParticleSystem.h"
+#include "Particles/ParticleComponents.h"
+#include "Rhythm/RhythmSystem.h"
+#include "Audio/AudioComponents.h"
+#include "Gameplay/EnemyComponents.h"
 
 // Vertex shader source
 const char* vertexShaderSource = R"(
@@ -36,7 +59,8 @@ void main() {
 
 GameEngine::GameEngine() 
     : m_window(nullptr), m_shaderProgram(0), m_deltaTime(0.0f), 
-      m_mouseX(0.0), m_mouseY(0.0), m_mousePressed(false) {
+      m_mouseX(0.0), m_mouseY(0.0), m_mousePressed(false),
+      m_fps(0.0f), m_frameCount(0), m_playerPosition(0.0f), m_enemyCount(0) {
     memset(m_keys, 0, sizeof(m_keys));
 }
 
@@ -79,13 +103,72 @@ bool GameEngine::initialize() {
     m_particleSystem = std::make_unique<ParticleSystem>(10000);
     m_particleSystem->initialize();
     
+    // Initialize UI Renderer
+    m_uiRenderer = std::make_unique<CudaGame::UI::UIRenderer>();
+    if (!m_uiRenderer->Initialize()) {
+        std::cerr << "Failed to initialize UI Renderer" << std::endl;
+        return false;
+    }
+    m_uiRenderer->SetViewportSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+    
     // Set up timing
     m_lastTime = std::chrono::high_resolution_clock::now();
+    m_fpsTimer = std::chrono::high_resolution_clock::now();
     
+// Create Coordinator and register systems
+    auto& coordinator = CudaGame::Core::Coordinator::GetInstance();
+    coordinator.Initialize();
+
+    // Register ALL components
+    coordinator.RegisterComponent<CudaGame::Physics::RigidbodyComponent>();
+    coordinator.RegisterComponent<CudaGame::Physics::ColliderComponent>();
+    coordinator.RegisterComponent<CudaGame::Rendering::MeshComponent>();
+    coordinator.RegisterComponent<CudaGame::Rendering::TransformComponent>();
+    coordinator.RegisterComponent<CudaGame::Rendering::MaterialComponent>();
+    coordinator.RegisterComponent<CudaGame::Rendering::LightComponent>();
+    coordinator.RegisterComponent<CudaGame::Animation::AnimationComponent>();
+    coordinator.RegisterComponent<CudaGame::Animation::IKComponent>();
+coordinator.RegisterComponent<CudaGame::Combat::CombatComponent>();
+    coordinator.RegisterComponent<CudaGame::Particles::ParticleSystemComponent>();
+
+    // Register ALL systems
+    auto animSystem = coordinator.RegisterSystem<CudaGame::Animation::AnimationSystem>();
+    auto ikSystem = coordinator.RegisterSystem<CudaGame::Animation::IKSystem>();
+    auto combatSystem = coordinator.RegisterSystem<CudaGame::Combat::CombatSystem>();
+    auto gameFeelSystem = coordinator.RegisterSystem<CudaGame::GameFeel::GameFeelSystem>();
+    auto renderSystem = coordinator.RegisterSystem<CudaGame::Rendering::RenderSystem>();
+    auto lightingSystem = coordinator.RegisterSystem<CudaGame::Rendering::LightingSystem>();
+    auto physicsSystem = coordinator.RegisterSystem<CudaGame::Physics::PhysicsSystem>();
+    auto wallRunSystem = coordinator.RegisterSystem<CudaGame::Physics::WallRunningSystem>();
+    auto particleSystemECS = coordinator.RegisterSystem<CudaGame::Particles::ParticleSystem>();
+    auto rhythmSystemECS = coordinator.RegisterSystem<CudaGame::Rhythm::RhythmSystem>();
+
+    // Initialize ALL systems
+    animSystem->Initialize();
+    ikSystem->Initialize();
+    combatSystem->Initialize();
+    gameFeelSystem->Initialize();
+    renderSystem->Initialize();
+    lightingSystem->Initialize();
+    physicsSystem->Initialize();
+    wallRunSystem->Initialize();
+    particleSystemECS->Initialize();
+    rhythmSystemECS->Initialize();
+
     // Enable point size modification in shaders
     glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // CREATE CAMERA FOR DEFERRED RENDERING
+m_camera = std::make_unique<CudaGame::Rendering::Camera>(CudaGame::Rendering::ProjectionType::PERSPECTIVE);
+    m_camera->SetPosition(glm::vec3(0.0f, 10.0f, 15.0f));
+    m_camera->LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
+    m_camera->SetPerspective(45.0f, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    renderSystem->SetMainCamera(m_camera.get());
+    
+    // CREATE 3D ENTITIES FOR RENDERING
+    CreateDemo3DEntities(coordinator);
     
     return true;
 }
@@ -208,11 +291,29 @@ void GameEngine::calculateDeltaTime() {
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - m_lastTime);
     m_deltaTime = duration.count() / 1000000.0f;
     m_lastTime = currentTime;
+    
+    // Calculate FPS
+    m_frameCount++;
+    auto fpsDuration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - m_fpsTimer);
+    if (fpsDuration.count() >= 1000) { // Update FPS every second
+        m_fps = m_frameCount * 1000.0f / fpsDuration.count();
+        m_frameCount = 0;
+        m_fpsTimer = currentTime;
+    }
 }
 
 void GameEngine::processInput() {
     if (m_keys[GLFW_KEY_ESCAPE]) {
         glfwSetWindowShouldClose(m_window, true);
+    }
+    
+    if (m_keys[GLFW_KEY_F4] && !f4Pressed) {
+        auto& coordinator = CudaGame::Core::Coordinator::GetInstance();
+        auto renderSystem = coordinator.GetSystem<CudaGame::Rendering::RenderSystem>();
+        renderSystem->CycleDebugMode();
+        f4Pressed = true;
+    } else if (!m_keys[GLFW_KEY_F4]) {
+        f4Pressed = false;
     }
     
     // Handle world rotation
@@ -246,10 +347,29 @@ void GameEngine::processInput() {
 }
 
 void GameEngine::update() {
+    // Update camera
+    m_camera->UpdateMatrices();
+
+    // Get coordinator and update all ECS systems
+    auto& coordinator = CudaGame::Core::Coordinator::GetInstance();
+    coordinator.UpdateSystems(m_deltaTime);
+    
+    // Update legacy systems
     m_rhythmSystem->update(m_deltaTime);
     m_gameWorld->update(m_deltaTime);
     m_player->update(m_deltaTime);
     m_particleSystem->update(m_deltaTime);
+    
+    // Update debug info
+    m_playerPosition = m_player->getPosition();
+    
+    // Count enemies by checking for EnemyAIComponent
+    m_enemyCount = 0;
+    for (CudaGame::Core::Entity entity = 0; entity < 1000; ++entity) {
+        if (coordinator.HasComponent<CudaGame::Gameplay::EnemyAIComponent>(entity)) {
+            m_enemyCount++;
+        }
+    }
 }
 
 void GameEngine::render() {
@@ -259,19 +379,35 @@ void GameEngine::render() {
     // Enable depth testing for 3D rendering
     glEnable(GL_DEPTH_TEST);
     
-    // Get view and projection matrices from game world
-    glm::mat4 view = m_gameWorld->getViewMatrix();
-    glm::mat4 projection = m_gameWorld->getProjectionMatrix();
+    // USE THE PROPER 3D CAMERA MATRICES
+    glm::mat4 view = m_camera->GetViewMatrix();
+    glm::mat4 projection = m_camera->GetProjectionMatrix();
     
-    // Render world geometry first
-    m_gameWorld->render();
+    // Get coordinator for system access
+    auto& coordinator = CudaGame::Core::Coordinator::GetInstance();
     
-    // Render the player character
-    m_characterRenderer->render(m_player.get(), view, projection);
+    // Update camera for all rendering systems
+    auto renderSystem = coordinator.GetSystem<CudaGame::Rendering::RenderSystem>();
+    auto lightingSystem = coordinator.GetSystem<CudaGame::Rendering::LightingSystem>();
     
-    // Render particles on top
-    glUseProgram(m_shaderProgram);
-    m_particleSystem->render();
+    // Update lighting system for shadow maps
+    lightingSystem->Update(0.0f);
+    
+    // Main render pass using 3D deferred rendering
+    renderSystem->Render(m_player.get());
+    
+    // Render a simple debug HUD
+    glDisable(GL_DEPTH_TEST);
+    renderDebugHUD();
+    glEnable(GL_DEPTH_TEST);
+}
+
+void GameEngine::renderDebugHUD() {
+    if (m_uiRenderer) {
+        m_uiRenderer->BeginFrame();
+        m_uiRenderer->DrawDebugInfo(m_fps, m_playerPosition, m_enemyCount);
+        m_uiRenderer->EndFrame();
+    }
 }
 
 void GameEngine::shutdown() {
@@ -317,4 +453,63 @@ void GameEngine::cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 
 void GameEngine::framebufferSizeCallback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
+}
+
+void GameEngine::CreateDemo3DEntities(CudaGame::Core::Coordinator& coordinator) {
+    // Create a ground plane
+    auto ground = coordinator.CreateEntity();
+    coordinator.AddComponent(ground, CudaGame::Rendering::TransformComponent{ glm::vec3(0.0f, -0.5f, 0.0f), glm::vec3(0.0f), glm::vec3(10.0f, 0.1f, 10.0f) });
+    coordinator.AddComponent(ground, CudaGame::Rendering::MeshComponent{ "player_cube" });
+    coordinator.AddComponent(ground, CudaGame::Rendering::MaterialComponent{ {0.5f, 0.5f, 0.5f} });
+    coordinator.AddComponent(ground, CudaGame::Physics::RigidbodyComponent{});
+    coordinator.AddComponent(ground, CudaGame::Physics::ColliderComponent{ CudaGame::Physics::ColliderShape::BOX, {5.0f, 0.05f, 5.0f} });
+
+    // Create a few dynamic cubes
+    for (int i = 0; i < 5; ++i) {
+        auto cube = coordinator.CreateEntity();
+        coordinator.AddComponent(cube, CudaGame::Rendering::TransformComponent{ glm::vec3(-4.0f + i * 2.0f, 2.0f, 0.0f), glm::vec3(0.0f), glm::vec3(1.0f) });
+        coordinator.AddComponent(cube, CudaGame::Rendering::MeshComponent{ "player_cube" });
+        coordinator.AddComponent(cube, CudaGame::Rendering::MaterialComponent{ {0.8f, 0.2f, 0.2f} });
+        CudaGame::Physics::RigidbodyComponent rb;
+        rb.setMass(1.0f);
+        coordinator.AddComponent(cube, rb);
+        coordinator.AddComponent(cube, CudaGame::Physics::ColliderComponent{ CudaGame::Physics::ColliderShape::BOX, {0.5f, 0.5f, 0.5f} });
+    }
+    
+    // Create some static wall structures
+    for (int i = 0; i < 4; ++i) {
+        auto wall = coordinator.CreateEntity();
+        glm::vec3 position;
+        glm::vec3 scale;
+        
+        // Position walls around the scene
+        if (i == 0) { position = glm::vec3(-5.0f, 1.0f, 0.0f); scale = glm::vec3(0.5f, 3.0f, 10.0f); }
+        else if (i == 1) { position = glm::vec3(5.0f, 1.0f, 0.0f); scale = glm::vec3(0.5f, 3.0f, 10.0f); }
+        else if (i == 2) { position = glm::vec3(0.0f, 1.0f, -5.0f); scale = glm::vec3(10.0f, 3.0f, 0.5f); }
+        else { position = glm::vec3(0.0f, 1.0f, 5.0f); scale = glm::vec3(10.0f, 3.0f, 0.5f); }
+        
+        coordinator.AddComponent(wall, CudaGame::Rendering::TransformComponent{ position, glm::vec3(0.0f), scale });
+        coordinator.AddComponent(wall, CudaGame::Rendering::MeshComponent{ "player_cube" });
+        coordinator.AddComponent(wall, CudaGame::Rendering::MaterialComponent{ {0.3f, 0.3f, 0.8f} });
+        coordinator.AddComponent(wall, CudaGame::Physics::RigidbodyComponent{});
+        coordinator.AddComponent(wall, CudaGame::Physics::ColliderComponent{ CudaGame::Physics::ColliderShape::BOX, scale * 0.5f });
+    }
+    
+    // Create some metallic spheres (rendered as cubes for now)
+    for (int i = 0; i < 3; ++i) {
+        auto sphere = coordinator.CreateEntity();
+        float x = -2.0f + i * 2.0f;
+        coordinator.AddComponent(sphere, CudaGame::Rendering::TransformComponent{ glm::vec3(x, 3.5f, 2.0f), glm::vec3(0.0f), glm::vec3(0.7f) });
+        coordinator.AddComponent(sphere, CudaGame::Rendering::MeshComponent{ "player_cube" });
+        CudaGame::Rendering::MaterialComponent mat;
+        mat.albedo = glm::vec3(0.9f, 0.9f, 0.9f);
+        mat.metallic = 0.9f;
+        mat.roughness = 0.1f;
+        mat.ao = 1.0f;
+        coordinator.AddComponent(sphere, mat);
+        CudaGame::Physics::RigidbodyComponent rb;
+        rb.setMass(0.5f);
+        coordinator.AddComponent(sphere, rb);
+        coordinator.AddComponent(sphere, CudaGame::Physics::ColliderComponent{ CudaGame::Physics::ColliderShape::SPHERE, {0.35f, 0.35f, 0.35f} });
+    }
 }

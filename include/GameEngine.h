@@ -4,12 +4,16 @@
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <chrono>
+#include <glm/glm.hpp>
 #include "ParticleSystem.cuh"
 #include "GameWorld.h"
 #include "Player.h"
 #include "TestLevel.h"
 #include "RhythmSystem.h"
 #include "CharacterRenderer.h"
+#include "Rendering/Camera.h"
+#include "Core/Coordinator.h"
+#include "UI/UIRenderer.h"
 
 class GameEngine {
 public:
@@ -28,6 +32,8 @@ private:
     std::unique_ptr<TestLevel> m_testLevel;
     std::unique_ptr<RhythmSystem> m_rhythmSystem;
     std::unique_ptr<CharacterRenderer> m_characterRenderer;
+    std::unique_ptr<CudaGame::Rendering::Camera> m_camera;
+    std::unique_ptr<CudaGame::UI::UIRenderer> m_uiRenderer;
     
     // Window properties
     static const int WINDOW_WIDTH = 1200;
@@ -36,11 +42,18 @@ private:
     // Timing
     std::chrono::high_resolution_clock::time_point m_lastTime;
     float m_deltaTime;
+    float m_fps;
+    int m_frameCount;
+    std::chrono::high_resolution_clock::time_point m_fpsTimer;
     
     // Input handling
     bool m_keys[1024];
     double m_mouseX, m_mouseY;
     bool m_mousePressed;
+    
+    // Debug info
+    glm::vec3 m_playerPosition;
+    int m_enemyCount;
     
     bool initializeWindow();
     bool initializeOpenGL();
@@ -60,4 +73,10 @@ private:
     bool loadShaders();
     unsigned int compileShader(const char* source, GLenum type);
     unsigned int createShaderProgram(const char* vertexSource, const char* fragmentSource);
+    
+    // 3D Entity creation
+    void CreateDemo3DEntities(CudaGame::Core::Coordinator& coordinator);
+    
+    // Debug HUD rendering
+    void renderDebugHUD();
 };

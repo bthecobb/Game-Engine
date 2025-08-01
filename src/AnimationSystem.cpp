@@ -592,6 +592,18 @@ void AnimationController::createAttackVariation(MovementAnimationType newType, M
     m_animationClips[newType] = std::move(newClip);
 }
 
+void AnimationController::updateTransition(float deltaTime) {
+    m_currentState.transitionProgress += deltaTime * 2.0f; // 0.5 second transitions
+    
+    if (m_currentState.transitionProgress >= 1.0f) {
+        // Transition complete
+        m_currentState.isTransitioning = false;
+        m_currentState.currentType = m_currentState.targetType;
+        m_currentState.currentTime = 0.0f;
+        m_currentState.transitionProgress = 1.0f;
+    }
+}
+
 void AnimationController::update(float deltaTime) {
     m_frameNeedsUpdate = true;
     
