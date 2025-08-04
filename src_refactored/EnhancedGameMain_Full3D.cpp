@@ -38,6 +38,7 @@ bool mouseCaptured = false;
 
 // Game state
 bool keys[1024] = {false};
+bool keysPressed[1024] = {false}; // Track single key presses
 bool mouseButtons[8] = {false};
 Rendering::OrbitCamera* mainCamera = nullptr;
 
@@ -51,10 +52,13 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 // Input callback functions
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode) {
     if (key >= 0 && key < 1024) {
-        if (action == GLFW_PRESS)
+        if (action == GLFW_PRESS) {
             keys[key] = true;
-        else if (action == GLFW_RELEASE)
+            keysPressed[key] = true; // Mark as just pressed
+        }
+        else if (action == GLFW_RELEASE) {
             keys[key] = false;
+        }
     }
     
     // Toggle mouse capture with TAB
@@ -421,6 +425,7 @@ int main() {
     // Player physics
     Physics::RigidbodyComponent playerRigidbody;
     playerRigidbody.mass = 80.0f;
+    playerRigidbody.isKinematic = true; // Disable physics forces (including gravity) for camera testing
     coordinator.AddComponent(player, playerRigidbody);
     
     Physics::ColliderComponent playerCollider;
@@ -464,7 +469,9 @@ int main() {
     std::cout << "Left Click - Attack" << std::endl;
     std::cout << "Right Click - Heavy Attack" << std::endl;
     std::cout << "Q - Block/Parry" << std::endl;
+    std::cout << "K - Toggle Player Mode (Kinematic/Dynamic) [DEBUG]" << std::endl;
     std::cout << "F4 - Cycle G-buffer Debug Mode" << std::endl;
+    std::cout << "F5 - Toggle Camera Frustum Debug Visualization" << std::endl;
     std::cout << "PageUp/PageDown - Adjust Depth Scale (when in Position Buffer mode)" << std::endl;
     std::cout << "ESC - Exit" << std::endl;
     
@@ -511,6 +518,26 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         playerInputComp.keys[GLFW_KEY_2] = keys[GLFW_KEY_2];
         playerInputComp.keys[GLFW_KEY_3] = keys[GLFW_KEY_3];
         
+        // Toggle kinematic mode with K key for testing
+        static bool kPressed = false;
+        if (keys[GLFW_KEY_K] && !kPressed) {
+            auto& playerRB = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
+            playerRB.isKinematic = !playerRB.isKinematic;
+            std::cout << "\n=== SWITCHED PLAYER MODE ===" << std::endl;
+            std::cout << "Player is now: " << (playerRB.isKinematic ? "KINEMATIC (Fixed Position)" : "DYNAMIC (Physics-Based)") << std::endl;
+            std::cout << "============================\n" << std::endl;
+            kPressed = true;
+        } else if (!keys[GLFW_KEY_K]) {
+            kPressed = false;
+        }
+        
+        // Clear other key press states at the end of frame
+        for (int i = 0; i < 1024; i++) {
+            if (i != GLFW_KEY_1 && i != GLFW_KEY_2 && i != GLFW_KEY_3) {
+                keysPressed[i] = false;
+            }
+        }
+        
         // Update mouse input for targeting
         double mouseX, mouseY;
         glfwGetCursorPos(window, &mouseX, &mouseY);
@@ -525,18 +552,49 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         auto& playerRigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
         glm::vec3 playerVelocity = playerRigidbody.velocity;
         
-        // Handle camera mode switching
-        if (keys[GLFW_KEY_1]) {
+// Handle camera mode switching
+        if (keysPressed[GLFW_KEY_1]) {
+            std::cout << "Switching to Camera Mode 1: ORBIT_FOLLOW" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
-        } else if (keys[GLFW_KEY_2]) {
+            keysPressed[GLFW_KEY_1] = false; // Reset press state
+        } else if (keysPressed[GLFW_KEY_2]) {
+            std::cout << "Switching to Camera Mode 2: FREE_LOOK" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::FREE_LOOK);
-        } else if (keys[GLFW_KEY_3]) {
+            keysPressed[GLFW_KEY_2] = false; // Reset press state
+        } else if (keysPressed[GLFW_KEY_3]) {
+            std::cout << "Switching to Camera Mode 3: COMBAT_FOCUS" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::COMBAT_FOCUS);
+            keysPressed[GLFW_KEY_3] = false; // Reset press state
+        }
+        if (keysPressed[GLFW_KEY_1]) {
+            std::cout << "Switching to Camera Mode 1: ORBIT_FOLLOW" << std::endl;
+            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
+            keysPressed[GLFW_KEY_1] = false; // Reset press state
+        } else if (keysPressed[GLFW_KEY_2]) {
+            std::cout << "Switching to Camera Mode 2: FREE_LOOK" << std::endl;
+            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::FREE_LOOK);
+            keysPressed[GLFW_KEY_2] = false; // Reset press state
+        } else if (keysPressed[GLFW_KEY_3]) {
+            std::cout << "Switching to Camera Mode 3: COMBAT_FOCUS" << std::endl;
+            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::COMBAT_FOCUS);
+            keysPressed[GLFW_KEY_3] = false; // Reset press state
         }
         
-        // Update orbit camera with player position and velocity
-        mainCamera->SetTarget(playerTransform.position);
-        mainCamera->Update(deltaTime, playerTransform.position, playerVelocity);
+// === SINGLE SOURCE OF TRUTH CAMERA UPDATE ===
+        // TransformComponent.position is now the authoritative player position
+        // - For kinematic players: position is set externally/by scripts
+        // - For dynamic players: position is updated by PlayerMovementSystem
+        glm::vec3 cameraTarget = playerTransform.position; // Always use TransformComponent as truth
+        
+        // Debug camera target selection
+        bool playerIsKinematic = coordinator.GetComponent<Physics::RigidbodyComponent>(player).isKinematic;
+        std::cout << "[CameraUpdate] Target: (" << cameraTarget.x << ", " << cameraTarget.y << ", " << cameraTarget.z << ") "
+                  << "Mode: " << (playerIsKinematic ? "KINEMATIC" : "DYNAMIC") 
+                  << " Velocity: (" << playerVelocity.x << ", " << playerVelocity.y << ", " << playerVelocity.z << ")" << std::endl;
+        
+        // Single, clean camera update - no conflicting calls
+        mainCamera->SetTarget(cameraTarget);
+        mainCamera->Update(deltaTime, cameraTarget, playerVelocity);
         
         // Update all systems
         playerMovementSystem->Update(deltaTime);
@@ -583,6 +641,17 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
             }
         } else {
             f4Pressed = false;
+        }
+        
+        // F5 to toggle camera debug
+        static bool f5Pressed = false;
+        if (keys[GLFW_KEY_F5]) {
+            if (!f5Pressed) {
+                renderSystem->ToggleCameraDebug();
+                f5Pressed = true;
+            }
+        } else {
+            f5Pressed = false;
         }
         
         // PageUp/PageDown to adjust depth scale for position buffer visualization

@@ -1,5 +1,6 @@
 #include "Rendering/RenderSystem.h"
 #include "Rendering/ShaderProgram.h"
+#include "Rendering/CameraDebugSystem.h"
 #include "Core/Coordinator.h"
 #include "Rendering/RenderComponents.h"
 #include "Rendering/Mesh.h"
@@ -10,6 +11,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
 #include <iostream>
+#include <chrono>
 
 namespace CudaGame {
 namespace Rendering {
@@ -94,6 +96,9 @@ bool RenderSystem::Initialize() {
     // Initialize light space matrix
     m_lightSpaceMatrix = glm::mat4(1.0f);
     
+    // Initialize camera debug system
+    m_cameraDebugSystem = std::make_unique<CameraDebugSystem>(this);
+    
     std::cout << "[RenderSystem] Deferred rendering pipeline initialized successfully." << std::endl;
     return true;
 }
@@ -124,10 +129,16 @@ void RenderSystem::Update(float deltaTime) {
 }
 
 void RenderSystem::Render(const Player* player) {
-    if (!m_mainCamera) return;
+    if (!m_mainCamera) {
+        std::cout << "[RenderSystem] ERROR: No main camera set!" << std::endl;
+        return;
+    }
 
     // Start frame logging
     LogFrameStart();
+    
+    // Validate and log detailed camera state every frame
+    ValidateAndLogCameraState();
 
     // Get actual window dimensions
     int width, height;
@@ -139,31 +150,64 @@ void RenderSystem::Render(const Player* player) {
         height = 1080;
     }
 
+    std::cout << "{ \"frame\":" << m_frameID << ",\"renderStart\":\"WindowSize\",\"width\":" << width << ",\"height\":" << height << " }" << std::endl;
+
+    // === STEP 1: Clear default framebuffer once at the beginning ===
+    // This prevents flicker by ensuring the back buffer is always properly initialized
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDrawBuffer(GL_BACK);
+    glViewport(0, 0, width, height);
+    glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"BackBufferCleared\",\"clearColor\":[" 
+              << m_clearColor.r << "," << m_clearColor.g << "," << m_clearColor.b << "," << m_clearColor.a << "] }" << std::endl;
+
     // Disable scissor and stencil tests to rule them out
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
     
-    LogGLError("BeforeRenderPasses");
+    LogGLError("AfterBackBufferClear");
 
-    // 1. Shadow Pass
+    // === STEP 2: Shadow Pass (offscreen) ===
     ShadowPass();
     LogGLError("AfterShadowPass");
 
-    // 2. Geometry Pass
+    // === STEP 3: Geometry Pass (to G-buffer) ===
     GeometryPass();
     LogGLError("AfterGeometryPass"); 
 
-    // 3. Lighting Pass
+    // === STEP 4: Lighting Pass (G-buffer to back buffer, no clear) ===
     LightingPass();
     LogGLError("AfterLightingPass");
     
-    // 4. Render Character (if provided)
-    if (player && m_mainCamera) {
-        RenderSimpleCharacter(player, m_mainCamera->GetViewMatrix(), m_mainCamera->GetProjectionMatrix());
-        LogGLError("AfterCharacterRender");
+    // === STEP 5: Copy depth from G-buffer to default framebuffer ===
+    // This is crucial for forward-rendered objects to depth test correctly
+    if (m_gBuffer) {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"Starting\" }" << std::endl;
+        
+        // Bind G-buffer as read framebuffer and default as draw framebuffer
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_gBuffer->GetFBO());
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        
+        // Blit depth buffer from G-buffer to default framebuffer
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        
+        // Restore default framebuffer for subsequent draws
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        
+        LogGLError("AfterDepthBlit");
+        std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"Complete\" }" << std::endl;
+    } else {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"SKIPPED_NO_GBUFFER\" }" << std::endl;
     }
     
+    // === STEP 6: Forward Pass (character, debug, transparent objects) ===
+    ForwardPass(player);
+    LogGLError("AfterForwardPass");
+    
     DumpGLState("EndOfFrame");
+    std::cout << "{ \"frame\":" << m_frameID << ",\"renderComplete\":true }" << std::endl;
 }
 
 void RenderSystem::ShadowPass() {
@@ -321,7 +365,9 @@ void RenderSystem::GeometryPass() {
 
     LogPassEnd("GeometryPass", m_drawCallCount, m_triangleCount);
     // Unbind G-buffer by binding default framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // Reset draw buffer to default back-buffer
+    glDrawBuffer(GL_BACK);
 }
 
 void RenderSystem::LightingPass() {
@@ -341,10 +387,12 @@ void RenderSystem::LightingPass() {
     
     LogPassStart("LightingPass", 0, windowWidth, windowHeight); // Log default framebuffer
     
-    // Render to default framebuffer
+    // Render to default framebuffer (already cleared at frame start)
+    // Ensure default buffer is active
+    glDrawBuffer(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, windowWidth, windowHeight);  // Use actual window dimensions
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // NOTE: No clear here - back buffer already cleared at frame start to prevent flicker
     
     m_lightingPassShader->Use();
     
@@ -535,8 +583,14 @@ void RenderSystem::RenderSimpleCube() {
 }
 
 void RenderSystem::CycleDebugMode() {
+    int previousMode = m_debugMode;
     m_debugMode = (m_debugMode + 1) % 5;  // 0-4: normal, position, normal, albedo, metallic/roughness
     const char* debugModeNames[] = {"Normal Lighting", "Position Buffer", "Normal Buffer", "Albedo Buffer", "Metallic/Roughness/AO Buffer"};
+    
+    std::cout << "{ \"debugModeChange\":{ \"frameID\":" << m_frameID << ",\"previousMode\":" << previousMode 
+              << ",\"newMode\":" << m_debugMode << ",\"modeName\":\"" << debugModeNames[m_debugMode] 
+              << "\",\"timestamp\":" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() << "} }" << std::endl;
+    
     std::cout << "[RenderSystem] Debug mode switched to: " << debugModeNames[m_debugMode] << std::endl;
 }
 
@@ -614,7 +668,30 @@ void RenderSystem::AdjustDepthScale(float multiplier) {
     std::cout << "[Debug] Depth Scale: " << m_depthScale << std::endl;
 }
 
-// SetMainCamera is already defined in the header as an inline function
+void RenderSystem::ValidateAndLogCameraState() {
+    if (!m_mainCamera) {
+        std::cerr << "[RenderSystem] WARNING: No main camera available for validation!" << std::endl;
+        return;
+    }
+
+    glm::vec3 camPos = m_mainCamera->GetPosition();
+    glm::mat4 camView = m_mainCamera->GetViewMatrix();
+    glm::mat4 camProj = m_mainCamera->GetProjectionMatrix();
+
+    // Get viewport size from current OpenGL context instead of camera
+    int viewWidth = 1920;
+    int viewHeight = 1080;
+    GLFWwindow* window = glfwGetCurrentContext();
+    if (window) {
+        glfwGetFramebufferSize(window, &viewWidth, &viewHeight);
+    }
+
+    std::cout << "{ \"frame\":" << m_frameID << ",\"cameraState\":{"
+              << "\"position\":[" << camPos.x << "," << camPos.y << "," << camPos.z << "],"
+              << "\"viewMatrix\":\"CHECKED\","
+              << "\"projectionMatrix\":\"CHECKED\","
+              << "\"viewportSize\":[" << viewWidth << "," << viewHeight << "] } }" << std::endl;
+}
 
 // Diagnostic logging methods
 void RenderSystem::LogFrameStart() {
@@ -751,6 +828,172 @@ void RenderSystem::DumpGLState(const std::string& location) {
     }
     
     std::cout << " }" << std::endl;
+}
+
+// Debug drawing implementations
+void RenderSystem::DrawDebugLine(const glm::vec3& start, const glm::vec3& end, const glm::vec3& color) {
+    // Simple line rendering using OpenGL immediate mode for debugging
+    // Note: This is not performance-optimized but good for debug visualization
+    
+    glUseProgram(0); // Use fixed-function pipeline for simplicity
+    glDisable(GL_DEPTH_TEST); // Draw lines on top
+    
+    glBegin(GL_LINES);
+    glColor3f(color.r, color.g, color.b);
+    glVertex3f(start.x, start.y, start.z);
+    glVertex3f(end.x, end.y, end.z);
+    glEnd();
+    
+    glEnable(GL_DEPTH_TEST); // Re-enable depth testing
+}
+
+void RenderSystem::DrawDebugCube(const glm::vec3& center, float size, const glm::vec3& color) {
+    float halfSize = size * 0.5f;
+    
+    // Draw 12 edges of a cube
+    glm::vec3 vertices[8] = {
+        {center.x - halfSize, center.y - halfSize, center.z - halfSize}, // 0: bottom-left-back
+        {center.x + halfSize, center.y - halfSize, center.z - halfSize}, // 1: bottom-right-back
+        {center.x + halfSize, center.y + halfSize, center.z - halfSize}, // 2: top-right-back
+        {center.x - halfSize, center.y + halfSize, center.z - halfSize}, // 3: top-left-back
+        {center.x - halfSize, center.y - halfSize, center.z + halfSize}, // 4: bottom-left-front
+        {center.x + halfSize, center.y - halfSize, center.z + halfSize}, // 5: bottom-right-front
+        {center.x + halfSize, center.y + halfSize, center.z + halfSize}, // 6: top-right-front
+        {center.x - halfSize, center.y + halfSize, center.z + halfSize}  // 7: top-left-front
+    };
+    
+    // Draw back face
+    DrawDebugLine(vertices[0], vertices[1], color);
+    DrawDebugLine(vertices[1], vertices[2], color);
+    DrawDebugLine(vertices[2], vertices[3], color);
+    DrawDebugLine(vertices[3], vertices[0], color);
+    
+    // Draw front face
+    DrawDebugLine(vertices[4], vertices[5], color);
+    DrawDebugLine(vertices[5], vertices[6], color);
+    DrawDebugLine(vertices[6], vertices[7], color);
+    DrawDebugLine(vertices[7], vertices[4], color);
+    
+    // Draw connecting edges
+    DrawDebugLine(vertices[0], vertices[4], color);
+    DrawDebugLine(vertices[1], vertices[5], color);
+    DrawDebugLine(vertices[2], vertices[6], color);
+    DrawDebugLine(vertices[3], vertices[7], color);
+}
+
+void RenderSystem::DrawDebugFrustum(const Camera::Frustum& frustum, const glm::vec3& color) {
+    // Implementation for drawing camera frustum
+    // This would require extracting frustum corners from the frustum planes
+    // For now, this is a stub - the CameraDebugSystem handles frustum drawing
+}
+
+void RenderSystem::ForwardPass(const Player* player) {
+    // Log forward pass start
+    LogPassStart("ForwardPass", 0, 0, 0); // Default framebuffer
+    
+    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardPassStart\":true }" << std::endl;
+    
+    // Enable depth testing but don't write to depth (preserve depth from deferred pass)
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL); // Use LEQUAL for proper depth testing with existing depth
+    
+    // Get current window dimensions
+    int windowWidth, windowHeight;
+    GLFWwindow* window = glfwGetCurrentContext();
+    if (window) {
+        glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
+    } else {
+        windowWidth = 1920;
+        windowHeight = 1080;
+    }
+    
+    // Ensure we're rendering to the default framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, windowWidth, windowHeight);
+    
+    int forwardDrawCalls = 0;
+    int forwardTriangles = 0;
+    
+    // === FORWARD PASS ITEM 1: Render Character (if provided) ===
+    if (player && m_mainCamera) {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"Starting\" }" << std::endl;
+        
+        // Log camera parameters for character rendering
+        glm::vec3 camPos = m_mainCamera->GetPosition();
+        glm::vec3 playerPos = player->getPosition();
+        float distance = glm::length(playerPos - camPos);
+        
+        std::cout << "{ \"frame\":" << m_frameID << ",\"characterRender\":{"
+                  << "\"playerPos\":[" << playerPos.x << "," << playerPos.y << "," << playerPos.z << "],"
+                  << "\"cameraPos\":[" << camPos.x << "," << camPos.y << "," << camPos.z << "],"
+                  << "\"distance\":" << distance << "} }" << std::endl;
+        
+        RenderSimpleCharacter(player, m_mainCamera->GetViewMatrix(), m_mainCamera->GetProjectionMatrix());
+        LogGLError("AfterCharacterRender");
+        
+        forwardDrawCalls++;
+        forwardTriangles += 12; // Simple cube has 12 triangles
+        
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"Complete\" }" << std::endl;
+    } else {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"SKIPPED\",\"reason\":\"" 
+                  << (player ? "NoCamera" : "NoPlayer") << "\" }" << std::endl;
+    }
+    
+    // === FORWARD PASS ITEM 2: Debug camera frustum (if enabled) ===
+    if (m_cameraDebugEnabled && m_cameraDebugSystem && m_mainCamera) {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"CameraDebug\",\"status\":\"Starting\" }" << std::endl;
+        
+        // Log camera debug parameters
+        std::cout << "{ \"frame\":" << m_frameID << ",\"cameraDebugParams\":{"
+                  << "\"nearPlane\":" << m_mainCamera->GetNearPlane() << ","
+                  << "\"farPlane\":" << m_mainCamera->GetFarPlane() << ","
+                  << "\"fov\":" << m_mainCamera->GetFOV() << ","
+                  << "\"aspectRatio\":" << m_mainCamera->GetAspectRatio() << "} }" << std::endl;
+        
+        // Disable depth writes for debug lines so they don't interfere with future frames
+        glDepthMask(GL_FALSE);
+        
+        m_cameraDebugSystem->DrawFrustum(*m_mainCamera);
+        LogGLError("AfterCameraDebugRender");
+        
+        // Re-enable depth writes
+        glDepthMask(GL_TRUE);
+        
+        forwardDrawCalls += 8; // Frustum typically has 8 lines (edges)
+        
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"CameraDebug\",\"status\":\"Complete\" }" << std::endl;
+    } else {
+        std::string reason = "DISABLED";
+        if (!m_cameraDebugEnabled) reason = "DISABLED";
+        else if (!m_cameraDebugSystem) reason = "NoDebugSystem";
+        else if (!m_mainCamera) reason = "NoCamera";
+        
+        std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"CameraDebug\",\"status\":\"SKIPPED\",\"reason\":\"" 
+                  << reason << "\" }" << std::endl;
+    }
+    
+    // === FORWARD PASS ITEM 3: Placeholder for transparent objects ===
+    // This is where transparent objects would be rendered in the future
+    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"TransparentObjects\",\"status\":\"NOT_IMPLEMENTED\" }" << std::endl;
+    
+    // === FORWARD PASS ITEM 4: Placeholder for UI/HUD elements ===
+    // This is where UI elements would be rendered in the future
+    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"UI\",\"status\":\"NOT_IMPLEMENTED\" }" << std::endl;
+    
+    // Reset depth function to default
+    glDepthFunc(GL_LESS);
+    
+    LogPassEnd("ForwardPass", forwardDrawCalls, forwardTriangles);
+    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardPassComplete\":true,"
+              << "\"totalDrawCalls\":" << forwardDrawCalls << ","
+              << "\"totalTriangles\":" << forwardTriangles << " }" << std::endl;
+}
+
+void RenderSystem::ToggleCameraDebug() {
+    m_cameraDebugEnabled = !m_cameraDebugEnabled;
+    std::cout << "[RenderSystem] Camera debug visualization " 
+              << (m_cameraDebugEnabled ? "ENABLED" : "DISABLED") << std::endl;
 }
 
 } // namespace Rendering

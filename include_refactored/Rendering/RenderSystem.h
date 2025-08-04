@@ -21,6 +21,7 @@ namespace Rendering {
 class ShaderProgram;
 class Texture2D;
 class Framebuffer;
+class CameraDebugSystem;
 
 class RenderSystem : public Core::System {
 public:
@@ -72,6 +73,7 @@ public:
     void DrawDebugCube(const glm::vec3& center, float size, const glm::vec3& color);
     void DrawDebugFrustum(const Camera::Frustum& frustum, const glm::vec3& color);
     void CycleDebugMode(); // Cycle through G-buffer debug modes
+    void ToggleCameraDebug(); // Toggle camera frustum visualization
     void RenderSimpleCharacter(const Player* player, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     float GetDepthScale() const { return m_depthScale; }
     void AdjustDepthScale(float multiplier);
@@ -102,6 +104,7 @@ private:
     void LightingPass();
     void ShadowPass();
     void PostProcessingPass();
+    void ForwardPass(const Player* player);
     
     // Render queues for transparent/opaque objects
     std::vector<Core::Entity> m_opaqueRenderQueue;
@@ -126,6 +129,10 @@ private:
     uint32_t m_dummyTexture = 0;
     int m_debugMode = 0; // Debug mode for visualizing G-buffer
     
+    // Camera debug system
+    std::unique_ptr<CameraDebugSystem> m_cameraDebugSystem;
+    bool m_cameraDebugEnabled = false;
+    
     // Frame tracking for diagnostic logging
     uint64_t m_frameID = 0;
     int m_drawCallCount = 0;
@@ -139,6 +146,7 @@ private:
     void LogTextureBinding(const std::string& pass, int unit, uint32_t textureID, const std::string& format);
     void LogGLError(const std::string& location);
     void DumpGLState(const std::string& location);
+    void ValidateAndLogCameraState();
 };
 
 } // namespace Rendering

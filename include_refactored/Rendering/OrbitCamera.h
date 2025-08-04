@@ -115,6 +115,10 @@ private:
     // Spherical coordinate conversion
     glm::vec3 SphericalToCartesian(float yaw, float pitch, float distance) const;
     void CartesianToSpherical(const glm::vec3& position, const glm::vec3& target, float& outYaw, float& outPitch, float& outDistance) const;
+    
+    // State validation and initialization
+    bool ValidateCameraState();
+    void InitializeCameraMode(CameraMode mode);
 };
 
 } // namespace Rendering

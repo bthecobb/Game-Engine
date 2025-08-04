@@ -27,23 +27,52 @@ void PlayerMovementSystem::Update(float deltaTime) {
         auto& rigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(entity);
         auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
         
-        HandleInput(entity, input, movement, deltaTime);
-        UpdateMovement(entity, movement, rigidbody, deltaTime);
-        UpdateWallRunning(entity, movement, rigidbody, deltaTime);
-        UpdateDashing(entity, movement, rigidbody, deltaTime);
-        ApplyGravity(movement, rigidbody, deltaTime);
-        CheckGrounding(entity, movement);
+        // Store previous position for debugging
+        glm::vec3 previousPosition = transform.position;
         
-        // Apply the movement velocity to transform position
-        transform.position += movement.velocity * deltaTime;
-        
-        // Debug output to verify movement is working
-        static int frameCounter = 0;
-        if (frameCounter++ % 60 == 0) { // Every second at 60 FPS
-            std::cout << "[PlayerMovement] Entity " << entity 
-                      << " Pos: (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
+        // Only process input and physics if not kinematic (kinematic = scripted/external control)
+        if (!rigidbody.isKinematic) {
+            HandleInput(entity, input, movement, deltaTime);
+            UpdateMovement(entity, movement, rigidbody, deltaTime);
+            UpdateWallRunning(entity, movement, rigidbody, deltaTime);
+            UpdateDashing(entity, movement, rigidbody, deltaTime);
+            ApplyGravity(movement, rigidbody, deltaTime);
+            CheckGrounding(entity, movement);
+            
+            // Apply the movement velocity to transform position (single source of truth)
+            transform.position += movement.velocity * deltaTime;
+            
+            std::cout << "[PlayerMovement] [DYNAMIC] Entity " << entity 
+                      << " moved from (" << previousPosition.x << ", " << previousPosition.y << ", " << previousPosition.z << ")"
+                      << " to (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
                       << " Vel: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")"
                       << " Grounded: " << movement.isGrounded << std::endl;
+        } else {
+            // Kinematic mode: position is controlled externally (by scripts/cutscenes/debug)
+            // Clear velocity to prevent conflicting movement calculations
+            movement.velocity = glm::vec3(0.0f);
+            rigidbody.velocity = glm::vec3(0.0f);
+            
+            std::cout << "[PlayerMovement] [KINEMATIC] Entity " << entity 
+                      << " position held at (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
+                      << " by external control" << std::endl;
+        }
+        
+        // Enhanced debugging every 60 frames (~1 second at 60fps)
+        static int frameCounter = 0;
+        if (frameCounter++ % 60 == 0) {
+            std::cout << "\n=== PLAYER POSITION DEBUG REPORT ===" << std::endl;
+            std::cout << "Entity ID: " << entity << std::endl;
+            std::cout << "Mode: " << (rigidbody.isKinematic ? "KINEMATIC (External Control)" : "DYNAMIC (Physics)") << std::endl;
+            std::cout << "Transform Position: (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
+            std::cout << "Movement Velocity: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")" << std::endl;
+            std::cout << "Rigidbody Velocity: (" << rigidbody.velocity.x << ", " << rigidbody.velocity.y << ", " << rigidbody.velocity.z << ")" << std::endl;
+            std::cout << "Movement State: " << static_cast<int>(movement.movementState) << std::endl;
+            std::cout << "Grounded: " << (movement.isGrounded ? "Yes" : "No") << std::endl;
+            std::cout << "Position Change This Frame: (" << (transform.position.x - previousPosition.x) << ", "
+                      << (transform.position.y - previousPosition.y) << ", "
+                      << (transform.position.z - previousPosition.z) << ")" << std::endl;
+            std::cout << "===================================\n" << std::endl;
         }
     }
 }
