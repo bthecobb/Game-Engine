@@ -1,0 +1,131 @@
+# Build directories
+build/
+out/
+bin/
+obj/
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+CMakeScripts/
+Testing/
+Makefile
+cmake-build-*/
+
+# Visual Studio
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+.vs/
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Object files
+*.o
+*.obj
+*.ko
+*.elf
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# CUDA
+*.i
+*.ii
+*.gpu
+*.ptx
+*.cubin
+*.fatbin
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.bak
+*~
+
+# IDE specific files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# External dependencies (if using package managers)
+vendor/
+third_party/
+external/
+dependencies/
+
+# Generated documentation
+doxygen/
+docs/api/
+*.doxy
+
+# Profiling
+*.nvprof
+*.nvvp
+gmon.out
+
+# Aider
+.aider.*
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Misc
+*.orig
+*.rej
