@@ -10,17 +10,24 @@ namespace Rendering {
 OrbitCamera::OrbitCamera(ProjectionType type) : Camera(type),
     m_currentMode(CameraMode::ORBIT_FOLLOW),
     m_yaw(0.0f),
-    m_pitch(0.0f),
-    m_targetDistance(m_orbitSettings.distance),
-    m_currentDistance(m_orbitSettings.distance),
+    m_pitch(-20.0f),  // Start with a slight downward angle
+    m_targetDistance(15.0f),  // Use explicit default instead of uninitialized m_orbitSettings
+    m_currentDistance(15.0f),
     m_yawVelocity(0.0f),
     m_pitchVelocity(0.0f),
     m_distanceVelocity(0.0f),
     m_debugVisualization(false) {
 
-    m_targetPosition = glm::vec3(0.0f);
-    m_desiredPosition = glm::vec3(0.0f);
-    m_currentPosition = glm::vec3(0.0f);
+    // Initialize orbit settings with defaults
+    m_orbitSettings = OrbitSettings();
+    
+    // Initialize positions
+    m_targetPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+    m_currentPosition = glm::vec3(0.0f, m_orbitSettings.heightOffset, m_orbitSettings.distance);
+    m_desiredPosition = m_currentPosition;
+    
+    // Initialize camera vectors
+    UpdateCameraVectorsFromPosition();
 }
 
 void OrbitCamera::Update(float deltaTime, const glm::vec3& targetPosition, const glm::vec3& targetVelocity) {

@@ -377,11 +377,17 @@ int main() {
     camera->SetOrbitSettings(orbitSettings);
     
     camera->SetPerspective(60.0f, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 200.0f);
+    
+    // Initialize camera with proper default state BEFORE setting mode
+    glm::vec3 initialPlayerPos(0.0f, 5.0f, 0.0f);
+    camera->SetTarget(initialPlayerPos);
+    camera->SetPosition(initialPlayerPos + glm::vec3(0.0f, orbitSettings.heightOffset, orbitSettings.distance));
+    
+    // Now set the camera mode after initial positioning
     camera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
     
-    // Initialize camera with a default target position for proper initial setup
-    camera->SetTarget(glm::vec3(0.0f, 5.0f, 0.0f)); // Set to player's expected position
-    camera->Update(0.016f, glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f)); // Force initial update
+    // Force initial update to ensure proper state
+    camera->Update(0.016f, initialPlayerPos, glm::vec3(0.0f));
     camera->UpdateMatrices();
     mainCamera = camera.get();
     
