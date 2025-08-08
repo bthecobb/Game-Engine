@@ -1,1 +1,64 @@
+# Root-level ignores for CudaGame
+
+# Local tooling
 .aider*
+
+# Build folders and CMake artifacts
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+Testing/
+
+# Visual Studio / MSVC
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.vcxproj.*.user
+*.vcproj
+*.user
+*.opensdf
+*.sdf
+*.suo
+*.cachefile
+*.idb
+*.ipch
+*.pdb
+*.ilk
+*.tlog
+*.lastbuildstate
+*.obj
+*.log
+*.pch
+*.res
+*.lib
+*.exp
+*.rsp
+*.tmp
+*.opendb
+*.nativecodeanalysis.xml
+
+# Intermediate and binary outputs
+*.exe
+*.dll
+*.pdb
+*.lib
+*.a
+*.so
+*.dylib
+
+# CMake/FetchContent subbuilds and deps
+**/_deps/
+**/*-subbuild/
+**/*-build/
+
+# Vendor-specific (adjust if you want to commit vendor sources)
+vendor/PhysX/**/bin/
+vendor/PhysX/**/lib/
+
+# OS / misc
+.DS_Store
+Thumbs.db

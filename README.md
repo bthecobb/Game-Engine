@@ -1,22 +1,25 @@
-# CUDA Particle Game
+# CudaGame – Full 3D ECS Game with CUDA, PhysX, and Deferred Rendering
 
-A real-time particle simulation game built with C++, CUDA, and OpenGL that demonstrates GPU-accelerated physics computation.
+A modern C++17 game project featuring an Entity-Component-System (ECS) architecture, GPU-accelerated compute via CUDA, PhysX-powered physics, and a deferred OpenGL renderer with shadow mapping and robust camera systems.
 
 ## Features
 
-- **CUDA-Accelerated Physics**: Particle updates run in parallel on the GPU using CUDA kernels
-- **Real-time Rendering**: OpenGL-based rendering with custom shaders for smooth particle visualization
-- **Interactive Controls**: Click and drag to spawn particles at cursor position
-- **Realistic Physics**: Gravity, air resistance, and boundary collision detection
-- **Visual Effects**: Color fading based on particle lifetime and smooth alpha blending
+- ECS-based architecture with prioritized systems (gameplay, physics, rendering, lighting, particles)
+- Deferred rendering pipeline (G-buffer) + shadow mapping + forward pass for characters/transparent
+- OrbitCamera with multiple modes (Orbit Follow, Free Look, Combat Focus), smoothing, and zoom
+- PhysX integration for rigidbodies, colliders, character control, and wall-running system
+- CUDA subsystems for physics/rendering demos
+- Assimp model loading and GLM math
+- Extensive debug tooling (G-buffer visualization, camera frustum, verbose GL logs)
 
-## Technical Details
+## Technical Overview
 
 ### Architecture
-- **Game Engine**: Custom C++ game engine with GLFW for window management
-- **Graphics**: OpenGL 3.3+ with custom vertex and fragment shaders
-- **Compute**: CUDA kernels for particle physics simulation
-- **Build System**: CMake with automatic dependency management
+- ECS with Coordinator and SystemManager; systems registered with priorities
+- Rendering: GLAD + GLFW; deferred geometry pass, lighting pass, shadow pass, forward pass; depth copy via shader
+- Physics: PhysX integration; fixed timestep; optional kinematic player for camera testing
+- Compute: CUDA-enabled demos and interop hooks in the renderer
+- Build: CMake with FetchContent for glfw/glad/glm/assimp; presets for Windows builds
 
 ### CUDA Implementation
 - Parallel particle updates using CUDA kernels
@@ -31,11 +34,25 @@ A real-time particle simulation game built with C++, CUDA, and OpenGL that demon
 ## Building the Project
 
 ### Prerequisites
-- NVIDIA GPU with CUDA support
-- CUDA Toolkit (version 12.9 or compatible)
-- CMake (version 3.20+)
-- C++ compiler with C++17 support
+- NVIDIA GPU with CUDA support (Compute Capability 8.6 recommended)
+- CUDA Toolkit (12.x)
+- CMake 3.20+
+- Microsoft Visual Studio Build Tools (MSVC) and Ninja (or VS with Ninja)
 - OpenGL drivers
+
+### Configure and Build (Windows)
+Using the provided CMake presets:
+
+- Configure (Release):
+  - cmake --preset windows-msvc-release
+- Build (Release):
+  - cmake --build --preset build-release
+
+Other configurations:
+- cmake --preset windows-msvc-relwithdebinfo && cmake --build --preset build-relwithdebinfo
+- cmake --preset windows-msvc-debug && cmake --build --preset build-debug
+
+Build output goes to build/.
 
 ### Build Instructions
 
@@ -54,78 +71,68 @@ A real-time particle simulation game built with C++, CUDA, and OpenGL that demon
    ```bash
    cmake --build . --config Release
    ```
-6. Run the game:
-   ```bash
-   ./Release/CudaGame.exe  # Windows
-   ./CudaGame              # Linux/Mac
-   ```
+### Run targets
+After building, binaries are in build/Release (or the selected configuration):
+- Full3DGame.exe – Main experience with ECS, PhysX, deferred renderer, shadows, particles, camera systems
+- EnhancedGame.exe – Streamlined target without some extras
+- CudaPhysicsDemo.exe – Headless CUDA + physics demo
+- CudaRenderingDemo.exe – Rendering-focused demo
+- LightingIntegrationDemo.exe – Lighting/deferred pipeline test
+- TestRunner.exe – Core systems tests
 
 ### Dependencies
 The build system automatically downloads and builds:
 - **GLFW**: Window management and input handling
 - **GLAD**: OpenGL function loading
 
-## Controls
+## Controls (Full3DGame)
 
-- **Left Mouse Button**: Hold and drag to spawn particles
-- **ESC**: Exit the game
+- WASD: Move
+- Mouse: OrbitCamera control (TAB to toggle capture)
+- Mouse Wheel: Zoom
+- 1/2/3: Switch camera modes (Orbit Follow / Free Look / Combat Focus)
+- Space: Jump
+- Shift: Sprint
+- E: Wall Run (near walls)
+- Left Click: Attack
+- Right Click: Heavy Attack
+- Q: Block/Parry
+- K: Toggle Player Mode (Kinematic/Dynamic) [DEBUG]
+- F4: Cycle G-buffer debug mode
+- F5: Toggle camera frustum debug visualization
+- PageUp/PageDown: Adjust depth scale (when in Position Buffer mode)
+- ESC: Exit
 
-## Project Structure
+## Project Structure (high level)
 
-```
-CudaGame/
-├── src/
-│   ├── main.cpp              # Entry point
-│   ├── GameEngine.cpp        # Game engine implementation
-│   └── ParticleSystem.cu     # CUDA particle system
-├── include/
-│   ├── GameEngine.h          # Game engine header
-│   └── ParticleSystem.cuh    # CUDA particle system header
-├── build/                    # Build directory (generated)
-├── CMakeLists.txt           # CMake configuration
-└── README.md               # This file
-```
+- src_refactored/ – ECS-based implementation (Core, Rendering, Physics, Gameplay, Particles, Animation, Debug)
+- include_refactored/ – Public headers for the refactored ECS engine
+- src/ and include/ – Legacy modules (e.g., Player, ShaderRegistry, GameWorld) used by Full3DGame bridging
+- assets/shaders – Shader sources for deferred/forward/shadows and depth copy
+- tests/ – Test runner and core system tests
+- vendor/PhysX – PhysX SDK (see setup below)
+- build/ – Generated build outputs (ignored by git)
 
-## Performance
+## PhysX Setup
 
-The game is designed to handle up to 10,000 particles simultaneously with real-time physics simulation running entirely on the GPU. Performance will vary based on:
-- GPU compute capability
-- Available VRAM
-- Number of active particles
+By default, CMake expects PhysX at vendor/PhysX/physx with libraries under bin/win.x86_64.vc142.md/release.
+You can override this by setting PHYSX_ROOT_DIR when configuring CMake:
+- Example: cmake --preset windows-msvc-release -DPHYSX_ROOT_DIR=C:/path/to/PhysX/physx
 
-## Customization
+If PhysX is not found, the configure step will fail with a clear message. Ensure matching MSVC runtime (/MD) for PhysX binaries.
 
-### Particle Properties
-Modify the `Particle` struct in `ParticleSystem.cuh` to add new properties like:
-- Mass
-- Different particle types
-- Additional forces
+## Logging and Debugging
 
-### Physics Parameters
-Adjust physics constants in the CUDA kernels:
-- Gravity strength
-- Air resistance
-- Boundary behavior
-- Particle lifetime
-
-### Visual Effects
-Customize the fragment shader to change:
-- Particle appearance
-- Color schemes
-- Blending modes
-- Size variations
+The renderer includes extensive diagnostic logging (GL state, pass steps, texture bindings). For development this is helpful; for performance-sensitive runs you can reduce verbosity by adjusting code-level flags. A future update will add a CMake option to toggle verbose logging.
 
 ## Future Enhancements
 
-Potential improvements and extensions:
-- Multiple particle systems with different behaviors
-- 3D particle simulation
-- Particle collision detection
-- Texture-based particles
-- Advanced lighting effects
-- Performance profiling tools
-- Particle system editor
-- Audio integration
+- Material system with texture sets and IBL for PBR
+- Cascaded shadow maps and filtering improvements
+- Camera collision using PhysX raycasts/sweeps
+- Scene/prefab serialization for content-driven worlds
+- CI builds and basic headless render smoke tests
+- Toggleable verbose logging via CMake option and runtime flag
 
 ## License
 
@@ -133,7 +140,7 @@ This project is provided for educational and demonstration purposes. Feel free t
 
 ## Requirements
 
-- NVIDIA GPU with Compute Capability 7.5+ (RTX 20 series or newer recommended)
-- Windows 10/11, Linux, or macOS
-- 4GB+ RAM
+- NVIDIA GPU with Compute Capability 8.6 (RTX 30 series recommended)
+- Windows 10/11
+- 8GB+ RAM
 - OpenGL 3.3+ compatible graphics drivers
