@@ -295,6 +295,7 @@ add_executable(Full3DGame
     src_refactored/Physics/WallRunningSystem.cpp
     # Rendering
     src_refactored/Rendering/RenderSystem.cpp
+    src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/ShaderProgram.cpp
     src_refactored/Rendering/Camera.cpp
     src_refactored/Rendering/OrbitCamera.cpp
