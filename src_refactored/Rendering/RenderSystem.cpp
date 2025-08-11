@@ -99,7 +99,7 @@ bool RenderSystem::Initialize() {
     // Initialize camera debug system
     m_cameraDebugSystem = std::make_unique<CameraDebugSystem>(this);
     
-    std::cout << "[RenderSystem] Deferred rendering pipeline initialized successfully." << std::endl;
+    std::cout << "[RenderSystem] Deferred rendering pipeline initialized successfully. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

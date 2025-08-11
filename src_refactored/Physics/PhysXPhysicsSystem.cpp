@@ -43,6 +43,7 @@ bool PhysXPhysicsSystem::Initialize() {
 
     m_pxScene = m_pxPhysics->createScene(sceneDesc);
 
+    std::cout << "[PhysXPhysicsSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

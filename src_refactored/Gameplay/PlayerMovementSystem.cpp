@@ -8,7 +8,7 @@ namespace CudaGame {
 namespace Gameplay {
 
 bool PlayerMovementSystem::Initialize() {
-    std::cout << "PlayerMovementSystem initialized" << std::endl;
+    std::cout << "[PlayerMovementSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

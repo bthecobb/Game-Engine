@@ -17,7 +17,19 @@ if(WIN32)
     add_definitions(-DNOMINMAX)
 endif()
 
-# Use default dynamic runtime (/MD) to match PhysX libraries
+# Set MSVC runtime library to match PhysX libraries
+if(MSVC)
+    # Use MultiThreadedDLL for Release and MultiThreadedDebugDLL for Debug
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    
+    # Add iterator debug level settings
+    add_compile_definitions(
+        $<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=2>
+        $<$<CONFIG:Release>:_ITERATOR_DEBUG_LEVEL=0>
+        $<$<CONFIG:RelWithDebInfo>:_ITERATOR_DEBUG_LEVEL=0>
+        $<$<CONFIG:MinSizeRel>:_ITERATOR_DEBUG_LEVEL=0>
+    )
+endif()
 
 # Set CUDA architecture for RTX 3070 Ti
 set(CMAKE_CUDA_ARCHITECTURES 86)
@@ -75,7 +87,11 @@ set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
 set(PHYSX_INCLUDE_DIR ${PHYSX_ROOT_DIR}/include)
 set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)
 
-# PhysX Libraries
+# Note: PhysX debug libraries don't seem to be available, using release libs for both configs
+# This may cause issues in debug builds due to iterator debug level mismatches
+# Consider building PhysX from source with debug configuration if debug builds are needed
+
+# PhysX Libraries (using release libraries for both configurations)
 set(PHYSX_LIBRARIES
     ${PHYSX_LIB_DIR}/PhysX_64.lib
     ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
@@ -119,6 +135,7 @@ add_executable(CudaPhysicsDemo
     src_refactored/Rendering/RenderSystem.cpp
     src_refactored/Rendering/ShaderProgram.cpp
     src_refactored/Rendering/Camera.cpp
+    src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
@@ -139,6 +156,7 @@ add_executable(CudaRenderingDemo
     src_refactored/Rendering/RenderSystem.cpp
     src_refactored/Rendering/ShaderProgram.cpp
     src_refactored/Rendering/Camera.cpp
+    src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
@@ -159,6 +177,7 @@ add_executable(LightingIntegrationDemo
     src_refactored/Rendering/RenderSystem.cpp
     src_refactored/Rendering/ShaderProgram.cpp
     src_refactored/Rendering/Camera.cpp
+    src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/Mesh.cpp
     src_refactored/Core/EntityManager.cpp
@@ -249,6 +268,7 @@ add_executable(EnhancedGame
     src_refactored/Rendering/RenderSystem.cpp
     src_refactored/Rendering/ShaderProgram.cpp
     src_refactored/Rendering/Camera.cpp
+    src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp

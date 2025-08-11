@@ -13,8 +13,7 @@ ParticleSystem::~ParticleSystem() {
 }
 
 bool ParticleSystem::Initialize() {
-    std::cout << "[ParticleSystem] Initializing advanced particle effects system..." << std::endl;
-    InitializeDefaultPresets();
+    std::cout << "[ParticleSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

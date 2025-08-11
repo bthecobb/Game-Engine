@@ -6,7 +6,7 @@ namespace CudaGame {
 namespace Gameplay {
 
 bool TargetingSystem::Initialize() {
-    std::cout << "TargetingSystem initialized" << std::endl;
+    std::cout << "[TargetingSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

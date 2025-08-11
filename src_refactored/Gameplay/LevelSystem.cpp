@@ -8,8 +8,7 @@ namespace CudaGame {
 namespace Gameplay {
 
 bool LevelSystem::Initialize() {
-    std::cout << "LevelSystem initialized" << std::endl;
-    CreateTestLevel();
+    std::cout << "[LevelSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

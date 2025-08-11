@@ -15,7 +15,7 @@ WallRunningSystem::WallRunningSystem() {
 WallRunningSystem::~WallRunningSystem() {}
 
 bool WallRunningSystem::Initialize() {
-    std::cout << "[WallRunningSystem] Initializing wall-running physics..." << std::endl;
+    std::cout << "[WallRunningSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 

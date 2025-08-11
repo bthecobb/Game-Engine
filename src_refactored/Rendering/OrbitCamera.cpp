@@ -9,21 +9,36 @@ namespace Rendering {
 
 OrbitCamera::OrbitCamera(ProjectionType type) : Camera(type),
     m_currentMode(CameraMode::ORBIT_FOLLOW),
-    m_yaw(0.0f),
-    m_pitch(0.0f),
-    m_targetDistance(m_orbitSettings.distance),
-    m_currentDistance(m_orbitSettings.distance),
+    m_yaw(-90.0f),  // Start looking along negative Z axis
+    m_pitch(25.0f),  // Start with a slight downward angle for better initial view
+    m_targetDistance(15.0f), // Use explicit default value
+    m_currentDistance(15.0f), // Match target distance
     m_yawVelocity(0.0f),
     m_pitchVelocity(0.0f),
     m_distanceVelocity(0.0f),
     m_debugVisualization(false) {
 
-    m_targetPosition = glm::vec3(0.0f);
-    m_desiredPosition = glm::vec3(0.0f);
-    m_currentPosition = glm::vec3(0.0f);
+    // Initialize orbit settings with defaults
+    m_orbitSettings.distance = 15.0f;
+    m_orbitSettings.smoothSpeed = 6.0f; // Reduce default smoothing speed for more stability
+    
+    // Initialize with a default target position
+    m_targetPosition = glm::vec3(0.0f, 5.0f, 0.0f);  // Typical player height
+    
+    // Calculate initial camera position based on default angles and distance
+    m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
+    m_currentPosition = m_desiredPosition;  // Start at desired position to avoid interpolation from origin
+    
+    // Initialize camera base class position
+    SetPosition(m_currentPosition);
+    UpdateCameraVectorsFromPosition();
 }
 
 void OrbitCamera::Update(float deltaTime, const glm::vec3& targetPosition, const glm::vec3& targetVelocity) {
+    // Always update the target position regardless of mode
+    // This ensures all modes have the latest player position
+    m_targetPosition = targetPosition + glm::vec3(0.0f, m_orbitSettings.heightOffset, 0.0f);
+    
     switch (m_currentMode) {
         case CameraMode::ORBIT_FOLLOW:
             UpdateOrbitFollow(deltaTime, targetPosition, targetVelocity);
@@ -113,13 +128,18 @@ void OrbitCamera::SetCollisionCheckCallback(std::function<bool(const glm::vec3&,
 }
 
 void OrbitCamera::UpdateOrbitFollow(float deltaTime, const glm::vec3& targetPosition, const glm::vec3& targetVelocity) {
-    m_targetPosition = targetPosition + glm::vec3(0.0f, m_orbitSettings.heightOffset, 0.0f);
+    // Target position already updated in Update() method
     
     // Smoothly update current distance towards target distance
     m_currentDistance = glm::mix(m_currentDistance, m_targetDistance, deltaTime * m_orbitSettings.smoothSpeed);
     
+    // Calculate desired position based on current angles and distance
     m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
-    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, deltaTime * m_orbitSettings.smoothSpeed);
+    
+    // Smooth camera position with clamped delta time to prevent large jumps
+    float clampedDelta = glm::min(deltaTime, 0.1f); // Prevent large time steps from causing jumps
+    float smoothFactor = glm::clamp(clampedDelta * m_orbitSettings.smoothSpeed, 0.0f, 1.0f);
+    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, smoothFactor);
 
     if (m_collisionSettings.enableCollision && m_collisionCallback) {
         m_currentPosition = HandleCollision(m_currentPosition, m_targetPosition);
@@ -129,21 +149,19 @@ void OrbitCamera::UpdateOrbitFollow(float deltaTime, const glm::vec3& targetPosi
 }
 
 void OrbitCamera::UpdateFreeLook(float deltaTime) {
-    // Free look mode: maintain current position relative to target, but allow independent movement
-    // Keep the camera at its current spherical coordinates but don't force following the target
+    // Free look mode: Camera can be freely rotated around the player
+    // Still needs to follow the player's position but allows free rotation
     
-    // Update target position if it has changed (for reference)
-    // But don't force the camera to follow it smoothly like in orbit mode
+    // Important: Update target position to follow player even in free look mode
+    // This was missing and causing the "pulling" effect
+    // Note: We don't update m_targetPosition here since it's passed via Update()
+    // But we need to use the latest target position for calculations
     
     // Calculate desired position based on current angles and distance
     m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
     
-    // In free look, we can either:
-    // 1. Keep camera fixed in space while target moves
-    // 2. Smoothly track target position changes but allow independent rotation
-    // For now, let's use option 2 with reduced smoothing
-    float freeLookSmoothSpeed = m_orbitSettings.smoothSpeed * 0.3f; // Much slower following
-    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, deltaTime * freeLookSmoothSpeed);
+    // Smooth camera positioning for free look
+    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, deltaTime * m_orbitSettings.smoothSpeed * 0.8f);
     
     // Handle collision if enabled
     if (m_collisionSettings.enableCollision && m_collisionCallback) {
@@ -155,7 +173,7 @@ void OrbitCamera::UpdateFreeLook(float deltaTime) {
 
 void OrbitCamera::UpdateCombatFocus(float deltaTime, const glm::vec3& targetPosition, const glm::vec3& targetVelocity) {
     // Combat focus mode: Enhanced following with predictive positioning and closer tracking
-    m_targetPosition = targetPosition + glm::vec3(0.0f, m_orbitSettings.heightOffset, 0.0f);
+    // Target position already updated in Update() method
     
     // Add velocity prediction for smoother combat camera
     glm::vec3 predictedTarget = m_targetPosition + (targetVelocity * 0.2f); // Look ahead 0.2 seconds
@@ -204,10 +222,10 @@ void OrbitCamera::ClampAngles() {
     while (m_yaw > 180.0f) m_yaw -= 360.0f;
     while (m_yaw < -180.0f) m_yaw += 360.0f;
     
-    // Debug logging every 60 frames
+    // Debug logging every 300 frames (reduced frequency)
     static int debugFrameCount = 0;
     debugFrameCount++;
-    if (debugFrameCount % 60 == 0) {
+    if (debugFrameCount % 300 == 0) {
         std::cout << "[DEBUG] Camera angles - Yaw: " << m_yaw << ", Pitch: " << m_pitch 
                   << ", Distance: " << m_currentDistance << std::endl;
     }
@@ -233,10 +251,10 @@ void OrbitCamera::UpdateCameraVectorsFromPosition() {
     // Update view matrix using lookAt
     LookAt(m_targetPosition, up);
     
-    // Debug camera position every 60 frames
+    // Debug camera position every 300 frames (reduced frequency)
     static int debugPosCount = 0;
     debugPosCount++;
-    if (debugPosCount % 60 == 0) {
+    if (debugPosCount % 300 == 0) {
         std::cout << "[DEBUG] Camera pos: (" << m_currentPosition.x << ", " 
                   << m_currentPosition.y << ", " << m_currentPosition.z << ")\n";
         std::cout << "[DEBUG] Target pos: (" << m_targetPosition.x << ", " 

@@ -15,6 +15,7 @@
 #include "Rendering/RenderComponents.h"
 #include "Rendering/Camera.h"
 #include "Rendering/OrbitCamera.h"
+#include "Rendering/Debug.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -111,6 +112,10 @@ bool InitializeWindow() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    
+    // Explicitly request depth and stencil buffers
+    glfwWindowHint(GLFW_DEPTH_BITS, 24);
+    glfwWindowHint(GLFW_STENCIL_BITS, 8);
 
     // Create window
     window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "CudaGame - Full 3D Experience", nullptr, nullptr);
@@ -148,6 +153,34 @@ bool InitializeWindow() {
 
     std::cout << "OpenGL initialized successfully" << std::endl;
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+    
+    // PHASE 1: Fail-fast startup checks
+#ifdef DEBUG_RENDERER
+    {
+        GLint major = 0, minor = 0;
+        glGetIntegerv(GL_MAJOR_VERSION, &major);
+        glGetIntegerv(GL_MINOR_VERSION, &minor);
+        std::cout << "{ \"startupGL\": { \"major\":" << major << ",\"minor\":" << minor << " } }" << std::endl;
+
+        GLint depthBits = 0, stencilBits = 0;
+        glGetIntegerv(GL_DEPTH_BITS, &depthBits);
+        glGetIntegerv(GL_STENCIL_BITS, &stencilBits);
+        std::cout << "{ \"defaultFBO\": { \"depthBits\":" << depthBits << ",\"stencilBits\":" << stencilBits << " } }" << std::endl;
+
+        if (depthBits <= 0) {
+            std::cerr << "[FATAL] Default framebuffer has no depth buffer. Cannot proceed." << std::endl;
+            std::exit(1);
+        }
+        
+        if (major < 3 || (major == 3 && minor < 3)) {
+            std::cerr << "[FATAL] OpenGL 3.3+ required. Current version: " << major << "." << minor << std::endl;
+            std::exit(1);
+        }
+        
+        std::cout << "{ \"startupValidation\": \"PASSED\" }" << std::endl;
+    }
+#endif
+    
     return true;
 }
 
@@ -349,6 +382,9 @@ int main() {
     coordinator.SetSystemSignature<Physics::PhysXPhysicsSystem>(physicsSignature);
     
     Core::Signature wallRunSignature;
+    wallRunSignature.set(coordinator.GetComponentType<Physics::CharacterControllerComponent>());
+    wallRunSignature.set(coordinator.GetComponentType<Physics::RigidbodyComponent>());
+    wallRunSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
     coordinator.SetSystemSignature<Physics::WallRunningSystem>(wallRunSignature);
 
     Core::Signature particleSignature;
@@ -479,6 +515,7 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
     float accumulator = 0.0f;
     float deltaTime = 0.016f; // Initialize with 60 FPS default
     auto lastFrame = std::chrono::high_resolution_clock::now();
+    int frameCount = 0;
     
     while (!glfwWindowShouldClose(window)) {
         // Calculate delta time
@@ -552,20 +589,7 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         auto& playerRigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
         glm::vec3 playerVelocity = playerRigidbody.velocity;
         
-// Handle camera mode switching
-        if (keysPressed[GLFW_KEY_1]) {
-            std::cout << "Switching to Camera Mode 1: ORBIT_FOLLOW" << std::endl;
-            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
-            keysPressed[GLFW_KEY_1] = false; // Reset press state
-        } else if (keysPressed[GLFW_KEY_2]) {
-            std::cout << "Switching to Camera Mode 2: FREE_LOOK" << std::endl;
-            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::FREE_LOOK);
-            keysPressed[GLFW_KEY_2] = false; // Reset press state
-        } else if (keysPressed[GLFW_KEY_3]) {
-            std::cout << "Switching to Camera Mode 3: COMBAT_FOCUS" << std::endl;
-            mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::COMBAT_FOCUS);
-            keysPressed[GLFW_KEY_3] = false; // Reset press state
-        }
+        // Handle camera mode switching
         if (keysPressed[GLFW_KEY_1]) {
             std::cout << "Switching to Camera Mode 1: ORBIT_FOLLOW" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
@@ -586,14 +610,18 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         // - For dynamic players: position is updated by PlayerMovementSystem
         glm::vec3 cameraTarget = playerTransform.position; // Always use TransformComponent as truth
         
-        // Debug camera target selection
-        bool playerIsKinematic = coordinator.GetComponent<Physics::RigidbodyComponent>(player).isKinematic;
-        std::cout << "[CameraUpdate] Target: (" << cameraTarget.x << ", " << cameraTarget.y << ", " << cameraTarget.z << ") "
-                  << "Mode: " << (playerIsKinematic ? "KINEMATIC" : "DYNAMIC") 
-                  << " Velocity: (" << playerVelocity.x << ", " << playerVelocity.y << ", " << playerVelocity.z << ")" << std::endl;
+        // Debug camera target selection (only log every 300 frames to reduce spam)
+        static int cameraDebugCount = 0;
+        cameraDebugCount++;
+        if (cameraDebugCount % 300 == 0) {
+            bool playerIsKinematic = coordinator.GetComponent<Physics::RigidbodyComponent>(player).isKinematic;
+            std::cout << "[CameraUpdate] Target: (" << cameraTarget.x << ", " << cameraTarget.y << ", " << cameraTarget.z << ") "
+                      << "Mode: " << (playerIsKinematic ? "KINEMATIC" : "DYNAMIC") 
+                      << " Velocity: (" << playerVelocity.x << ", " << playerVelocity.y << ", " << playerVelocity.z << ")" << std::endl;
+        }
         
         // Single, clean camera update - no conflicting calls
-        mainCamera->SetTarget(cameraTarget);
+        // Note: Do NOT call SetTarget() here as Update() already handles target position
         mainCamera->Update(deltaTime, cameraTarget, playerVelocity);
         
         // Update all systems
@@ -612,7 +640,6 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
     }
     
     // Debug: Log physics steps every 120 frames (approximately 2 seconds at 60 FPS)
-    static int frameCount = 0;
     frameCount++;
     if (frameCount % 120 == 0) {
         std::cout << "[DEBUG] Physics steps this frame: " << physicsSteps 

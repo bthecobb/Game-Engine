@@ -7,7 +7,7 @@ namespace CudaGame {
 namespace Gameplay {
 
 bool EnemyAISystem::Initialize() {
-    std::cout << "EnemyAISystem initialized" << std::endl;
+    std::cout << "[EnemyAISystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
 }
 
