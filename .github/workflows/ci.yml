@@ -149,6 +149,7 @@ jobs:
           name: cuda-game-build
           path: cuda_game_artifacts.zip
           retention-days: 5
+          compression-level: 6
 
   java-integration-tests:
     name: Integration Tests
@@ -173,6 +174,7 @@ jobs:
         with:
           name: cuda-game-build
           path: game-build
+          merge-multiple: true
 
       - name: Extract Game Build
         run: 7z x game-build/cuda_game_artifacts.zip -ogame-build
@@ -200,6 +202,7 @@ jobs:
           path: target/site/allure-report
           retention-days: 5
           if-no-files-found: warn
+          compression-level: 6
 
   quality-analysis:
     name: Code Quality Analysis
@@ -221,6 +224,9 @@ jobs:
 
       - name: Install sonar-scanner and build-wrapper
         uses: SonarSource/sonarcloud-github-c-cpp@v2
+
+      - name: Create Build Directory
+        run: New-Item -ItemType Directory -Force -Path build
 
       - name: Setup CUDA
         uses: Jimver/cuda-toolkit@v0.2.11
@@ -294,6 +300,9 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Using SonarCloud token for analysis
         run: |
           sonar-scanner.bat `
+            -D"sonar.projectKey=${{ github.repository_owner }}_CudaGame" `
+            -D"sonar.organization=${{ github.repository_owner }}" `
+            -D"sonar.host.url=https://sonarcloud.io" `
             -D"sonar.cfamily.build-wrapper-output=${{env.BUILD_WRAPPER_OUT_DIR}}" `
             -D"sonar.coverageReportPaths=coverage.xml" `
             -D"sonar.cpp.cppcheck.reportPaths=cppcheck-report.xml" `
@@ -317,6 +326,7 @@ jobs:
           retention-days: 5
           if-no-files-found: warn
           overwrite: true
+          compression-level: 6
 
   deployment:
     name: Deploy Build
@@ -330,6 +340,7 @@ jobs:
           name: cuda-game-build
           path: artifacts
           merge-multiple: true
+          pattern: '*.zip'
 
       - name: Setup Release
         uses: softprops/action-gh-release@v1
