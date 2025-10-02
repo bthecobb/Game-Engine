@@ -19,25 +19,30 @@ else()
     add_compile_options(-Wall -Wextra -O2)
 endif()
 
-# Find or download GLM
-find_package(glm QUIET)
-if(NOT glm_FOUND)
-    message(STATUS "GLM not found, using bundled version")
-    
-    # Download GLM if not present
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm/glm/glm.hpp")
-        message(STATUS "Downloading GLM...")
-        include(FetchContent)
-        FetchContent_Declare(
-            glm
-            GIT_REPOSITORY https://github.com/g-truc/glm.git
-            GIT_TAG        0.9.9.8
-        )
-        FetchContent_MakeAvailable(glm)
-    else()
-        # Use local GLM
-        add_subdirectory(../third_party/glm ${CMAKE_BINARY_DIR}/glm)
+# Find GLM
+set(GLM_PATHS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../external/glm"
+    "${CMAKE_SOURCE_DIR}/third_party/glm"
+    "${CMAKE_SOURCE_DIR}/external/glm"
+)
+
+set(GLM_FOUND FALSE)
+foreach(GLM_PATH ${GLM_PATHS})
+    if(EXISTS "${GLM_PATH}/glm/glm.hpp")
+        set(GLM_FOUND TRUE)
+        set(GLM_INCLUDE_DIR "${GLM_PATH}")
+        break()
     endif()
+endforeach()
+
+if(NOT GLM_FOUND)
+    message(FATAL_ERROR "GLM not found in any standard locations. Please run setup_dependencies.ps1 first.")
+else()
+    message(STATUS "Found GLM in ${GLM_INCLUDE_DIR}")
+    add_library(glm INTERFACE)
+    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+    add_library(glm::glm ALIAS glm)
 endif()
 
 # Include directories

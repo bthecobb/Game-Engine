@@ -85,14 +85,22 @@ jobs:
           }
 
       - name: Setup Dependencies
-        shell: bash
+        shell: pwsh
         run: |
-          git submodule init
-          git submodule update
-          mkdir -p external/glm
-          if [ ! -d "external/glm/.git" ]; then
-            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
-          fi
+          Write-Host "::group::Setting up dependencies"
+          ./scripts/setup_dependencies.ps1
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::Verifying GLM setup"
+          if (Test-Path "third_party/glm/glm/glm.hpp") {
+              Write-Host "✅ GLM found in third_party"
+          } elseif (Test-Path "external/glm/glm/glm.hpp") {
+              Write-Host "✅ GLM found in external"
+          } else {
+              Write-Host "❌ GLM not found!"
+              exit 1
+          }
+          Write-Host "::endgroup::"
 
       - name: Configure CMake
         shell: bash
@@ -170,9 +178,15 @@ jobs:
         run: 7z x game-build/cuda_game_artifacts.zip -ogame-build
 
       - name: Run Integration Tests
-        run: mvn verify -P integration-tests
+        run: |
+          if (-not (Test-Path "third_party/glm/glm/glm.hpp")) {
+            ./scripts/setup_dependencies.ps1
+          }
+          mvn verify -P integration-tests -B -V
+        shell: pwsh
         env:
           GAME_BUILD_PATH: ${{github.workspace}}/game-build
+          MAVEN_OPTS: "-Dmaven.test.failure.ignore=false -Dmaven.wagon.http.retryHandler.count=3"
 
       - name: Generate Allure Report
         if: always()
@@ -184,6 +198,8 @@ jobs:
         with:
           name: test-report
           path: target/site/allure-report
+          retention-days: 5
+          if-no-files-found: warn
 
   quality-analysis:
     name: Code Quality Analysis
@@ -309,6 +325,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cuda-game-build
+          path: artifacts
+          merge-multiple: true
 
       - name: Setup Release
         uses: softprops/action-gh-release@v1
