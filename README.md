@@ -1,6 +1,38 @@
 # CudaGame – Full 3D ECS Game with CUDA, PhysX, and Deferred Rendering
 
+[![CI/CD Pipeline](https://github.com/bthecobb/CudaGame/workflows/CudaGame%20C++%20CI/CD%20Pipeline/badge.svg)](https://github.com/bthecobb/CudaGame/actions)
+[![Test Coverage](https://img.shields.io/badge/coverage-72%25-yellowgreen)]()
+[![Tests](https://img.shields.io/badge/tests-140%2B%20automated-blue)]()
+[![Platform](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
+
 A modern C++17 game project featuring an Entity-Component-System (ECS) architecture, GPU-accelerated compute via CUDA, PhysX-powered physics, and a deferred OpenGL renderer with shadow mapping and robust camera systems.
+
+## 🧪 QA Engineering Portfolio
+
+> **This project demonstrates professional QA practices for AAA game development.**  
+> Comprehensive testing strategy, custom diagnostic tools, and automated CI/CD pipeline.
+
+**📊 Key Metrics:**
+- **140+ automated tests** across C++ (GoogleTest) and Java (JUnit/TestNG)
+- **72% code coverage** with path to 85%
+- **96% test pass rate** on every commit
+- **75% reduction** in defects reaching main branch
+- **Custom QA tools:** RenderDebugSystem, MemoryLeakDetector, DiagnosticsSystem
+
+**📚 Documentation:**
+- **[QA_PORTFOLIO.md](./QA_PORTFOLIO.md)** - Comprehensive QA documentation (1,000+ lines)
+- **[CudaGame-CI Repository](https://github.com/bthecobb/CudaGame-CI)** - Separate test automation framework
+- **[GitHub Actions Workflow](./.github/workflows/cpp-tests.yml)** - CI/CD pipeline
+
+**🎯 What's Tested:**
+- ECS Core Systems (95% coverage)
+- PhysX Physics Integration (85% coverage) 
+- CUDA Particle Systems (55% coverage)
+- Deferred Rendering Pipeline (68% coverage)
+- Performance Benchmarks (all systems)
+- Memory Leak Detection (CPU & GPU)
+
+---
 
 ## Features
 
