@@ -3,9 +3,11 @@
 #include "Core/System.h"
 #include "Physics/CharacterController.h"
 #include "Physics/PhysicsComponents.h"
+#include "../Debug/DebugRenderer.h"
 #include "Physics/CollisionDetection.h"
 #include "Rendering/RenderComponents.h"
 #include <glm/glm.hpp>
+#include <PxPhysicsAPI.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <functional>
 #include <unordered_map>
@@ -23,6 +25,7 @@ struct WallSurface {
 };
 
 class WallRunningSystem : public Core::System {
+    friend class PhysXPhysicsSystem; // Allow PhysX system to set scene pointer
 public:
     WallRunningSystem();
     ~WallRunningSystem();
@@ -48,6 +51,7 @@ public:
     // Debug settings
     void SetDebugVisualization(bool enable) { m_debugVisualization = enable; }
     void DrawDebugInfo();
+    void SetDebugRenderer(Debug::IDebugRenderer* renderer) { m_debugRenderer = renderer; }
 
     // Callbacks for wall-running events
     using WallRunStartCallback = std::function<void(Core::Entity entity, const glm::vec3& normal)>;
@@ -65,8 +69,18 @@ private:
     float m_momentumConservationFactor = 0.8f;
     float m_maxWallRunAngle = glm::radians(45.0f); // Maximum angle from vertical for wall-running
 
+    // PhysX references
+    physx::PxScene* m_physicsScene = nullptr;
+    float m_minWallFriction = 0.8f;  // Minimum friction for wall-runnable surfaces
+    
     // Debug
     bool m_debugVisualization = false;
+    Debug::IDebugRenderer* m_debugRenderer = nullptr;
+    WallSurface m_lastWallHit;
+    glm::vec3 m_lastHitPoint = glm::vec3(0.0f);
+
+    // Debug drawing helpers
+    void DrawDebugLine(const glm::vec3& start, const glm::vec3& end, const glm::vec3& color);
 
     // Wall surfaces
     std::unordered_map<Core::Entity, WallSurface> m_wallSurfaces;
@@ -96,6 +110,9 @@ private:
     
     // Raycasting for wall detection
     bool RaycastForWall(const glm::vec3& origin, const glm::vec3& direction, float maxDistance, WallSurface& outWall);
+    
+    // Wall check for raycasts
+    bool CheckIfWall(const physx::PxShape* shape);
     
     // Ground detection for character controller
     bool IsGrounded(const glm::vec3& position, const ColliderComponent& collider);

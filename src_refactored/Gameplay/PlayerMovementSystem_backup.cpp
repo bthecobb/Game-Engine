@@ -1,6 +1,5 @@
 #include "Gameplay/PlayerMovementSystem.h"
 #include "Core/Coordinator.h"
-#include "Rendering/Camera.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <algorithm>
@@ -9,7 +8,7 @@ namespace CudaGame {
 namespace Gameplay {
 
 bool PlayerMovementSystem::Initialize() {
-    std::cout << "[PlayerMovementSystem] Initialized. Managing " << mEntities.size() << " entities." << std::endl;
+    std::cout << "PlayerMovementSystem initialized" << std::endl;
     return true;
 }
 
@@ -40,10 +39,8 @@ void PlayerMovementSystem::Update(float deltaTime) {
             ApplyGravity(movement, rigidbody, deltaTime);
             CheckGrounding(entity, movement);
             
-            // IMPORTANT: Temporarily re-enabling direct position updates
-            // since PhysX integration appears to have issues
-            // TODO: Fix PhysX velocity application and re-disable this
-            transform.position += movement.velocity * deltaTime; // TEMP FIX
+            // Apply the movement velocity to transform position (single source of truth)
+            transform.position += movement.velocity * deltaTime;
             
             std::cout << "[PlayerMovement] [DYNAMIC] Entity " << entity 
                       << " moved from (" << previousPosition.x << ", " << previousPosition.y << ", " << previousPosition.z << ")"
@@ -83,16 +80,6 @@ void PlayerMovementSystem::Update(float deltaTime) {
 void PlayerMovementSystem::HandleInput(Core::Entity entity, PlayerInputComponent& input, 
                                      PlayerMovementComponent& movement, float deltaTime) {
     glm::vec2 moveInput = GetMovementInput(input);
-    
-    // Debug input
-    static int inputDebugCounter = 0;
-    if (inputDebugCounter++ % 60 == 0 && glm::length(moveInput) > 0.0f) {
-        std::cout << "[DEBUG] Move Input: (" << moveInput.x << ", " << moveInput.y << ")" << std::endl;
-        std::cout << "[DEBUG] Keys - W:" << input.keys[GLFW_KEY_W] 
-                  << " A:" << input.keys[GLFW_KEY_A]
-                  << " S:" << input.keys[GLFW_KEY_S]
-                  << " D:" << input.keys[GLFW_KEY_D] << std::endl;
-    }
     
     // Jump input
     if (input.keys[GLFW_KEY_SPACE] && movement.isGrounded) {
@@ -200,11 +187,14 @@ void PlayerMovementSystem::CheckGrounding(Core::Entity entity, PlayerMovementCom
     auto& coordinator = Core::Coordinator::GetInstance();
     auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
     
-    // Check if player is close to ground level (simplified)
-    if (transform.position.y <= 0.1f && movement.velocity.y <= 0.0f) {
+    // Check if player is close to ground level (ground is at y = -1.0, top of ground is at y = 0.0)
+    float groundLevel = 0.0f; // Top of the ground plane
+    float groundCheckDistance = 0.1f; // How close to ground to be considered grounded
+    
+    if (transform.position.y <= groundLevel + groundCheckDistance && movement.velocity.y <= 0.0f) {
         movement.isGrounded = true;
         movement.velocity.y = 0.0f;
-        transform.position.y = 0.0f;
+        transform.position.y = groundLevel; // Keep player on top of ground
     } else {
         movement.isGrounded = false;
     }
@@ -234,44 +224,10 @@ glm::vec2 PlayerMovementSystem::GetMovementInput(const PlayerInputComponent& inp
 }
 
 void PlayerMovementSystem::BuildMomentum(PlayerMovementComponent& movement, glm::vec2 inputDirection, float deltaTime, float targetSpeed) {
-    static int buildMomentumDebugCounter = 0;
-    
     if (glm::length(inputDirection) > 0.1f) {
         // Apply acceleration
         float accel = movement.isGrounded ? movement.acceleration : movement.airAcceleration;
-        
-        // Convert input to camera-relative movement
-        glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f);  // Default forward
-        glm::vec3 right = glm::vec3(1.0f, 0.0f, 0.0f);     // Default right
-        
-        if (m_camera) {
-            // Get camera forward and right vectors (projected onto XZ plane)
-            forward = m_camera->GetForward();
-            forward.y = 0.0f;
-            forward = glm::normalize(forward);
-            
-            right = m_camera->GetRight();
-            right.y = 0.0f;
-            right = glm::normalize(right);
-        } else {
-            if (buildMomentumDebugCounter++ % 60 == 0) {
-                std::cout << "[WARNING] Camera not set for PlayerMovementSystem!" << std::endl;
-            }
-        }
-        
-        // Calculate movement direction relative to camera
-        glm::vec3 moveDirection = forward * inputDirection.y + right * inputDirection.x;
-        glm::vec3 targetVelocity = moveDirection * targetSpeed;
-        
-        // Debug log every 60 frames
-        if (buildMomentumDebugCounter++ % 60 == 0) {
-            std::cout << "[DEBUG BuildMomentum] Input: (" << inputDirection.x << ", " << inputDirection.y << ")" << std::endl;
-            std::cout << "[DEBUG BuildMomentum] Camera Forward: (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-            std::cout << "[DEBUG BuildMomentum] Camera Right: (" << right.x << ", " << right.y << ", " << right.z << ")" << std::endl;
-            std::cout << "[DEBUG BuildMomentum] Move Direction: (" << moveDirection.x << ", " << moveDirection.y << ", " << moveDirection.z << ")" << std::endl;
-            std::cout << "[DEBUG BuildMomentum] Target Speed: " << targetSpeed << ", Accel: " << accel << std::endl;
-            std::cout << "[DEBUG BuildMomentum] Target Velocity: (" << targetVelocity.x << ", " << targetVelocity.y << ", " << targetVelocity.z << ")" << std::endl;
-        }
+        glm::vec3 targetVelocity = glm::vec3(inputDirection.x, 0.0f, inputDirection.y) * targetSpeed;
         
         glm::vec3 currentHorizontal = glm::vec3(movement.velocity.x, 0.0f, movement.velocity.z);
         glm::vec3 velocityDiff = targetVelocity - currentHorizontal;
@@ -284,11 +240,6 @@ void PlayerMovementSystem::BuildMomentum(PlayerMovementComponent& movement, glm:
             
             movement.velocity.x += acceleration.x;
             movement.velocity.z += acceleration.z;
-            
-            if (buildMomentumDebugCounter % 60 == 0) {
-                std::cout << "[DEBUG BuildMomentum] Applied acceleration: (" << acceleration.x << ", " << acceleration.z << ")" << std::endl;
-                std::cout << "[DEBUG BuildMomentum] New velocity: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")" << std::endl;
-            }
         }
     } else {
         // Apply deceleration

@@ -31,7 +31,7 @@ public:
     bool Initialize() override;
     void Shutdown() override;
     void Update(float deltaTime) override;
-    void Render(const Player* player);
+    void Render();
     
     // Configuration methods for integration
     void Configure() {}
@@ -104,7 +104,7 @@ private:
     void LightingPass();
     void ShadowPass();
     void PostProcessingPass();
-    void ForwardPass(const Player* player);
+    void ForwardPass();
     
     // Render queues for transparent/opaque objects
     std::vector<Core::Entity> m_opaqueRenderQueue;

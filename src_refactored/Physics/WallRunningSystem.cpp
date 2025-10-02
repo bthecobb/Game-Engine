@@ -1,4 +1,5 @@
 #include "Physics/WallRunningSystem.h"
+#include <algorithm>
 #include "Core/Coordinator.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/vector_angle.hpp>
@@ -194,23 +195,63 @@ glm::vec3 WallRunningSystem::ConserveMomentumOnTransition(const glm::vec3& curre
 }
 
 bool WallRunningSystem::RaycastForWall(const glm::vec3& origin, const glm::vec3& direction, float maxDistance, WallSurface& outWall) {
-    // This is a simplified raycast - in a real implementation, this would use the physics world
-    // For now, we'll check against registered wall surfaces
+    if (!m_physicsScene) return false;
     
-    float closestDistance = maxDistance;
-    bool foundWall = false;
+    // Configure raycast
+    physx::PxQueryFilterData filterData;
+    filterData.flags = physx::PxQueryFlag::eSTATIC;  // Only detect static objects as walls
     
-    for (const auto& [entity, wallSurface] : m_wallSurfaces) {
-        // Simple distance check to wall position
-        float distance = glm::distance(origin, wallSurface.position);
-        if (distance < closestDistance && distance < maxDistance) {
-            outWall = wallSurface;
-            closestDistance = distance;
-            foundWall = true;
+    physx::PxRaycastBuffer hit;
+    physx::PxVec3 physxOrigin(origin.x, origin.y, origin.z);
+    physx::PxVec3 physxDir(direction.x, direction.y, direction.z);
+    
+    // Perform raycast
+    if (m_physicsScene->raycast(physxOrigin, physxDir.getNormalized(), maxDistance, hit, 
+                               physx::PxHitFlags(physx::PxHitFlag::eDEFAULT), filterData)) {
+        
+        if (hit.block.shape && CheckIfWall(hit.block.shape)) {
+            // Valid wall hit - fill out wall surface info
+            outWall.normal = glm::vec3(hit.block.normal.x, hit.block.normal.y, hit.block.normal.z);
+            outWall.position = glm::vec3(hit.block.position.x, hit.block.position.y, hit.block.position.z);
+            
+            // Get material properties
+            physx::PxMaterial* material = nullptr;
+            if (hit.block.shape->getNbMaterials() > 0) {
+                hit.block.shape->getMaterials(&material, 1);
+                if (material) {
+                    outWall.friction = material->getStaticFriction();
+                    outWall.canWallRun = outWall.friction >= m_minWallFriction;
+                }
+            }
+            
+            // Store for debug visualization
+            if (m_debugVisualization) {
+                m_lastWallHit = outWall;
+                m_lastHitPoint = glm::vec3(hit.block.position.x, hit.block.position.y, hit.block.position.z);
+            }
+            
+            return true;
         }
     }
     
-    return foundWall;
+    return false;
+}
+
+bool WallRunningSystem::CheckIfWall(const physx::PxShape* shape) {
+    // Only consider static objects as walls
+    if (!shape || !shape->getActor()) return false;
+    if (!shape->getActor()->is<physx::PxRigidStatic>()) return false;
+    
+    // Get material properties
+    physx::PxMaterial* material = nullptr;
+    if (shape->getNbMaterials() > 0) {
+        shape->getMaterials(&material, 1);
+    }
+    
+    if (!material) return false;
+    
+    // Check if surface has enough friction for wall-running
+    return material->getStaticFriction() >= m_minWallFriction;
 }
 
 bool WallRunningSystem::IsGrounded(const glm::vec3& position, const ColliderComponent& collider) {
@@ -258,22 +299,35 @@ void WallRunningSystem::RegisterWallRunEndCallback(WallRunEndCallback callback) 
     m_wallRunEndCallbacks.push_back(callback);
 }
 
-// Debug methods
 void WallRunningSystem::DrawDebugInfo() {
-    // Debug visualization would be implemented here
-    // This would draw wall normals, velocity vectors, etc.
+    if (!m_debugRenderer) return;
+    
+    // Draw wall normals at debug points
+    for (const auto& [entity, surface] : m_wallSurfaces) {
+        DrawWallNormal(surface.position, surface.normal);
+    }
+    
+    // Draw last hit point and normal if available
+    if (m_debugVisualization && glm::length(m_lastWallHit.normal) > 0.0f) {
+        m_debugRenderer->DrawLine(m_lastHitPoint, m_lastHitPoint + m_lastWallHit.normal * 2.0f, Debug::DebugColors::GREEN);
+        m_debugRenderer->DrawPoint(m_lastHitPoint, Debug::DebugColors::RED);
+    }
 }
 
 void WallRunningSystem::DrawWallNormal(const glm::vec3& position, const glm::vec3& normal) {
-    // Debug line drawing - implementation depends on rendering system
+    if (!m_debugRenderer) return;
+    m_debugRenderer->DrawLine(position, position + normal * 2.0f, Debug::DebugColors::BLUE);
+    m_debugRenderer->DrawPoint(position, Debug::DebugColors::YELLOW);
 }
 
 void WallRunningSystem::DrawVelocityVector(const glm::vec3& position, const glm::vec3& velocity) {
-    // Debug line drawing - implementation depends on rendering system
+    if (!m_debugRenderer) return;
+    m_debugRenderer->DrawLine(position, position + glm::normalize(velocity) * 2.0f, Debug::DebugColors::GREEN);
 }
 
 void WallRunningSystem::DrawWallRunPath(const glm::vec3& position, const glm::vec3& direction) {
-    // Debug line drawing - implementation depends on rendering system
+    if (!m_debugRenderer) return;
+    m_debugRenderer->DrawLine(position, position + direction * 5.0f, Debug::DebugColors::MAGENTA);
 }
 
 } // namespace Physics

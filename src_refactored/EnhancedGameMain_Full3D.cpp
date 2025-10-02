@@ -3,6 +3,7 @@
 #include "Gameplay/EnemyComponents.h"
 #include "Gameplay/LevelComponents.h"
 #include "Gameplay/PlayerMovementSystem.h"
+#include "Gameplay/CharacterControllerSystem.h"
 #include "Gameplay/EnemyAISystem.h"
 #include "Gameplay/LevelSystem.h"
 #include "Gameplay/TargetingSystem.h"
@@ -16,6 +17,8 @@
 #include "Rendering/Camera.h"
 #include "Rendering/OrbitCamera.h"
 #include "Rendering/Debug.h"
+#include "Debug/OpenGLDebugRenderer.h"
+#include "Rendering/RenderDebugSystem.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -200,6 +203,13 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         0.0f, 0.8f, 1.0f
     });
     
+    // Add physics components for collision
+    coordinator.AddComponent(ground, Physics::ColliderComponent{
+        Physics::ColliderShape::BOX,
+        glm::vec3(50.0f, 0.5f, 50.0f)  // Half extents matching the scale
+    });
+    // Ground is static so we don't need RigidbodyComponent (PhysX will create static actor)
+    
     // Create buildings/walls for wall-running
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -348,6 +358,7 @@ int main() {
     
     // Register and initialize systems
     auto playerMovementSystem = coordinator.RegisterSystem<Gameplay::PlayerMovementSystem>();
+    auto characterControllerSystem = coordinator.RegisterSystem<Gameplay::CharacterControllerSystem>();
     auto enemyAISystem = coordinator.RegisterSystem<Gameplay::EnemyAISystem>();
     auto levelSystem = coordinator.RegisterSystem<Gameplay::LevelSystem>();
     auto targetingSystem = coordinator.RegisterSystem<Gameplay::TargetingSystem>();
@@ -363,6 +374,14 @@ int main() {
     playerMovementSignature.set(coordinator.GetComponentType<Physics::RigidbodyComponent>());
     playerMovementSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
     coordinator.SetSystemSignature<Gameplay::PlayerMovementSystem>(playerMovementSignature);
+
+    Core::Signature characterControllerSignature;
+    characterControllerSignature.set(coordinator.GetComponentType<Physics::CharacterControllerComponent>());
+    characterControllerSignature.set(coordinator.GetComponentType<Gameplay::PlayerInputComponent>());
+    characterControllerSignature.set(coordinator.GetComponentType<Gameplay::PlayerMovementComponent>());
+    characterControllerSignature.set(coordinator.GetComponentType<Physics::RigidbodyComponent>());
+    characterControllerSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
+    coordinator.SetSystemSignature<Gameplay::CharacterControllerSystem>(characterControllerSignature);
 
     Core::Signature enemyAISignature;
     coordinator.SetSystemSignature<Gameplay::EnemyAISystem>(enemyAISignature);
@@ -390,8 +409,17 @@ int main() {
     Core::Signature particleSignature;
     coordinator.SetSystemSignature<Particles::ParticleSystem>(particleSignature);
     
+    // Create and initialize RenderDebugSystem
+    auto renderDebugSystem = coordinator.RegisterSystem<Rendering::RenderDebugSystem>();
+    renderDebugSystem->Initialize();
+
+    // Create OpenGL Debug Renderer adapter
+    auto debugRenderer = std::make_shared<Debug::OpenGLDebugRenderer>(renderDebugSystem);
+    debugRenderer->EnableDebugDrawing(true);
+
     // Initialize all systems
     playerMovementSystem->Initialize();
+    characterControllerSystem->Initialize();
     enemyAISystem->Initialize();
     levelSystem->Initialize();
     targetingSystem->Initialize();
@@ -408,7 +436,7 @@ int main() {
     Rendering::OrbitCamera::OrbitSettings orbitSettings;
     orbitSettings.distance = 15.0f;
     orbitSettings.heightOffset = 2.0f;
-    orbitSettings.mouseSensitivity = 0.15f;
+    orbitSettings.mouseSensitivity = 0.05f;  // Reduced sensitivity for smoother control
     orbitSettings.smoothSpeed = 6.0f;
     camera->SetOrbitSettings(orbitSettings);
     
@@ -416,13 +444,17 @@ int main() {
     camera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
     
     // Initialize camera with a default target position for proper initial setup
-    camera->SetTarget(glm::vec3(0.0f, 5.0f, 0.0f)); // Set to player's expected position
-    camera->Update(0.016f, glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f)); // Force initial update
+    camera->SetTarget(glm::vec3(0.0f, 2.0f, 0.0f)); // Set to player's expected position
+    camera->Update(0.016f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f)); // Force initial update
     camera->UpdateMatrices();
     mainCamera = camera.get();
     
     // Set the camera in the render system
     renderSystem->SetMainCamera(camera.get());
+    // Set the camera in the character controller system for camera-relative movement
+    characterControllerSystem->SetCamera(camera.get());
+    // Set the camera in the player movement system for camera-relative movement
+    playerMovementSystem->SetCamera(camera.get());
     std::cout << "3D OrbitCamera configured!" << std::endl;
     
     // Create the player entity with all systems
@@ -461,7 +493,7 @@ int main() {
     // Player physics
     Physics::RigidbodyComponent playerRigidbody;
     playerRigidbody.mass = 80.0f;
-    playerRigidbody.isKinematic = true; // Disable physics forces (including gravity) for camera testing
+    playerRigidbody.isKinematic = false; // Start in dynamic mode for immediate control
     coordinator.AddComponent(player, playerRigidbody);
     
     Physics::ColliderComponent playerCollider;
@@ -471,7 +503,7 @@ int main() {
     
     // Player visual representation
     Rendering::TransformComponent playerTransform;
-    playerTransform.position = glm::vec3(0.0f, 5.0f, 0.0f);
+    playerTransform.position = glm::vec3(0.0f, 2.0f, 0.0f);  // Start closer to ground
     playerTransform.scale = glm::vec3(0.8f, 1.8f, 0.8f);
     coordinator.AddComponent(player, playerTransform);
     
@@ -493,23 +525,27 @@ int main() {
     // Main Game Loop
     std::cout << "Starting main game loop..." << std::endl;
     std::cout << "\nControls:" << std::endl;
-    std::cout << "WASD - Move" << std::endl;
-    std::cout << "Mouse - OrbitCamera control (TAB to toggle capture)" << std::endl;
+    std::cout << "===================" << std::endl;
+    std::cout << "TAB - Toggle mouse capture (REQUIRED for camera control)" << std::endl;
+    std::cout << "WASD - Move player" << std::endl;
+    std::cout << "Mouse - Rotate camera (when TAB is pressed)" << std::endl;
     std::cout << "Mouse Wheel - Zoom in/out" << std::endl;
-    std::cout << "1 - Orbit Follow Camera" << std::endl;
+    std::cout << "1 - Orbit Follow Camera (default)" << std::endl;
     std::cout << "2 - Free Look Camera" << std::endl;
     std::cout << "3 - Combat Focus Camera" << std::endl;
-    std::cout << "Space - Jump" << std::endl;
+    std::cout << "Space - Jump (Double jump in air!)" << std::endl;
     std::cout << "Shift - Sprint" << std::endl;
-    std::cout << "E - Wall Run (when near walls)" << std::endl;
+    std::cout << "E - Wall Run (hold when near walls)" << std::endl;
+    std::cout << "Left Control - Dash" << std::endl;
     std::cout << "Left Click - Attack" << std::endl;
     std::cout << "Right Click - Heavy Attack" << std::endl;
     std::cout << "Q - Block/Parry" << std::endl;
-    std::cout << "K - Toggle Player Mode (Kinematic/Dynamic) [DEBUG]" << std::endl;
+    std::cout << "K - Toggle Physics Mode (Dynamic/Kinematic) [DEBUG]" << std::endl;
     std::cout << "F4 - Cycle G-buffer Debug Mode" << std::endl;
-    std::cout << "F5 - Toggle Camera Frustum Debug Visualization" << std::endl;
-    std::cout << "PageUp/PageDown - Adjust Depth Scale (when in Position Buffer mode)" << std::endl;
+    std::cout << "F5 - Toggle Camera Frustum Debug" << std::endl;
+    std::cout << "PageUp/PageDown - Adjust Depth Scale" << std::endl;
     std::cout << "ESC - Exit" << std::endl;
+    std::cout << "\n*** Press TAB first to enable mouse control! ***\n" << std::endl;
     
 const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulation
     float accumulator = 0.0f;
@@ -625,7 +661,9 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         mainCamera->Update(deltaTime, cameraTarget, playerVelocity);
         
         // Update all systems
-        playerMovementSystem->Update(deltaTime);
+        // playerMovementSystem->Update(deltaTime);  // Disabled - using CharacterControllerSystem instead
+        // CharacterControllerSystem provides more advanced movement features
+        characterControllerSystem->Update(deltaTime);
         enemyAISystem->Update(deltaTime);
     levelSystem->Update(deltaTime);
     targetingSystem->Update(deltaTime);
@@ -646,15 +684,51 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
                   << ", Frame deltaTime: " << deltaTime*1000.0f << "ms" << std::endl;
     }
     
-    wallRunSystem->Update(deltaTime);
+    // wallRunSystem->Update(deltaTime);  // Disabled - CharacterControllerSystem handles wall-running
         particleSystem->Update(deltaTime);
         
         // Clear screen
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
+    // Debug rendering frame start
+        debugRenderer->BeginFrame();
+
         // Render
         renderSystem->Update(deltaTime);
+
+        // Draw any debug visuals
+        {
+            const auto& playerTrans = coordinator.GetComponent<Rendering::TransformComponent>(player);
+            // Draw player's facing direction
+            glm::vec3 forward = glm::normalize(mainCamera->GetForward());
+            debugRenderer->DrawLine(
+                playerTrans.position,
+                playerTrans.position + forward * 3.0f,
+                glm::vec3(0.0f, 1.0f, 0.0f)  // Green for forward
+            );
+
+            // Draw player's velocity vector if in debug mode
+            const auto& playerRB = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
+            if (glm::length(playerRB.velocity) > 0.1f) {
+                debugRenderer->DrawLine(
+                    playerTrans.position,
+                    playerTrans.position + glm::normalize(playerRB.velocity) * 2.0f,
+                    glm::vec3(1.0f, 0.0f, 0.0f)  // Red for velocity
+                );
+            }
+
+            // Draw player's bounding box
+            const auto& collider = coordinator.GetComponent<Physics::ColliderComponent>(player);
+            glm::vec3 halfExtents = collider.size * 0.5f;
+            debugRenderer->DrawBox(
+                playerTrans.position - halfExtents,
+                playerTrans.position + halfExtents,
+                glm::vec3(0.0f, 0.0f, 1.0f)  // Blue for collider
+            );
+        }
+
+        debugRenderer->EndFrame();
         
         // Swap front and back buffers
         glfwSwapBuffers(window);
@@ -668,6 +742,20 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
             }
         } else {
             f4Pressed = false;
+        }
+
+        // F3 to toggle debug drawing
+        static bool f3Pressed = false;
+        static bool debugDrawingEnabled = true;
+        if (keys[GLFW_KEY_F3]) {
+            if (!f3Pressed) {
+                debugDrawingEnabled = !debugDrawingEnabled;
+                debugRenderer->EnableDebugDrawing(debugDrawingEnabled);
+                std::cout << "Debug drawing " << (debugDrawingEnabled ? "enabled" : "disabled") << std::endl;
+                f3Pressed = true;
+            }
+        } else {
+            f3Pressed = false;
         }
         
         // F5 to toggle camera debug

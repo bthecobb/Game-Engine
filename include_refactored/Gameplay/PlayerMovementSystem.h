@@ -8,6 +8,12 @@
 #include "Rendering/RenderComponents.h"
 
 namespace CudaGame {
+namespace Rendering {
+    class Camera;  // Forward declaration
+}  // namespace Rendering
+}
+
+namespace CudaGame {
 namespace Gameplay {
 
 class PlayerMovementSystem : public Core::System {
@@ -15,6 +21,7 @@ public:
     bool Initialize() override;
     void Shutdown() override;
     void Update(float deltaTime) override;
+    void SetCamera(Rendering::Camera* camera) { m_camera = camera; }
 
 private:
     void HandleInput(Core::Entity entity, PlayerInputComponent& input, PlayerMovementComponent& movement, float deltaTime);
@@ -27,6 +34,9 @@ private:
     
     glm::vec2 GetMovementInput(const PlayerInputComponent& input);
     void BuildMomentum(PlayerMovementComponent& movement, glm::vec2 inputDirection, float deltaTime, float targetSpeed);
+
+private:
+    Rendering::Camera* m_camera = nullptr;
 };
 
 } // namespace Gameplay

@@ -99,13 +99,62 @@ void PhysXPhysicsSystem::Update(float deltaTime) {
         RemovePhysXActor(entity);
     }
     
+    // 2.5. Sync transforms and velocities TO PhysX before simulation
+    for (auto const& [entity, actor] : m_entityToActor) {
+        if (coordinator.HasComponent<Physics::RigidbodyComponent>(entity)) {
+            auto& rigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(entity);
+            
+            // Only apply to dynamic actors
+            if (actor->is<physx::PxRigidDynamic>() && !rigidbody.isKinematic) {
+                physx::PxRigidDynamic* dynamicActor = static_cast<physx::PxRigidDynamic*>(actor);
+                
+                // Sync transform position to PhysX (respect game logic updates)
+                SyncTransformToPhysX(entity, actor);
+                
+                // Apply velocities
+                dynamicActor->setLinearVelocity(physx::PxVec3(rigidbody.velocity.x, rigidbody.velocity.y, rigidbody.velocity.z));
+            }
+        }
+    }
+    
     // 3. Physics Simulation
     m_pxScene->simulate(deltaTime);
     m_pxScene->fetchResults(true);
 
     // 4. Transform Synchronization: Update entity transforms with PhysX results
+    // Handle transform synchronization with priority system:
+    // - Kinematic entities: Game logic controls position
+    // - Dynamic entities: PhysX controls position unless overridden
+    // - Static entities: No updates needed
     for (auto const& [entity, actor] : m_entityToActor) {
-        SyncTransformFromPhysX(entity, actor);
+        if (coordinator.HasComponent<Physics::RigidbodyComponent>(entity)) {
+            auto& rigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(entity);
+            
+            if (rigidbody.isKinematic) {
+                // Kinematic bodies: game logic controls position
+                // We already synced to PhysX earlier, nothing to do here
+                continue;
+            }
+            
+            // Handle dynamic bodies
+            if (actor->is<physx::PxRigidDynamic>()) {
+                physx::PxRigidDynamic* dynamicActor = static_cast<physx::PxRigidDynamic*>(actor);
+                
+                // Check if game logic requested position override
+                if (rigidbody.overridePhysicsTransform) {
+                    // Game logic takes priority this frame
+                    rigidbody.overridePhysicsTransform = false;
+                    SyncTransformToPhysX(entity, actor);
+                } else {
+                    // Physics simulation results take priority
+                    SyncTransformFromPhysX(entity, actor);
+                    
+                    // Update velocities from simulation
+                    const physx::PxVec3& vel = dynamicActor->getLinearVelocity();
+                    rigidbody.velocity = glm::vec3(vel.x, vel.y, vel.z);
+                }
+            }
+        }
     }
 }
 

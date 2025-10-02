@@ -4,6 +4,8 @@
 #include "Core/Coordinator.h"
 #include "Rendering/RenderComponents.h"
 #include "Rendering/Mesh.h"
+#include "Gameplay/PlayerMovementSystem.h"
+#include "Gameplay/PlayerComponents.h"
 #include "../../include/Player.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -124,11 +126,11 @@ void RenderSystem::Update(float deltaTime) {
     }
     frameCount++;
     
-    // Call Render to actually perform rendering
-    Render(nullptr);
+    // Call Render - no longer passing nullptr
+    Render();
 }
 
-void RenderSystem::Render(const Player* player) {
+void RenderSystem::Render() {
     if (!m_mainCamera) {
         std::cout << "[RenderSystem] ERROR: No main camera set!" << std::endl;
         return;
@@ -203,7 +205,7 @@ void RenderSystem::Render(const Player* player) {
     }
     
     // === STEP 6: Forward Pass (character, debug, transparent objects) ===
-    ForwardPass(player);
+    ForwardPass();
     LogGLError("AfterForwardPass");
     
     DumpGLState("EndOfFrame");
@@ -887,7 +889,7 @@ void RenderSystem::DrawDebugFrustum(const Camera::Frustum& frustum, const glm::v
     // For now, this is a stub - the CameraDebugSystem handles frustum drawing
 }
 
-void RenderSystem::ForwardPass(const Player* player) {
+void RenderSystem::ForwardPass() {
     // Log forward pass start
     LogPassStart("ForwardPass", 0, 0, 0); // Default framebuffer
     
@@ -914,13 +916,28 @@ void RenderSystem::ForwardPass(const Player* player) {
     int forwardDrawCalls = 0;
     int forwardTriangles = 0;
     
-    // === FORWARD PASS ITEM 1: Render Character (if provided) ===
-    if (player && m_mainCamera) {
+    // === FORWARD PASS ITEM 1: Render Character (find player entity) ===
+    Core::Entity playerEntity = Core::MAX_ENTITIES; // Invalid entity by default
+    Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
+    
+    // Find player entity by checking for PlayerMovementComponent
+    auto playerMovementType = coordinator.GetComponentType<Gameplay::PlayerMovementComponent>();
+    for (auto const& entity : mEntities) {
+        if (coordinator.HasComponent<Gameplay::PlayerMovementComponent>(entity)) {
+            playerEntity = entity;
+            break;
+        }
+    }
+    
+    if (playerEntity != Core::MAX_ENTITIES && m_mainCamera) {
         std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"Starting\" }" << std::endl;
+        
+        // Get player transform component for position
+        auto& playerTransform = coordinator.GetComponent<Rendering::TransformComponent>(playerEntity);
         
         // Log camera parameters for character rendering
         glm::vec3 camPos = m_mainCamera->GetPosition();
-        glm::vec3 playerPos = player->getPosition();
+        glm::vec3 playerPos = playerTransform.position;
         float distance = glm::length(playerPos - camPos);
         
         std::cout << "{ \"frame\":" << m_frameID << ",\"characterRender\":{"
@@ -928,7 +945,65 @@ void RenderSystem::ForwardPass(const Player* player) {
                   << "\"cameraPos\":[" << camPos.x << "," << camPos.y << "," << camPos.z << "],"
                   << "\"distance\":" << distance << "} }" << std::endl;
         
-        RenderSimpleCharacter(player, m_mainCamera->GetViewMatrix(), m_mainCamera->GetProjectionMatrix());
+        // Instead of using RenderSimpleCharacter, render the player directly here
+        // This avoids the need for the old Player class
+        if (m_geometryPassShader) {
+            m_geometryPassShader->Use();
+            
+            // Set matrices
+            m_geometryPassShader->SetMat4("view", m_mainCamera->GetViewMatrix());
+            m_geometryPassShader->SetMat4("projection", m_mainCamera->GetProjectionMatrix());
+            
+            // Create model matrix from player position
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
+            modelMatrix = glm::translate(modelMatrix, playerPos);
+            
+            // Make the player cube slightly larger and different color
+            modelMatrix = glm::scale(modelMatrix, glm::vec3(1.2f));
+            
+            m_geometryPassShader->SetMat4("model", modelMatrix);
+            
+            // Set normal matrix
+            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
+            m_geometryPassShader->SetMat3("normalMatrix", normalMatrix);
+            
+            // Set light space matrix
+            m_geometryPassShader->SetMat4("lightSpaceMatrix", m_lightSpaceMatrix);
+            
+            // Bind dummy textures
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("albedoMap", 0);
+            
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("normalMap", 1);
+            
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("metallicMap", 2);
+            
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("roughnessMap", 3);
+            
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("aoMap", 4);
+            
+            // Set player material - bright green color to distinguish from other objects
+            glm::vec3 playerColor = glm::vec3(0.2f, 0.8f, 0.3f); // Green for visibility
+            m_geometryPassShader->SetVec3("albedo", playerColor);
+            m_geometryPassShader->SetFloat("metallic", 0.2f);
+            m_geometryPassShader->SetFloat("roughness", 0.8f);
+            m_geometryPassShader->SetFloat("ao", 1.0f);
+            
+            // Render the cube
+            RenderSimpleCube();
+            
+            // Log the character draw call
+            LogDrawCall("CharacterRender", 1, m_cubeVAO, "GL_TRIANGLES", 36);
+        }
         LogGLError("AfterCharacterRender");
         
         forwardDrawCalls++;
@@ -937,7 +1012,7 @@ void RenderSystem::ForwardPass(const Player* player) {
         std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"Complete\" }" << std::endl;
     } else {
         std::cout << "{ \"frame\":" << m_frameID << ",\"forwardItem\":\"Character\",\"status\":\"SKIPPED\",\"reason\":\"" 
-                  << (player ? "NoCamera" : "NoPlayer") << "\" }" << std::endl;
+                  << (playerEntity != Core::MAX_ENTITIES ? "NoCamera" : "NoPlayer") << "\" }" << std::endl;
     }
     
     // === FORWARD PASS ITEM 2: Debug camera frustum (if enabled) ===

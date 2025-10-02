@@ -13,7 +13,8 @@ namespace Animation {
 struct BoneTransform;
 
 // Animation clip data structure
-struct AnimationClip {
+class AnimationClip {
+public:
     std::string name;
     float duration;
     bool isLooping;
@@ -36,7 +37,8 @@ struct AnimationClip {
 };
 
 // Animation skeleton structure
-struct Skeleton {
+class Skeleton {
+public:
     struct Bone {
         std::string name;
         int parentIndex;

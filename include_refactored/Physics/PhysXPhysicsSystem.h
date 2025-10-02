@@ -16,6 +16,9 @@ public:
     bool Initialize();
     void Shutdown();
     void Update(float deltaTime);
+    
+    // Alias for test framework
+    void Cleanup() { Shutdown(); }
 
     // PhysX scene access
     physx::PxScene* GetScene() { return m_pxScene; }

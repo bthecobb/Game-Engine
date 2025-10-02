@@ -22,9 +22,9 @@ public:
 
         assert(mSystems.find(typeName) == mSystems.end() && "Registering system more than once.");
 
-        // Create a pointer to the system and return it so it can be used externally
+    // Create a pointer to the system and return it so it can be used externally
         auto system = std::make_shared<T>();
-        mSystems.insert({typeName, system});
+        mSystems[typeName] = std::static_pointer_cast<System>(system);
         
         return system;
     }
@@ -95,8 +95,8 @@ public:
     }
 
     // Late update all systems in priority order
-    void LateUpdateAllSystems(float deltaTime) {
-        
+    void LateUpdateAllSystems([[maybe_unused]] float deltaTime) {
+        // Intentionally left empty for now. Add per-system LateUpdate when available.
     }
 
     template<typename T>
@@ -116,7 +116,7 @@ public:
     // Debug: Get all system names and entity counts
     std::vector<std::pair<std::string, size_t>> GetSystemDebugInfo() const {
         std::vector<std::pair<std::string, size_t>> info;
-        for (auto const& pair : mSystems) {
+        for ([[maybe_unused]] auto const& pair : mSystems) {
             // info.emplace_back(pair.first, pair.second->GetEntityCount());
         }
         return info;

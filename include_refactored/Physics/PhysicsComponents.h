@@ -17,6 +17,8 @@ struct RigidbodyComponent {
     float restitution = 0.8f; // Bounciness
     float friction = 0.1f;
     bool isKinematic = false; // Kinematic objects are not affected by forces
+    bool overridePhysicsTransform = false; // Set to true when game logic should override physics
+    uint32_t physicsControlFlags = 0; // Bit flags for additional physics control
 
     void setMass(float newMass) {
         mass = newMass;
@@ -73,7 +75,6 @@ struct ColliderComponent {
     uint32_t collisionLayer = 0; 
     uint32_t collisionMask = 0;  
 };
-
 
 } // namespace Physics
 } // namespace CudaGame

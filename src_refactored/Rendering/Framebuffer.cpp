@@ -17,7 +17,7 @@ Framebuffer::~Framebuffer() {
         glDeleteTextures(1, &m_depthTexture);
     }
     if (!m_colorTextures.empty()) {
-        glDeleteTextures(m_colorTextures.size(), m_colorTextures.data());
+glDeleteTextures(static_cast<GLsizei>(m_colorTextures.size()), m_colorTextures.data());
     }
     std::cout << "[Framebuffer] Destroyed framebuffer" << std::endl;
 }
@@ -130,7 +130,7 @@ void Framebuffer::Bind() {
     // Re-specify draw buffers when binding (some drivers require this)
     if (!m_colorTextures.empty()) {
         GLenum attachments[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-        glDrawBuffers(m_colorTextures.size(), attachments);
+glDrawBuffers(static_cast<GLsizei>(m_colorTextures.size()), attachments);
     }
 }
 

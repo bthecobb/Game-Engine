@@ -28,6 +28,13 @@ public:
         // Initialize managers if needed
     }
 
+    void Cleanup() {
+        // Clear systems and components for test runs
+        mSystemManager = std::make_unique<SystemManager>();
+        mComponentManager = std::make_unique<ComponentManager>();
+        mEntityManager = std::make_unique<EntityManager>();
+    }
+
     // Entity methods
     Entity CreateEntity() {
         return mEntityManager->CreateEntity();

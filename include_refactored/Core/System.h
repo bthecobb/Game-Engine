@@ -17,10 +17,10 @@ public:
     virtual void Update(float deltaTime) = 0;
 
     // Called when an entity is added to this system
-    virtual void OnEntityAdded(Entity entity) {}
+        virtual void OnEntityAdded([[maybe_unused]] Core::Entity entity) {}
     
     // Called when an entity is removed from this system
-    virtual void OnEntityRemoved(Entity entity) {}
+        virtual void OnEntityRemoved([[maybe_unused]] Core::Entity entity) {}
 
     // System enabled/disabled state
     void SetEnabled(bool enabled) { m_enabled = enabled; }
