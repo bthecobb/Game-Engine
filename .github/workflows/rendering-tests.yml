@@ -22,7 +22,16 @@ env:
 jobs:
   cuda-tests:
     name: CUDA Rendering Tests
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+        include:
+          - os: windows-latest
+            cmake_generator: 'Visual Studio 17 2022'
+          - os: ubuntu-22.04
+            cmake_generator: 'Ninja'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +51,16 @@ jobs:
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
 
+      - name: Install Dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          sudo apt-get install -y libvulkan-dev
+          sudo apt-get install -y libglfw3-dev
+          
       - name: Configure Rendering Tests
+        shell: bash
         run: |
           # Create build directory if it doesn't exist
           New-Item -ItemType Directory -Force -Path ${{github.workspace}}/build

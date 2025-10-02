@@ -20,8 +20,18 @@ env:
 
 jobs:
   cpp-build-and-test:
-    name: Build & Test C++
-    runs-on: windows-latest
+    name: Build & Test C++ (${{ matrix.os }}, ${{ matrix.build_type }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+        build_type: [Release, RelWithDebInfo]
+        include:
+          - os: windows-latest
+            cmake_generator: 'Visual Studio 17 2022'
+          - os: ubuntu-22.04
+            cmake_generator: 'Ninja'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +39,7 @@ jobs:
           submodules: 'recursive'
 
       - name: Cache Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/vcpkg
@@ -48,20 +58,36 @@ jobs:
           method: 'network'
           sub-packages: '["nvcc", "visual_studio_integration", "cudart", "cublas", "cusolver", "cusparse"]'
 
-      - name: Configure CMake
+      - name: Install Dependencies (Ubuntu)
+        if: runner.os == 'Linux'
         run: |
-          # Create build directory if it doesn't exist
-          New-Item -ItemType Directory -Force -Path ${{github.workspace}}/build
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          sudo apt-get install -y libvulkan-dev
+          sudo apt-get install -y libglfw3-dev
           
-          cmake -B ${{github.workspace}}/build -S ${{github.workspace}} `
-            -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} `
-            -DCMAKE_CXX_STANDARD=${{env.CPP_STANDARD}} `
-            -DBUILD_TESTING=ON `
-            -DENABLE_CUDA=ON `
-            -DENABLE_PHYSX=ON `
-            -DCMAKE_CUDA_ARCHITECTURES=75 `
-            -DCMAKE_CUDA_COMPILER=$(which nvcc) `
-            -DPHYSX_ROOT=$env:PHYSX_SDK_PATH
+      - name: Create Build Directory
+        run: |
+          if ('${{ runner.os }}' -eq 'Windows') {
+            New-Item -ItemType Directory -Force -Path ${{github.workspace}}/build
+          } else {
+            mkdir -p ${{github.workspace}}/build
+          }
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          
+          cmake -B ${{github.workspace}}/build -S ${{github.workspace}} \
+            -G "${{ matrix.cmake_generator }}" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_CXX_STANDARD=${{env.CPP_STANDARD}} \
+            -DBUILD_TESTING=ON \
+            -DENABLE_CUDA=ON \
+            -DENABLE_PHYSX=ON \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DCMAKE_CUDA_COMPILER=$(which nvcc) \
+            -DPHYSX_ROOT=${PHYSX_SDK_PATH:-$env:PHYSX_SDK_PATH}
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
@@ -97,10 +123,11 @@ jobs:
     needs: cpp-build-and-test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           repository: ${{github.repository_owner}}/CudaGame-CI
-          token: ${{secrets.INTEGRATION_PAT}}  # Using the PAT secret for repository access
+          token: ${{secrets.INTEGRATION_PAT}}
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -110,7 +137,7 @@ jobs:
           cache: 'maven'
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cuda-game-build
           path: game-build
@@ -129,7 +156,7 @@ jobs:
 
       - name: Upload Test Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: target/site/allure-report
@@ -146,7 +173,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cache SonarCloud packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~\sonar\cache
           key: ${{ runner.os }}-sonar
@@ -255,7 +282,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Download Build
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cuda-game-build
 
