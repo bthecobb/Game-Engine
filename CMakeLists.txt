@@ -118,24 +118,18 @@ if(NOT glad_FOUND)
     FetchContent_MakeAvailable(glad)
 endif()
 
-# Find GLM
-set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM include directory")
+# GLM Setup
+set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm")
+set(BUILD_STATIC_LIBS ON)
 
+# Always create GLM target
+add_library(glm INTERFACE)
+target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+add_library(glm::glm ALIAS glm)
+
+# Ensure GLM headers are available
 if(NOT EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
-    message(STATUS "GLM not found in external/glm, fetching...")
-    include(FetchContent)
-    FetchContent_Declare(
-        glm
-        GIT_REPOSITORY https://github.com/g-truc/glm.git
-        GIT_TAG 0.9.9.8
-        SOURCE_DIR ${GLM_INCLUDE_DIR}
-    )
-    FetchContent_MakeAvailable(glm)
-else()
-    message(STATUS "Using GLM from ${GLM_INCLUDE_DIR}")
-    add_library(glm INTERFACE)
-    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
-    add_library(glm::glm ALIAS glm)
+    message(FATAL_ERROR "GLM headers not found. Please run: git clone https://github.com/g-truc/glm.git external/glm")
 endif()
 
 # PhysX Integration

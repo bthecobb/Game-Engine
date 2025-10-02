@@ -61,8 +61,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        submodules: recursive
         fetch-depth: 0  # Full history for better debugging
+
+    - name: Update submodules
+      run: |
+        git submodule deinit -f --all
+        git submodule init
+        git submodule update
+
+    - name: Setup GLM
+      shell: bash
+      run: |
+        rm -rf external/glm || true
+        mkdir -p external/glm
+        git clone --depth 1 https://github.com/g-truc/glm.git external/glm
     
     - name: Setup CMake
       uses: lukka/get-cmake@latest
