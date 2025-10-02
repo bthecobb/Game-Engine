@@ -119,15 +119,23 @@ if(NOT glad_FOUND)
 endif()
 
 # Find GLM
-find_package(glm QUIET)
-if(NOT glm_FOUND)
+set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM include directory")
+
+if(NOT EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
+    message(STATUS "GLM not found in external/glm, fetching...")
     include(FetchContent)
     FetchContent_Declare(
         glm
         GIT_REPOSITORY https://github.com/g-truc/glm.git
         GIT_TAG 0.9.9.8
+        SOURCE_DIR ${GLM_INCLUDE_DIR}
     )
     FetchContent_MakeAvailable(glm)
+else()
+    message(STATUS "Using GLM from ${GLM_INCLUDE_DIR}")
+    add_library(glm INTERFACE)
+    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+    add_library(glm::glm ALIAS glm)
 endif()
 
 # PhysX Integration
@@ -332,12 +340,18 @@ configure_msvc_runtime(LightingIntegrationDemo)
 add_executable(TestRunner
     tests/TestRunner.cpp
     tests/CoreSystemsTests.cpp
+    tests/OrbitCameraTests.cpp
+    tests/CharacterControllerTests.cpp
+    tests/RenderingSystemTests.cpp
+    tests/Full3DGameIntegrationTests.cpp
     tests/PhysXIntegrationTests.cpp
     src_refactored/Testing/TestFramework.cpp
     src_refactored/Testing/AdvancedTestFramework.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
     src_refactored/Physics/PhysXPhysicsSystem.cpp
+    src_refactored/Rendering/OrbitCamera.cpp
+    src_refactored/Rendering/Camera.cpp
 )
 
 # Add GTest
@@ -369,7 +383,6 @@ target_compile_definitions(TestRunner PRIVATE
     CUDA_TEST_ENABLED
     GLM_FORCE_CUDA
     _ITERATOR_DEBUG_LEVEL=0
-    GTEST_LINKED_AS_SHARED_LIBRARY
 )
 
 # Configure test output directory

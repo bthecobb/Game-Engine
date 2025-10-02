@@ -87,6 +87,13 @@ jobs:
       - name: Setup Dependencies
         shell: pwsh
         run: |
+          # Remove any existing GLM directory
+          if (Test-Path external/glm) { Remove-Item -Recurse -Force external/glm }
+          
+          # Clone GLM fresh
+          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+          
+          # Verify GLM setup
           Write-Host "::group::Setting up dependencies"
           ./scripts/setup_dependencies.ps1
           Write-Host "::endgroup::"
