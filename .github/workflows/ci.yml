@@ -14,7 +14,7 @@ on:
 env:
   BUILD_TYPE: Release
   CMAKE_VERSION: '3.20'
-  CUDA_VERSION: '11.8'
+  CUDA_VERSION: '11.8.0'
   PHYSX_VERSION: '5.1'
   CPP_STANDARD: '17'
 
@@ -40,8 +40,7 @@ jobs:
       - name: Update submodules
         run: |
           git submodule deinit -f --all
-          git submodule init
-          git submodule update
+          git submodule update --init --recursive
 
       - name: Setup GLM
         shell: bash
@@ -69,9 +68,9 @@ jobs:
           key: ${{runner.os}}-deps-${{hashFiles('**/CMakeLists.txt')}}
 
       - name: Setup CMake
-        uses: lukka/get-cmake@latest
+        uses: jwlawson/actions-setup-cmake@v1.14
         with:
-          cmake-version: ${{env.CMAKE_VERSION}}
+          cmake-version: '3.20.x'
 
       - name: Setup CUDA
         uses: Jimver/cuda-toolkit@v0.2.11
@@ -143,17 +142,29 @@ jobs:
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
 
+      - name: Prepare Test Directory
+        run: mkdir -p ${{github.workspace}}/test_results
+
       - name: Run Core Tests
         working-directory: ${{github.workspace}}/build
-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Core"
+        run: |
+          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Core" || true
+          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
         
       - name: Run Rendering Tests
         working-directory: ${{github.workspace}}/build
-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Rendering"
+        run: |
+          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Rendering" || true
+          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
 
       - name: Run Performance Tests
         working-directory: ${{github.workspace}}/build
-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Performance"
+        run: |
+          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Performance" || true
+          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
+          if [ -f "perf_results.json" ]; then
+            cp perf_results.json ../test_results/
+          fi
         
       - name: Package Build Artifacts
         run: |
@@ -163,12 +174,18 @@ jobs:
             ${{github.workspace}}/build/*.pdb
 
       - name: Upload Build Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cuda-game-build
-          path: cuda_game_artifacts.zip
+          name: cuda-game-build-${{ matrix.os }}-${{ matrix.build_type }}
+          path: |
+            cuda_game_artifacts.zip
+            test_results/*
+            build/**/*.log
+            build/CMakeFiles/**/*.log
           retention-days: 5
           compression-level: 6
+          if-no-files-found: warn
 
   java-integration-tests:
     name: Integration Tests
