@@ -136,14 +136,22 @@ jobs:
       run: |
         cmake --build build --config ${{ matrix.build_type }} -j 4
     
-    - name: Verify build artifacts
+    - name: Verify build artifacts and setup PhysX
       shell: bash
       run: |
         echo "Checking for built executables..."
         if [ "$RUNNER_OS" == "Windows" ]; then
           ls -la build/${{ matrix.build_type }}/*.exe || echo "Warning: No executables found"
+          # Copy PhysX DLLs to test executable directory
+          echo "Copying PhysX DLLs..."
+          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysX_64.dll build/${{ matrix.build_type }}/
+          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCommon_64.dll build/${{ matrix.build_type }}/
+          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXFoundation_64.dll build/${{ matrix.build_type }}/
+          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCooking_64.dll build/${{ matrix.build_type }}/
+          ls -la build/${{ matrix.build_type }}/*.dll
         else
           ls -la build/ || echo "Warning: Build directory empty"
+          # For Linux, PhysX is statically linked
         fi
     
     # -------------------------------------------------------------------------
@@ -256,7 +264,7 @@ jobs:
     
     - name: Upload test artifacts
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.build_type }}
         path: |
@@ -266,7 +274,7 @@ jobs:
     
     - name: Upload build logs on failure
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-logs-${{ matrix.os }}-${{ matrix.build_type }}
         path: |
@@ -312,7 +320,7 @@ jobs:
     
     - name: Upload ASan results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: asan-results
         path: |
@@ -379,7 +387,7 @@ jobs:
         fail_ci_if_error: false
     
     - name: Upload coverage HTML report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: coverage_html/
@@ -408,7 +416,7 @@ jobs:
     
     - name: Upload static analysis results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: static-analysis
         path: cppcheck_results.xml
@@ -425,7 +433,7 @@ jobs:
     
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     
     - name: Check quality metrics
       shell: bash
@@ -521,7 +529,7 @@ jobs:
     
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     
     - name: Create release package
       run: |
@@ -535,7 +543,7 @@ jobs:
         cp -r coverage-report/* release/ || true
     
     - name: Upload release artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: cudagame-release-${{ github.run_number }}
         path: release/
