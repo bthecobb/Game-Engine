@@ -1,6 +1,8 @@
 name: CudaGame CI
 
 # Advanced CI workflow for AAA game development
+run-name: CI Build for ${{ github.ref_name }}
+
 on:
   push:
     branches: [main, develop, 'feature/**', 'bugfix/**']
@@ -21,7 +23,7 @@ jobs:
     name: Build & Test C++
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
@@ -35,7 +37,7 @@ jobs:
           key: ${{runner.os}}-deps-${{hashFiles('**/CMakeLists.txt')}}
 
       - name: Setup CMake
-        uses: jwlawson/actions-setup-cmake@v1.13
+        uses: lukka/get-cmake@latest
         with:
           cmake-version: ${{env.CMAKE_VERSION}}
 
@@ -48,13 +50,18 @@ jobs:
 
       - name: Configure CMake
         run: |
+          # Create build directory if it doesn't exist
+          New-Item -ItemType Directory -Force -Path ${{github.workspace}}/build
+          
           cmake -B ${{github.workspace}}/build -S ${{github.workspace}} `
             -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} `
             -DCMAKE_CXX_STANDARD=${{env.CPP_STANDARD}} `
             -DBUILD_TESTING=ON `
             -DENABLE_CUDA=ON `
             -DENABLE_PHYSX=ON `
-            -DPHYSX_ROOT=${{env.PHYSX_SDK_PATH}}
+            -DCMAKE_CUDA_ARCHITECTURES=75 `
+            -DCMAKE_CUDA_COMPILER=$(which nvcc) `
+            -DPHYSX_ROOT=$env:PHYSX_SDK_PATH
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
@@ -79,10 +86,11 @@ jobs:
             ${{github.workspace}}/build/*.pdb
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cuda-game-build
           path: cuda_game_artifacts.zip
+          retention-days: 5
 
   java-integration-tests:
     name: Integration Tests
