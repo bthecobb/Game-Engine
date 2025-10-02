@@ -90,7 +90,7 @@ jobs:
     # Caching Strategy
     # -------------------------------------------------------------------------
     - name: Cache CMake build directory
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           build
@@ -101,7 +101,7 @@ jobs:
           ${{ runner.os }}-${{ matrix.build_type }}-cmake-
     
     - name: Cache PhysX libraries
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: vendor/PhysX
         key: ${{ runner.os }}-physx-${{ hashFiles('vendor/PhysX/**') }}

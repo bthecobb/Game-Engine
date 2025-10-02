@@ -50,7 +50,17 @@ jobs:
         with:
           vulkan-query-version: ${{env.VULKAN_SDK_VERSION}}
           vulkan-components: Vulkan-Headers, Vulkan-Loader
-          vulkan-use-cache: true
+          vulkan-use-cache: false
+
+      - name: Cache Vulkan SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VULKAN_SDK }}
+            ~/.vulkan
+          key: vulkan-${{ runner.os }}-${{ env.VULKAN_SDK_VERSION }}
+          restore-keys: |
+            vulkan-${{ runner.os }}-
 
       - name: Setup Dependencies
         shell: pwsh
