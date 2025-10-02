@@ -119,31 +119,26 @@ if(NOT glad_FOUND)
 endif()
 
 # GLM Setup
-set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
+include(ExternalProject)
 
-# Create GLM target if headers exist
-if(EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
-    add_library(glm INTERFACE)
-    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
-    add_library(glm::glm ALIAS glm)
-else()
-    # Download GLM
-    include(FetchContent)
-    FetchContent_Declare(
-        glm
-        GIT_REPOSITORY https://github.com/g-truc/glm.git
-        GIT_TAG 0.9.9.8
-        SOURCE_DIR ${GLM_INCLUDE_DIR}
-        OVERRIDE_FIND_PACKAGE
-    )
-    FetchContent_GetProperties(glm)
-    if(NOT glm_POPULATED)
-        FetchContent_Populate(glm)
-        add_library(glm INTERFACE)
-        target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
-        add_library(glm::glm ALIAS glm)
-    endif()
-endif()
+set(GLM_VERSION "0.9.9.8")
+set(GLM_DIR "${CMAKE_BINARY_DIR}/glm")
+
+ExternalProject_Add(
+    glm_external
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG ${GLM_VERSION}
+    PREFIX ${GLM_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+    UPDATE_COMMAND ""
+)
+
+add_library(glm INTERFACE)
+add_dependencies(glm glm_external)
+target_include_directories(glm INTERFACE ${GLM_DIR}/src/glm_external)
+add_library(glm::glm ALIAS glm)
 
 # PhysX Integration
 set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
