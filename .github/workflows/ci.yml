@@ -42,13 +42,20 @@ jobs:
           git submodule deinit -f --all
           git submodule update --init --recursive
 
-      - name: Setup GLM
+      - name: Setup and cache GLM
+        id: cache-glm
+        uses: actions/cache@v4
+        with:
+          path: external/glm
+          key: glm-${{ runner.os }}-0.9.9.8-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Install GLM if not cached
+        if: steps.cache-glm.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          rm -rf external/glm animation/build/_deps/glm-src || true
+          rm -rf external/glm animation/build/_deps/glm-src build/_deps/glm-* || true
           mkdir -p external/glm
           git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
-          echo "Verifying GLM installation..."
           test -f external/glm/glm/glm.hpp || exit 1
 
       - name: Setup Dependencies Cache
