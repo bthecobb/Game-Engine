@@ -2,24 +2,7 @@
 
 include(FetchContent)
 
-# GLM
-set(GLM_PATH "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
-
-if(NOT EXISTS "${GLM_PATH}/glm/glm.hpp")
-    message(STATUS "GLM not found in ${GLM_PATH}, fetching...")
-    FetchContent_Declare(
-        glm
-        GIT_REPOSITORY https://github.com/g-truc/glm.git
-        GIT_TAG master
-        SOURCE_DIR ${GLM_PATH}
-    )
-    FetchContent_MakeAvailable(glm)
-else()
-    message(STATUS "Using GLM from ${GLM_PATH}")
-    add_library(glm INTERFACE)
-    target_include_directories(glm INTERFACE ${GLM_PATH})
-    add_library(glm::glm ALIAS glm)
-endif()
+# GLM is handled in the main CMakeLists.txt
 
 # GLFW
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/glfw/CMakeLists.txt")

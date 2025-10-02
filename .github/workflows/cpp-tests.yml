@@ -71,9 +71,11 @@ jobs:
     - name: Setup GLM
       shell: bash
       run: |
-        rm -rf external/glm || true
+        rm -rf external/glm animation/build/_deps/glm-src || true
         mkdir -p external/glm
-        git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+        git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
+        echo "Verifying GLM installation..."
+        test -f external/glm/glm/glm.hpp || exit 1
     
     - name: Setup CMake
       uses: jwlawson/actions-setup-cmake@v1.14
