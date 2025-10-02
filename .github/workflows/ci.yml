@@ -162,7 +162,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '11'
@@ -208,7 +208,7 @@ jobs:
     env:
       BUILD_WRAPPER_OUT_DIR: build_wrapper_output
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -305,7 +305,7 @@ jobs:
       # Upload analysis artifacts
       - name: Upload Analysis Reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: code-analysis-reports
           path: |
@@ -314,6 +314,9 @@ jobs:
             coverage.xml
             cuda_analysis/
             ${{env.BUILD_WRAPPER_OUT_DIR}}/
+          retention-days: 5
+          if-no-files-found: warn
+          overwrite: true
 
   deployment:
     name: Deploy Build
