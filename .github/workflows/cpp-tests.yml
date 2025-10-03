@@ -160,7 +160,7 @@ jobs:
         cmake --preset "windows-msvc-$BUILD_TYPE_LOWER" `
           -DBUILD_TESTING=ON `
           -DENABLE_WARNINGS=ON `
-          -DENABLE_CUDA=ON `
+          -DENABLE_CUDA=OFF `
           -DCUDAToolkit_ROOT=$Env:CUDA_PATH
     
     - name: Configure CMake (Linux)
