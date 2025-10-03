@@ -5,16 +5,34 @@ cmake_minimum_required(VERSION 3.20)
 # Enable testing
 enable_testing()
 
+# Build options
+option(BUILD_TESTING "Enable building tests" ON)
+option(ENABLE_WARNINGS "Enable extra warnings" ON)
+option(ENABLE_CUDA "Enable CUDA features" ON)
+
 # First configure C++ project
 project(AAA_Game_Engine LANGUAGES CXX)
 
-# CUDA toggle (default ON; CI can turn OFF or we install CUDA on runners)
-option(ENABLE_CUDA "Enable CUDA features" ON)
+# Apply warning settings if enabled
+if(ENABLE_WARNINGS)
+    if(MSVC)
+        add_compile_options(/W4 /WX)
+    else()
+        add_compile_options(-Wall -Wextra -Werror)
+    endif()
+endif()
 
 # Enable CUDA language only when requested and available
 if(ENABLE_CUDA AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CUDA_ARCHITECTURES 86)
     enable_language(CUDA)
+    
+    # Find CUDA Toolkit
+    find_package(CUDAToolkit REQUIRED)
+    
+    if(CUDAToolkit_ROOT)
+        message(STATUS "Using CUDA Toolkit from: ${CUDAToolkit_ROOT}")
+    endif()
 endif()
 
 # Assets directory for models/textures
@@ -559,10 +577,18 @@ target_link_libraries(EnhancedGame PRIVATE
     glfw
     glad
     glm::glm
-    CUDA::cudart
     assimp
-    ${PHYSX_LIBRARIES}
 )
+
+if(ENABLE_CUDA)
+    target_link_libraries(EnhancedGame PRIVATE CUDA::cudart)
+    target_compile_definitions(EnhancedGame PRIVATE ENABLE_CUDA)
+endif()
+
+if(ENABLE_PHYSX)
+    target_link_libraries(EnhancedGame PRIVATE ${PHYSX_LIBRARIES})
+    target_compile_definitions(EnhancedGame PRIVATE ENABLE_PHYSX)
+endif()
 
 # Expose asset directory to code
 target_compile_definitions(EnhancedGame PRIVATE ASSET_DIR="${ASSET_DIR}")
@@ -620,10 +646,18 @@ target_link_libraries(Full3DGame PRIVATE
     glfw
     glad
     glm::glm
-    CUDA::cudart
     assimp
-    ${PHYSX_LIBRARIES}
 )
+
+if(ENABLE_CUDA)
+    target_link_libraries(Full3DGame PRIVATE CUDA::cudart)
+    target_compile_definitions(Full3DGame PRIVATE ENABLE_CUDA)
+endif()
+
+if(ENABLE_PHYSX)
+    target_link_libraries(Full3DGame PRIVATE ${PHYSX_LIBRARIES})
+    target_compile_definitions(Full3DGame PRIVATE ENABLE_PHYSX)
+endif()
 
 # Expose asset directory to code
 target_compile_definitions(Full3DGame PRIVATE ASSET_DIR="${ASSET_DIR}")
