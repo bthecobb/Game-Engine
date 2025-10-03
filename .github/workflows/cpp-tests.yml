@@ -130,8 +130,8 @@ jobs:
     - name: Configure CMake (Windows)
       if: runner.os == 'Windows'
       run: |
-        cmake --preset windows-msvc-${{ matrix.build_type }} `
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+        $BUILD_TYPE_LOWER = '${{ matrix.build_type }}'.ToLower()
+        cmake --preset "windows-msvc-$BUILD_TYPE_LOWER" `
           -DBUILD_TESTING=ON `
           -DENABLE_WARNINGS=ON
     
@@ -177,7 +177,7 @@ jobs:
       shell: bash
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          ./build/${{ matrix.build_type }}/TestRunner.exe --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
+          ./build/TestRunner.exe --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
         else
           ./build/TestRunner --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
         fi
@@ -187,8 +187,8 @@ jobs:
       shell: bash
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          if [ -f "./build/${{ matrix.build_type }}/PhysXTests.exe" ]; then
-            ./build/${{ matrix.build_type }}/PhysXTests.exe --gtest_output=xml:test_results_physx.xml
+          if [ -f "./build/PhysXTests.exe" ]; then
+            ./build/PhysXTests.exe --gtest_output=xml:test_results_physx.xml
           else
             echo "PhysXTests.exe not found, skipping"
           fi
@@ -205,8 +205,8 @@ jobs:
       shell: bash
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          if [ -f "./build/${{ matrix.build_type }}/PlayerMovementTests.exe" ]; then
-            ./build/${{ matrix.build_type }}/PlayerMovementTests.exe --gtest_output=xml:test_results_movement.xml
+          if [ -f "./build/PlayerMovementTests.exe" ]; then
+            ./build/PlayerMovementTests.exe --gtest_output=xml:test_results_movement.xml
           else
             echo "PlayerMovementTests.exe not found, skipping"
           fi
