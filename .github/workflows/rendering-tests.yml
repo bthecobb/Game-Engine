@@ -37,10 +37,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Update submodules
-        run: |
-          git submodule deinit -f --all
-          git submodule update --init --recursive
+    - name: Update submodules
+      run: git submodule update --init --recursive
 
       # GLM is now handled by CMake ExternalProject
 

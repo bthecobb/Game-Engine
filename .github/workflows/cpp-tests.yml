@@ -64,9 +64,7 @@ jobs:
         fetch-depth: 0  # Full history for better debugging
 
     - name: Update submodules
-      run: |
-        git submodule deinit -f --all
-        git submodule update --init --recursive
+      run: git submodule update --init --recursive
 
     - name: Setup GLM
       shell: bash
