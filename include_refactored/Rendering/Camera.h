@@ -1,5 +1,34 @@
 #pragma once
 
+namespace CudaGame {
+namespace Rendering {
+
+enum class ProjectionType {
+    PERSPECTIVE,
+    ORTHOGRAPHIC
+};
+
+struct PerspectiveParams {
+    float fov;
+    float aspectRatio;
+    float nearPlane;
+    float farPlane;
+};
+
+class Camera {
+public:
+    virtual ~Camera() = default;
+    ProjectionType GetProjectionType() const { return m_projectionType; }
+    const PerspectiveParams& GetPerspectiveParams() const { return m_perspParams; }
+
+protected:
+    ProjectionType m_projectionType;
+    PerspectiveParams m_perspParams;
+};
+
+} // namespace Rendering
+} // namespace CudaGame
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 

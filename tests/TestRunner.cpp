@@ -3,8 +3,11 @@
 
 // Forward declarations for test suite creation functions
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateCoreSystemsTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateOrbitCameraTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateCharacterControllerTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingSystemTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateFull3DGameIntegrationTestSuite();
 // std::shared_ptr<CudaGame::Testing::TestSuite> CreatePhysicsTestSuite();
-// std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingTestSuite();
 
 int main()
 {
@@ -16,8 +19,11 @@ int main()
 
     // Register all test suites
     testFramework.RegisterSuite(CreateCoreSystemsTestSuite());
+    testFramework.RegisterSuite(CreateOrbitCameraTestSuite());
+    testFramework.RegisterSuite(CreateCharacterControllerTestSuite());
+    testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
+    testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());
     // testFramework.RegisterSuite(CreatePhysicsTestSuite());
-    // testFramework.RegisterSuite(CreateRenderingTestSuite());
 
     // Run all tests
     testFramework.RunAllTests();

@@ -134,26 +134,15 @@ if(NOT glad_FOUND)
     FetchContent_MakeAvailable(glad)
 endif()
 
-# GLM Setup
-include(ExternalProject)
+# GLM Setup - Use submodule instead of FetchContent
+set(GLM_DIR "${CMAKE_SOURCE_DIR}/external/glm")
+if(NOT EXISTS ${GLM_DIR}/CMakeLists.txt)
+    message(FATAL_ERROR "GLM submodule not found. Please run: git submodule update --init --recursive")
+endif()
 
-set(GLM_VERSION "0.9.9.8")
-set(GLM_DIR "${CMAKE_BINARY_DIR}/glm")
-
-ExternalProject_Add(
-    glm_external
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG ${GLM_VERSION}
-    PREFIX ${GLM_DIR}
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    INSTALL_COMMAND ""
-    UPDATE_COMMAND ""
-)
-
+add_subdirectory(${GLM_DIR} ${CMAKE_BINARY_DIR}/glm EXCLUDE_FROM_ALL)
 add_library(glm INTERFACE)
-add_dependencies(glm glm_external)
-target_include_directories(glm INTERFACE ${GLM_DIR}/src/glm_external)
+target_include_directories(glm INTERFACE ${GLM_DIR})
 add_library(glm::glm ALIAS glm)
 
 # PhysX Integration

@@ -195,13 +195,5 @@ TEST_F(PhysXTestSuite, DynamicBodyMemoryManagement) {
     EXPECT_LT(memoryDelta.gpuBytes, 1024);  // Less than 1KB leak tolerance
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    testing::AddGlobalTestEnvironment(new testing::Environment());
-    PhysXTestEnvironment();
-    
-    int result = RUN_ALL_TESTS();
-    
-    CudaGame::Testing::CUDAPerformanceMonitor::Cleanup();
-    return result;
-}
+// Note: main() is defined in TestRunner.cpp
+// This file only contains test cases for PhysX integration
