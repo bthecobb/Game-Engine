@@ -16,4 +16,4 @@
 [submodule "vendor/PhysX"]
     path = vendor/PhysX
     url = https://github.com/NVIDIAGameWorks/PhysX.git
-    branch = 5.1
+    tag = 104.1-physx-5.1.2
