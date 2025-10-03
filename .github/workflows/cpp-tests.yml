@@ -71,16 +71,13 @@ jobs:
       run: |
         # Clean any stale GLM build artifacts
         rm -rf build/_deps/glm-* || true
+        rm -rf external/glm || true
         
-        # Initialize all submodules (some repos omit per-path entries)
-        git submodule update --init --recursive || true
+        # Make sure external directory exists
+        mkdir -p external
         
-        # If GLM submodule is not present, fall back to a shallow clone
-        if [ ! -f external/glm/glm/glm.hpp ]; then
-          echo "GLM submodule not found, performing shallow clone..."
-          mkdir -p external
-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
-        fi
+        # Clone GLM directly
+        git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
         
         echo "Verifying GLM installation..."
         test -f external/glm/glm/glm.hpp || exit 1
