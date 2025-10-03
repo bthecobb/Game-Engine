@@ -359,22 +359,31 @@ target_include_directories(LightingIntegrationDemo PRIVATE
 
 configure_msvc_runtime(LightingIntegrationDemo)
 
-# Advanced Test Framework
+# Test Framework and Test Suite
 add_executable(TestRunner
+    # Test runner and framework
     tests/TestRunner.cpp
+    src_refactored/Testing/TestFramework.cpp
+    
+    # Test suites
     tests/CoreSystemsTests.cpp
     tests/OrbitCameraTests.cpp
     tests/CharacterControllerTests.cpp
     tests/RenderingSystemTests.cpp
     tests/Full3DGameIntegrationTests.cpp
+    tests/PlayerMovementTests.cpp
     tests/PhysXIntegrationTests.cpp
-    src_refactored/Testing/TestFramework.cpp
-    src_refactored/Testing/AdvancedTestFramework.cpp
+    
+    # Core dependencies
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
-    src_refactored/Physics/PhysXPhysicsSystem.cpp
+    
+    # Rendering dependencies
     src_refactored/Rendering/OrbitCamera.cpp
     src_refactored/Rendering/Camera.cpp
+    
+    # Physics dependencies (when enabled)
+    $<$<BOOL:${ENABLE_PHYSX}>:src_refactored/Physics/PhysXPhysicsSystem.cpp>
 )
 
 # Add GTest
@@ -390,6 +399,12 @@ FetchContent_MakeAvailable(googletest)
 
 # Configure test dependencies
 configure_msvc_runtime(TestRunner)
+
+target_include_directories(TestRunner PRIVATE
+    ${CMAKE_SOURCE_DIR}/include_refactored
+    ${CMAKE_SOURCE_DIR}/src_refactored
+    ${CMAKE_SOURCE_DIR}/tests
+)
 
 target_link_libraries(TestRunner PRIVATE
     glm::glm
@@ -410,6 +425,11 @@ if(ENABLE_PHYSX)
     target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
     target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
 endif()
+
+# Set output directory for test binaries
+set_target_properties(TestRunner PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
+)
 
 # Add test defines
 target_compile_definitions(TestRunner PRIVATE
