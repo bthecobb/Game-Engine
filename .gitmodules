@@ -12,3 +12,8 @@
     path = external/glfw
     url = https://github.com/glfw/glfw.git
     branch = master
+
+[submodule "vendor/PhysX"]
+    path = vendor/PhysX
+    url = https://github.com/NVIDIAGameWorks/PhysX.git
+    branch = 5.1
