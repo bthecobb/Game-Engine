@@ -8,9 +8,11 @@ enable_testing()
 # First configure C++ project
 project(AAA_Game_Engine LANGUAGES CXX)
 
-# Then add CUDA if we're not using ClangCL
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_CUDA_COMPILER "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc.exe")
+# CUDA toggle (default ON; CI can turn OFF or we install CUDA on runners)
+option(ENABLE_CUDA "Enable CUDA features" ON)
+
+# Enable CUDA language only when requested and available
+if(ENABLE_CUDA AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CUDA_ARCHITECTURES 86)
     enable_language(CUDA)
 endif()
@@ -21,8 +23,12 @@ set(ASSET_DIR "${CMAKE_SOURCE_DIR}/assets" CACHE PATH "Path to your assets root"
 # Standard C++ settings
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# CUDA standard only when CUDA is enabled
+if(CMAKE_CUDA_COMPILER)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
 
 # Detect compiler and set appropriate flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
@@ -107,7 +113,9 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
 set(CMAKE_DEBUG_POSTFIX "d")
 
 # Find required packages
-find_package(CUDAToolkit REQUIRED)
+if(ENABLE_CUDA)
+    find_package(CUDAToolkit REQUIRED)
+endif()
 find_package(OpenGL REQUIRED)
 
 # Find GLFW
