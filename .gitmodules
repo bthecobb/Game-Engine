@@ -13,7 +13,3 @@
     url = https://github.com/glfw/glfw.git
     branch = master
 
-[submodule "vendor/PhysX"]
-    path = vendor/PhysX
-    url = https://github.com/NVIDIAGameWorks/PhysX.git
-    tag = 104.1-physx-5.1.2
