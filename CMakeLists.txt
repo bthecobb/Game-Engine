@@ -142,93 +142,103 @@ if(NOT glad_FOUND)
     FetchContent_MakeAvailable(glad)
 endif()
 
-# GLM Setup - Use submodule instead of FetchContent
+# GLM Setup - Use submodule checkout (already cloned in CI)
 set(GLM_DIR "${CMAKE_SOURCE_DIR}/external/glm")
 if(NOT EXISTS ${GLM_DIR}/CMakeLists.txt)
-    message(FATAL_ERROR "GLM submodule not found. Please run: git submodule update --init --recursive")
+    message(FATAL_ERROR "GLM checkout not found at ${GLM_DIR}. In CI we clone it; locally run: git submodule update --init --recursive or clone GLM into external/glm")
 endif()
 
+# Add GLM's own CMake which defines targets (typically 'glm' and alias 'glm::glm')
 add_subdirectory(${GLM_DIR} ${CMAKE_BINARY_DIR}/glm EXCLUDE_FROM_ALL)
-add_library(glm INTERFACE)
-target_include_directories(glm INTERFACE ${GLM_DIR})
-add_library(glm::glm ALIAS glm)
 
-# PhysX Integration
+# Avoid redefining GLM targets if GLM already provides them
+# If upstream GLM does not define targets (unlikely), create a minimal interface target
+if(NOT TARGET glm AND NOT TARGET glm::glm)
+    add_library(glm INTERFACE)
+    target_include_directories(glm INTERFACE ${GLM_DIR})
+    add_library(glm::glm ALIAS glm)
+endif()
+
+# PhysX Integration (optional)
+option(ENABLE_PHYSX "Enable PhysX integration" ON)
 set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
 set(PHYSX_INCLUDE_DIR ${PHYSX_ROOT_DIR}/include)
 
-# Configure PhysX paths based on compiler and build type
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(PHYSX_COMPILER_DIR "vc142")
-    
-    # Force NDEBUG for PhysX compatibility
-    add_compile_definitions(
-        NDEBUG
-        _ITERATOR_DEBUG_LEVEL=0
-    )
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(PHYSX_COMPILER_DIR "clang")
-else()
-    message(FATAL_ERROR "Unsupported compiler for PhysX integration")
-endif()
-
-# Set PhysX library directory based on build type
-# Set PhysX library suffixes based on build type (debug/release)
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    # For MSVC we can use the generator expression to handle debug/release
-    set(PHYSX_LIB_SUFFIX "$<$<CONFIG:Debug>:_64D>$<$<NOT:$<CONFIG:Debug>>:_64>")
-    set(PHYSX_STATIC_SUFFIX "$<$<CONFIG:Debug>:_static_64D>$<$<NOT:$<CONFIG:Debug>>:_static_64>")
-    set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
-else()
-    # For ClangCL we use static suffixes
-    set(PHYSX_LIB_SUFFIX "_static_64")
-    set(PHYSX_STATIC_SUFFIX "_static_64")
-    set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
-endif()
-
-# Set PhysX library paths based on compiler
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # For ClangCL we use the source bin directory since we built from source
-    set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/compiler/vc17win64-clang/sdk_source_bin)
-    set(PHYSX_LIB_LEVEL "${PHYSX_BUILD_TYPE}")
-else()
-# Use available PhysX MD libs
-set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)  # Only release libs are available
-set(PHYSX_LIB_LEVEL "")
-endif()
-
-# PhysX Libraries with dynamic debug/release selection
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # For ClangCL we use the source bin directory structure
-    set(PHYSX_LIBRARIES
-        ${PHYSX_LIB_DIR}/LowLevel.dir/${PHYSX_LIB_LEVEL}/LowLevel.lib
-        ${PHYSX_LIB_DIR}/LowLevelAABB.dir/${PHYSX_LIB_LEVEL}/LowLevelAABB.lib
-        ${PHYSX_LIB_DIR}/LowLevelDynamics.dir/${PHYSX_LIB_LEVEL}/LowLevelDynamics.lib
-        ${PHYSX_LIB_DIR}/PhysXTask.dir/${PHYSX_LIB_LEVEL}/PhysXTask.lib
-        ${PHYSX_LIB_DIR}/SceneQuery.dir/${PHYSX_LIB_LEVEL}/SceneQuery.lib
-        ${PHYSX_LIB_DIR}/SimulationController.dir/${PHYSX_LIB_LEVEL}/SimulationController.lib
-    )
-else()
-# For MSVC we use the pre-built binaries
-set(PHYSX_LIBRARIES
-        ${PHYSX_LIB_DIR}/PhysX_64.lib
-        ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
-        ${PHYSX_LIB_DIR}/PhysXFoundation_64.lib
-        ${PHYSX_LIB_DIR}/PhysXCooking_64.lib
-        ${PHYSX_LIB_DIR}/PhysXExtensions_static_64.lib
-        ${PHYSX_LIB_DIR}/PhysXCharacterKinematic_static_64.lib
-        ${PHYSX_LIB_DIR}/PhysXPvdSDK_static_64.lib
-        ${PHYSX_LIB_DIR}/SceneQuery_static_64.lib
-        ${PHYSX_LIB_DIR}/SimulationController_static_64.lib
-    )
-endif()
-
-# Verify PhysX libraries exist
-foreach(lib ${PHYSX_LIBRARIES})
-    if(NOT EXISTS ${lib})
-        message(WARNING "PhysX library not found: ${lib}")
+if(ENABLE_PHYSX)
+    # Configure PhysX paths based on compiler and build type
+    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        set(PHYSX_COMPILER_DIR "vc142")
+        # Force NDEBUG for PhysX compatibility
+        add_compile_definitions(
+            NDEBUG
+            _ITERATOR_DEBUG_LEVEL=0
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(PHYSX_COMPILER_DIR "clang")
+    else()
+        message(WARNING "Unsupported compiler for PhysX integration; disabling PhysX")
+        set(ENABLE_PHYSX OFF)
     endif()
-endforeach()
+endif()
+
+if(ENABLE_PHYSX)
+    # PhysX library suffix selection
+    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        set(PHYSX_LIB_SUFFIX "$<$<CONFIG:Debug>:_64D>$<$<NOT:$<CONFIG:Debug>>:_64>")
+        set(PHYSX_STATIC_SUFFIX "$<$<CONFIG:Debug>:_static_64D>$<$<NOT:$<CONFIG:Debug>>:_static_64>")
+        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+    else()
+        set(PHYSX_LIB_SUFFIX "_static_64")
+        set(PHYSX_STATIC_SUFFIX "_static_64")
+        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+    endif()
+
+    # Library directory
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/compiler/vc17win64-clang/sdk_source_bin)
+        set(PHYSX_LIB_LEVEL "${PHYSX_BUILD_TYPE}")
+    else()
+        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)
+        set(PHYSX_LIB_LEVEL "")
+    endif()
+
+    # Libraries
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(PHYSX_LIBRARIES
+            ${PHYSX_LIB_DIR}/LowLevel.dir/${PHYSX_LIB_LEVEL}/LowLevel.lib
+            ${PHYSX_LIB_DIR}/LowLevelAABB.dir/${PHYSX_LIB_LEVEL}/LowLevelAABB.lib
+            ${PHYSX_LIB_DIR}/LowLevelDynamics.dir/${PHYSX_LIB_LEVEL}/LowLevelDynamics.lib
+            ${PHYSX_LIB_DIR}/PhysXTask.dir/${PHYSX_LIB_LEVEL}/PhysXTask.lib
+            ${PHYSX_LIB_DIR}/SceneQuery.dir/${PHYSX_LIB_LEVEL}/SceneQuery.lib
+            ${PHYSX_LIB_DIR}/SimulationController.dir/${PHYSX_LIB_LEVEL}/SimulationController.lib
+        )
+    else()
+        set(PHYSX_LIBRARIES
+            ${PHYSX_LIB_DIR}/PhysX_64.lib
+            ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
+            ${PHYSX_LIB_DIR}/PhysXFoundation_64.lib
+            ${PHYSX_LIB_DIR}/PhysXCooking_64.lib
+            ${PHYSX_LIB_DIR}/PhysXExtensions_static_64.lib
+            ${PHYSX_LIB_DIR}/PhysXCharacterKinematic_static_64.lib
+            ${PHYSX_LIB_DIR}/PhysXPvdSDK_static_64.lib
+            ${PHYSX_LIB_DIR}/SceneQuery_static_64.lib
+            ${PHYSX_LIB_DIR}/SimulationController_static_64.lib
+        )
+    endif()
+
+    # Verify PhysX libraries exist; if missing, disable PhysX to avoid hard errors in CI
+    set(_PHYSX_MISSING FALSE)
+    foreach(lib ${PHYSX_LIBRARIES})
+        if(NOT EXISTS ${lib})
+            message(WARNING "PhysX library not found: ${lib}")
+            set(_PHYSX_MISSING TRUE)
+        endif()
+    endforeach()
+    if(_PHYSX_MISSING)
+        message(WARNING "PhysX libraries missing; disabling PhysX for this build")
+        set(ENABLE_PHYSX OFF)
+    endif()
+endif()
 
 # Configure Assimp
 find_package(assimp QUIET)
@@ -382,14 +392,24 @@ FetchContent_MakeAvailable(googletest)
 configure_msvc_runtime(TestRunner)
 
 target_link_libraries(TestRunner PRIVATE
-    ${CUDA_LIBRARIES}
-    ${PHYSX_LIBRARIES}
-    CUDA::cudart
-    CUDA::cuda_driver
+    glm::glm
     GTest::gtest
     GTest::gtest_main
-    glm::glm
 )
+
+if(ENABLE_CUDA)
+    target_link_libraries(TestRunner PRIVATE
+        ${CUDA_LIBRARIES}
+        CUDA::cudart
+        CUDA::cuda_driver
+    )
+    target_compile_definitions(TestRunner PRIVATE ENABLE_CUDA)
+endif()
+
+if(ENABLE_PHYSX)
+    target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
+    target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
+endif()
 
 # Add test defines
 target_compile_definitions(TestRunner PRIVATE
@@ -428,8 +448,12 @@ target_link_libraries(CudaPhysicsDemo PRIVATE
     glad
     glm::glm
     assimp
-    ${PHYSX_LIBRARIES}
 )
+
+if(ENABLE_PHYSX)
+    target_link_libraries(CudaPhysicsDemo PRIVATE ${PHYSX_LIBRARIES})
+    target_compile_definitions(CudaPhysicsDemo PRIVATE ENABLE_PHYSX)
+endif()
 
 target_compile_definitions(CudaPhysicsDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
 
