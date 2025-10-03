@@ -14,5 +14,7 @@
     branch = master
 
 [submodule "vendor/PhysX"]
-	path = vendor/PhysX
-	url = https://github.com/NVIDIA-Omniverse/PhysX.git
+    path = vendor/PhysX
+    url = https://github.com/NVIDIA-Omniverse/PhysX.git
+    branch = main
+    shallow = true
