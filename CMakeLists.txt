@@ -90,6 +90,22 @@ if(CMAKE_CUDA_COMPILER)
     set(CUDA_SEPARABLE_COMPILATION OFF)
 endif()
 
+# Set consistent runtime library and debug flags
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
+# Set debug/release flags properly for PhysX
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-D_DEBUG)
+    remove_definitions(-DNDEBUG)
+else()
+    add_definitions(-DNDEBUG)
+    remove_definitions(-D_DEBUG)
+endif()
+
+# Ensure consistent runtime for dependencies
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
+set(CMAKE_DEBUG_POSTFIX "d")
+
 # Find required packages
 find_package(CUDAToolkit REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -221,7 +237,7 @@ endforeach()
 find_package(assimp QUIET)
 if(NOT assimp_FOUND)
     include(FetchContent)
-    FetchContent_Declare(
+  FetchContent_Declare(
         assimp
         GIT_REPOSITORY https://github.com/assimp/assimp.git
         GIT_TAG v5.2.5
@@ -230,12 +246,10 @@ if(NOT assimp_FOUND)
             -DASSIMP_WARNINGS_AS_ERRORS=OFF
             -DBUILD_SHARED_LIBS=OFF
             -DASSIMP_BUILD_STATIC_LIB=ON
-            -DASSIMP_FORCE_DEBUG_POSTFIX=OFF
-            -DCMAKE_CXX_FLAGS_DEBUG="/MD /O2"
-            -DCMAKE_CXX_FLAGS_RELEASE="/MD /O2"
-            -DCMAKE_C_FLAGS_DEBUG="/MD /O2"
-            -DCMAKE_C_FLAGS_RELEASE="/MD /O2"
-            -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreadedDLL"
+            -DASSIMP_NO_EXPORT=ON
+            -DASSIMP_BUILD_ZLIB=ON
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     )
     FetchContent_MakeAvailable(assimp)
     set(ASSIMP_INCLUDE_DIR ${assimp_SOURCE_DIR}/include)
@@ -393,8 +407,19 @@ set_target_properties(TestRunner PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
 )
 
-# Register ctest
+# Register ctest with proper runtime configuration
 add_test(NAME TestRunner COMMAND TestRunner)
+
+# Force debug/release defines for TestRunner
+target_compile_definitions(TestRunner PRIVATE
+    $<$<CONFIG:Debug>:_DEBUG>
+    $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+)
+
+# Ensure consistent runtime for TestRunner
+set_target_properties(TestRunner PROPERTIES
+    MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+)
 
 # --- Target Linking ---
 
