@@ -72,8 +72,15 @@ jobs:
         # Clean any stale GLM build artifacts
         rm -rf build/_deps/glm-* || true
         
-        # Update GLM submodule
-        git submodule update --init --recursive external/glm
+        # Initialize all submodules (some repos omit per-path entries)
+        git submodule update --init --recursive || true
+        
+        # If GLM submodule is not present, fall back to a shallow clone
+        if [ ! -f external/glm/glm/glm.hpp ]; then
+          echo "GLM submodule not found, performing shallow clone..."
+          mkdir -p external
+          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+        fi
         
         echo "Verifying GLM installation..."
         test -f external/glm/glm/glm.hpp || exit 1
@@ -96,6 +103,14 @@ jobs:
           libxi-dev \
           ninja-build \
           lcov
+
+    - name: Install CUDA Toolkit (Linux)
+      if: runner.os == 'Linux'
+      uses: Jimver/cuda-toolkit@v0.2.11
+      with:
+        cuda: ${{ env.CUDA_VERSION }}
+        method: network
+        sub-packages: '["nvcc", "cudart"]'
     
     - name: Install Windows dependencies
       if: runner.os == 'Windows'
@@ -316,6 +331,13 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libgl1-mesa-dev xorg-dev ninja-build
     
+    - name: Install CUDA Toolkit (Linux)
+      uses: Jimver/cuda-toolkit@v0.2.11
+      with:
+        cuda: ${{ env.CUDA_VERSION }}
+        method: network
+        sub-packages: '["nvcc", "cudart"]'
+
     - name: Configure with AddressSanitizer
       run: |
         cmake -B build \
@@ -366,6 +388,13 @@ jobs:
           lcov \
           gcovr
     
+    - name: Install CUDA Toolkit (Linux)
+      uses: Jimver/cuda-toolkit@v0.2.11
+      with:
+        cuda: ${{ env.CUDA_VERSION }}
+        method: network
+        sub-packages: '["nvcc", "cudart"]'
+
     - name: Configure with coverage flags
       run: |
         cmake -B build \
