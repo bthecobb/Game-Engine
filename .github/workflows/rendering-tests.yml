@@ -74,12 +74,16 @@ jobs:
             vulkan-${{ runner.os }}-
 
       - name: Setup Dependencies
-        shell: pwsh
+        shell: bash
         run: |
-          if (-not (Test-Path "external/glm/glm/glm.hpp")) {
-            New-Item -ItemType Directory -Force -Path external/glm
-            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
-          }
+          # Clean any stale GLM build artifacts
+          rm -rf build/_deps/glm-* || true
+          
+          # Update GLM submodule
+          git submodule update --init --recursive external/glm
+          
+          echo "Verifying GLM installation..."
+          test -f external/glm/glm/glm.hpp || exit 1
 
       - name: Install Dependencies (Ubuntu)
         if: runner.os == 'Linux'
