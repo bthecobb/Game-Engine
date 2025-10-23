@@ -36,6 +36,7 @@ struct PlayerMovementComponent {
     // Speed parameters
     float baseSpeed = 10.0f;
     float maxSpeed = 50.0f;
+    float sprintMultiplier = 1.5f;  // Sprint is 1.5x base speed
     float acceleration = 30.0f;
     float deceleration = 20.0f;
     float airAcceleration = 15.0f;

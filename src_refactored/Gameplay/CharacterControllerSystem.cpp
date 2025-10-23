@@ -2,9 +2,19 @@
 #include "Core/Coordinator.h"
 #include "Physics/PhysXPhysicsSystem.h"
 #include "Rendering/OrbitCamera.h"
-#include <GLFW/glfw3.h>
+#include "Gameplay/LevelComponents.h"  // For WallComponent
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
+
+// GLFW key constants (to avoid linking GLFW when not needed)
+#define GLFW_KEY_W 87
+#define GLFW_KEY_A 65
+#define GLFW_KEY_S 83
+#define GLFW_KEY_D 68
+#define GLFW_KEY_E 69
+#define GLFW_KEY_SPACE 32
+#define GLFW_KEY_LEFT_SHIFT 340
+#define GLFW_KEY_LEFT_CONTROL 341
 
 namespace CudaGame {
 namespace Gameplay {
@@ -173,8 +183,8 @@ glm::vec3 CharacterControllerSystem::GetCameraRelativeMovement(const PlayerInput
     // Calculate camera-relative movement
     glm::vec3 moveDirection = camForward * inputDir.y + camRight * inputDir.x;
     
-    // Apply movement speed
-    float speed = input.keys[GLFW_KEY_LEFT_SHIFT] ? movement.maxSpeed : movement.baseSpeed;
+    // Apply movement speed (sprint multiplies base speed, doesn't use maxSpeed)
+    float speed = input.keys[GLFW_KEY_LEFT_SHIFT] ? (movement.baseSpeed * movement.sprintMultiplier) : movement.baseSpeed;
     return moveDirection * speed;
 }
 
@@ -234,9 +244,9 @@ void CharacterControllerSystem::PerformJump(Physics::CharacterControllerComponen
 void CharacterControllerSystem::PerformAirJump(Physics::CharacterControllerComponent& controller,
                                               const PlayerMovementComponent& movement,
                                               Physics::RigidbodyComponent& rigidbody) {
-    // Air jump with reduced force
+    // Air jump with full force for double jump
     rigidbody.velocity.y = 0;
-    float jumpImpulse = movement.jumpForce * rigidbody.mass * 0.8f; // 80% of normal jump
+    float jumpImpulse = movement.jumpForce * rigidbody.mass * 1.1f; // 110% of normal jump for extra height
     rigidbody.addForce(glm::vec3(0, jumpImpulse, 0));
     
     std::cout << "[CharacterController] Air jump performed! Jumps used: " 
@@ -288,6 +298,15 @@ void CharacterControllerSystem::ApplyMovement(Physics::CharacterControllerCompon
         
         glm::vec3 force = velocityDiff * rigidbody.mass * accel;
         rigidbody.addForce(force);
+        
+        // Clamp horizontal velocity to maxSpeed
+        glm::vec3 horizontalVel = glm::vec3(rigidbody.velocity.x, 0, rigidbody.velocity.z);
+        float horizontalSpeed = glm::length(horizontalVel);
+        if (horizontalSpeed > movement.maxSpeed) {
+            horizontalVel = glm::normalize(horizontalVel) * movement.maxSpeed;
+            rigidbody.velocity.x = horizontalVel.x;
+            rigidbody.velocity.z = horizontalVel.z;
+        }
         
         // Momentum preservation
         if (controller.shouldPreserveMomentum) {
@@ -356,18 +375,11 @@ void CharacterControllerSystem::CheckWallRunning(Core::Entity entity,
     };
     
     for (const auto& dir : checkDirections) {
-        // In a real implementation, use PhysX raycast here
-        // For now, we'll use a simple check
         glm::vec3 rayStart = transform.position;
         glm::vec3 rayEnd = rayStart + dir * WALL_CHECK_DISTANCE;
         
-        // Simulate wall detection (you'd replace this with actual physics raycast)
-        // This is a placeholder that randomly allows wall running for testing
-        static int frameCounter = 0;
-        frameCounter++;
-        
-        // Check if near a wall (simplified - replace with actual collision check)
         bool nearWall = false;
+        glm::vec3 wallNormal = glm::vec3(0.0f);
         
         // Check against world bounds as "walls"
         if ((transform.position.x > 19.0f && dir.x > 0) ||
@@ -375,12 +387,40 @@ void CharacterControllerSystem::CheckWallRunning(Core::Entity entity,
             (transform.position.z > 19.0f && dir.z > 0) ||
             (transform.position.z < -19.0f && dir.z < 0)) {
             nearWall = true;
+            wallNormal = -dir;
+        }
+        
+        // Check for wall entities (for testing)
+        auto& coordinator = Core::Coordinator::GetInstance();
+        for (Core::Entity otherEntity = 0; otherEntity < 1000; ++otherEntity) {
+            if (otherEntity == entity) continue;
+            
+            // Check if entity exists and has wall component
+            if (coordinator.HasComponent<Rendering::TransformComponent>(otherEntity) &&
+                coordinator.HasComponent<WallComponent>(otherEntity)) {
+                
+                auto& wallTransform = coordinator.GetComponent<Rendering::TransformComponent>(otherEntity);
+                float distance = glm::distance(transform.position, wallTransform.position);
+                
+                // If close enough to wall
+                if (distance < WALL_CHECK_DISTANCE + 2.0f) {
+                    // Calculate direction to wall
+                    glm::vec3 toWall = glm::normalize(wallTransform.position - transform.position);
+                    
+                    // Check if this direction matches our check direction
+                    if (glm::dot(toWall, dir) > 0.7f) {  // Roughly same direction
+                        nearWall = true;
+                        wallNormal = -toWall;
+                        break;
+                    }
+                }
+            }
         }
         
         if (nearWall) {
             // Start wall running
             controller.isWallRunning = true;
-            controller.wallNormal = -dir; // Normal points away from wall
+            controller.wallNormal = wallNormal; // Use calculated wall normal
             controller.wallRunTimer = 0;
             controller.canDoubleJump = true; // Enable double jump after wall run
             
