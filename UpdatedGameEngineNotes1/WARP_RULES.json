@@ -1,0 +1,54 @@
+{
+  "rules": [
+    {
+      "document_type": "RULE",
+      "document_id": "PRIMARY_DIRECTIVES",
+      "rule_content": "Primary Directives:\n- Deliver reproducible builds of Full3DGame/EnhancedGame via CMake on Windows x64 with PhysX 5.6.0/OpenGL 3.3.\n- Validate suggestions against actual implementation uses before editing.\n- Never delete files; move to OLD/ and add new version.\n- Keep patches minimal; build/run/verify after each change; capture logs.\n- Do not commit without explicit request; provide diffs."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "TECHNICAL_STANDARDS",
+      "rule_content": "Technical Standards (AAA):\n- C++17, RAII, avoid raw new/delete. GLM for math.\n- Deferred renderer (G-buffer+lighting), OpenGL 3.3 core.\n- PhysX 5.6.0 with /MD runtime and DLL deployment.\n- CUDA interop behind feature flags; graceful fallback.\n- Assets under assets/; use ASSET_DIR; package assets with binaries.\n- Fail fast on shader/asset load errors with clear, path-inclusive messages."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "PERFORMANCE_BUDGETS",
+      "rule_content": "Performance Budgets:\n- CPU/GPU frame ≤ 16.6ms typical.\n- Draw calls ≤ 1500 (warn > 2000); triangles ≤ 8–10M; texture binds ≤ 500.\n- Track 95th/99th percentiles; guard against OOM; leak checks in debug."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "BUILD_CI_RULES",
+      "rule_content": "Build & CI:\n- Always pass -DPHYSX_ROOT_DIR; use /MD; define ASSET_DIR for run targets.\n- Auto-detect PhysX bin subdir (vc142.md/vc143.md) to copy DLLs.\n- In CI, parse PHYSX_ROOT_DIR from CMakeCache.txt and copy DLLs accordingly.\n- Separate artifact build from tests until tests align with refactored API."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "TESTING_QGATES",
+      "rule_content": "Testing & Quality Gates:\n- Short-term: do not block artifacts on legacy test failures; gate GL-dependent tests.\n- Medium-term: align tests with RenderSystem/ECS APIs; minimal TestFramework + TestRunner.\n- Prefer clang-format/tidy if configured; otherwise match repo style.\n- After patches: build, run, scan logs for GL/PhysX errors."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "CHANGE_MANAGEMENT",
+      "rule_content": "Source Control & Change Management:\n- Branching: feature/ bugfix/ hotfix/ release/.\n- Stage large refactors; keep adapters; move prior versions to OLD/.\n- PRs include rationale, logs, perf data if relevant."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "DEBUG_OBSERVABILITY",
+      "rule_content": "Debugging & Observability:\n- Enable OpenGL debug output in debug; maintain RenderDebugSystem overlays.\n- Log performance warnings; provide targeted dumps on demand."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "SECURITY_SECRETS",
+      "rule_content": "Safety & Secrets:\n- Never log secrets; use env placeholders like {{FOO_API_KEY}}; avoid destructive commands unless requested and explained."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "ASSISTANT_SOP",
+      "rule_content": "Assistant SOP:\n- Clarify ask; plan with TODOs for ≥3 steps; discover via code search; implement minimal diffs; verify build/run/logs; document notes and next steps; respect user-edited diffs/commands."
+    },
+    {
+      "document_type": "RULE",
+      "document_id": "DEFINITION_OF_DONE",
+      "rule_content": "Definition of Done:\n- Builds and runs main executables without critical errors.\n- PhysX DLLs present; shaders/assets resolve via ASSET_DIR.\n- No GL errors; warnings triaged.\n- Notes updated; next steps proposed."
+    }
+  ]
+}

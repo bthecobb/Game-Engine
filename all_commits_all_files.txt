@@ -1,0 +1,181 @@
+﻿=== COMMIT 2bb16162f211a34100e0478ba57a4ec7f7420ea8 ===
+=== COMMIT 9ef566eca0ed5f70b4c5a7c7187528cbfde83c42 ===
+=== COMMIT 2797fd86bd682a45c9686c37475d9797f02822a9 ===
+CMakeLists.txt
+=== COMMIT 1491a06d8c45c084b9dcd429ac534f9602024d03 ===
+CMakeLists.txt
+=== COMMIT 689b922835f655b17e82ae4e6411cb74ffddd028 ===
+CMakeLists.txt
+=== COMMIT fa85923a2fc0d1c3757577ea2fb27a06db2aa9d8 ===
+.github/workflows/cpp-tests.yml
+=== COMMIT b4115c5ab5bb7639b0e16392fb7fffd40ab5aba1 ===
+.github/workflows/cpp-tests.yml
+=== COMMIT 095a0946cf4402490b10ba0788942f58d0d5abd6 ===
+.github/workflows/cpp-tests.yml
+=== COMMIT 3bc8eecb2a2a28629e2204ba1e167edaad0de250 ===
+.github/workflows/cpp-tests.yml
+CMakeLists.txt
+=== COMMIT f9138082335550215c6e1e3be906038137a76df5 ===
+.github/workflows/cpp-tests.yml
+=== COMMIT 87cad175102ecb6266751544e190119746479864 ===
+.github/workflows/cpp-tests.yml
+=== COMMIT c385f9c9c9484344b5311e85bca9333f5996c26f ===
+.github/workflows/cpp-tests.yml
+=== COMMIT 7f615e8a1508c46214bb02b762d557845f1dd6a1 ===
+.gitmodules
+vendor/PhysX
+=== COMMIT 9b13ecbc1b67620ffa7747816f6d5b7893497fc3 ===
+.gitmodules
+vendor/PhysX
+=== COMMIT 7b67ada6ad85c7bbf81c4182d4bc79a2e0f8fbfb ===
+.gitmodules
+vendor/PhysX
+=== COMMIT 13d0c2d12a857abae858ad10b5fd18ddb6ce761f ===
+.gitmodules
+vendor/PhysX
+=== COMMIT 6d113891b25d81638e486cfc2f4345ca92f79af2 ===
+.gitmodules
+=== COMMIT 6e43f1a257a10a9800ae0cf83860afa1c61a9283 ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT f945dfc1d6641b22fbaf4e087b29cf51c964ebe4 ===
+CMakeLists.txt
+animation/build/_deps/glm-src
+include_refactored/Rendering/Camera.h
+tests/CharacterControllerTests.cpp
+tests/Full3DGameIntegrationTests.cpp
+tests/PhysXIntegrationTests.cpp
+tests/RenderingSystemTests.cpp
+tests/TestRunner.cpp
+=== COMMIT 195ed95771c8414f085fc75c1578b8faf12c2703 ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT 4184f0cdee2e7f8738096abab83808e5697f3dba ===
+CMakeLists.txt
+tests/OrbitCameraTests.cpp
+=== COMMIT a98f44c14b57eb30dfadcc0c98a0db3c4074f9f2 ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+CMakeLists.txt
+=== COMMIT 11ea79ca4febeff95f851f41c3a11b59c36deabd ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT 794bcd47e82f13d8acf2d978811a1e450a7e2503 ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+CMakeLists.txt
+cmake/external_dependencies.cmake
+=== COMMIT f531b2fa1d491e0d98737e6fa303782d73d6612c ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT 735cc403262f366aa811d53a4c65bfd4a8299a2c ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+CMakeLists.txt
+=== COMMIT f83d0fe51a01ff3f51afbc6e98aea6ae89efc4c4 ===
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT c3ce1c61c421d6c35febbbd22325bf2b11c279dd ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+CMakeLists.txt
+=== COMMIT 49b7f98d615a8e40ed387b036f15e4b6a61ca67d ===
+.github/workflows/ci.yml
+.github/workflows/cpp-tests.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT 83c31045594d91538cd18edbd709850fe3a25f6d ===
+.github/workflows/ci.yml
+=== COMMIT cf50595d87e0439b4fa87f0d5396ca598c63941c ===
+.github/workflows/ci.yml
+=== COMMIT c7561d2bf75227d1e0de6f93b981f2f8eeb0e0db ===
+.github/workflows/ci.yml
+animation/CMakeLists.txt
+scripts/setup_dependencies.ps1
+=== COMMIT e157de83f9082af572b891f420df198e5d08d4e5 ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+cmake/external_dependencies.cmake
+=== COMMIT 1f20e708265286b3de4893726ba5ef24c5e569a1 ===
+.github/workflows/ci.yml
+.gitmodules
+cmake/external_dependencies.cmake
+=== COMMIT cb8838578477cead3eb9bda9e6eb8127fc0112e8 ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT b24d066029efd36af0301e6b3ea58ac80e35512f ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+=== COMMIT d3a93b9a265fc69410ea4c7291e38ddd406c5c80 ===
+.github/workflows/ci.yml
+.github/workflows/rendering-tests.yml
+.sonarcloud/cuda-rules.json
+scripts/verify_ci_setup.ps1
+sonar-project.properties
+=== COMMIT eac0937bde264733c47a7bb221202998ecb9cb15 ===
+vendor/PhysX
+=== COMMIT 48fd1af7c0abcdb57528d78e34cced60c1cd89b8 ===
+AAA_Development_Pipeline/IMPLEMENTATION_ROADMAP.md
+CMakeLists.txt
+CTestTestfile.cmake
+DEBUG_BUILD_SUMMARY.md
+DEV_LOG_backup.md
+DiagnosticsSystem_debug.o
+PUSH_INSTRUCTIONS.md
+RENDERING_FIXES_SUMMARY.md
+WARP.md
+assets/shaders/debug_texture.vert
+build_clang/TestRunner.dir/Debug/TestRunner.exe.recipe
+build_clang/x64/Debug/ZERO_CHECK/ZERO_CHECK.recipe
+build_debug_clang.ps1
+debug_build.ps1
+debug_build/DiagnosticsSystem.o
+debug_build_clean.ps1
+diagnostic_errors.txt
+diagnostic_output.txt
+diagnostic_output2.txt
+include_refactored/Animation/AnimationResources.h
+include_refactored/Core/Coordinator.h
+include_refactored/Core/Logger.h
+include_refactored/Core/System.h
+include_refactored/Core/SystemManager.h
+include_refactored/Debug/DebugRenderer.h
+include_refactored/Debug/DiagnosticsSystem.h
+include_refactored/Debug/OpenGLDebugRenderer.h
+include_refactored/Gameplay/CharacterControllerSystem.h
+include_refactored/Gameplay/PlayerMovementSystem.h
+include_refactored/Physics/CharacterController.h
+include_refactored/Physics/PhysXPhysicsSystem.h
+include_refactored/Physics/PhysicsComponents.h
+include_refactored/Physics/WallRunningSystem.h
+include_refactored/Rendering/MultiLightSystem.h
+include_refactored/Rendering/RenderDebugSystem.h
+include_refactored/Rendering/RenderSystem.h
+scripts/run_tests.ps1
+src/Debug/DiagnosticsSystem.cpp
+src_refactored/Core/Logger.cpp
+src_refactored/Debug/OpenGLDebugRenderer.cpp
+src_refactored/EnhancedGameMain_Full3D.cpp
+src_refactored/Fixes/BugFixes.cpp
+src_refactored/Gameplay/CharacterControllerSystem.cpp
+src_refactored/Gameplay/PlayerMovementSystem.cpp
+src_refactored/Gameplay/PlayerMovementSystem_PhysXFixed.cpp
+src_refactored/Gameplay/PlayerMovementSystem_backup.cpp
+src_refactored/Gameplay/PlayerTag.h
+src_refactored/Physics/PhysXPhysicsSystem.cpp
+src_refactored/Physics/WallRunningSystem.cpp
+src_refactored/PhysicsTestMain.cpp
+src_refactored/Rendering/Framebuffer.cpp
+src_refactored/Rendering/Mesh.cpp
+src_refactored/Rendering/MultiLightSystem.cpp
+src_refactored/Rendering/RenderDebugSystem.cpp
+src_refactored/Rendering/RenderSystem.cpp
+tests/PhysXIntegrationTests.cpp
+x64/Debug/ZERO_CHECK/ZERO_CHECK.recipe
+=== COMMIT ced142fa9a11b89a81d7cd6f44ec78fd0cc3835a ===
+.github/workflows/cpp-tests.yml
+QA_PORTFOLIO.md
+README.md

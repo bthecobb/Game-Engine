@@ -1,0 +1,20 @@
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/g-truc/glm.git
+    branch = master
+
+[submodule "external/vulkan"]
+    path = external/vulkan
+    url = https://github.com/KhronosGroup/Vulkan-Headers.git
+    branch = main
+
+[submodule "external/glfw"]
+    path = external/glfw
+    url = https://github.com/glfw/glfw.git
+    branch = master
+
+[submodule "vendor/PhysX"]
+    path = vendor/PhysX
+    url = https://github.com/NVIDIA-Omniverse/PhysX.git
+    branch = main
+    shallow = true
