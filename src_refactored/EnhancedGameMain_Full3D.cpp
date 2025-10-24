@@ -397,7 +397,10 @@ int main() {
     renderSignature.set(coordinator.GetComponentType<Rendering::MeshComponent>());
     coordinator.SetSystemSignature<Rendering::RenderSystem>(renderSignature);
 
+    // PhysX system processes all entities with ColliderComponent
+    // RigidbodyComponent is optional - entities without it become static actors
     Core::Signature physicsSignature;
+    physicsSignature.set(coordinator.GetComponentType<Physics::ColliderComponent>());
     coordinator.SetSystemSignature<Physics::PhysXPhysicsSystem>(physicsSignature);
     
     Core::Signature wallRunSignature;
@@ -494,6 +497,9 @@ int main() {
     Physics::RigidbodyComponent playerRigidbody;
     playerRigidbody.mass = 80.0f;
     playerRigidbody.isKinematic = false; // Start in dynamic mode for immediate control
+    playerRigidbody.velocity = glm::vec3(0.0f, 0.0f, 0.0f); // Explicitly zero initial velocity
+    playerRigidbody.acceleration = glm::vec3(0.0f, 0.0f, 0.0f); // Zero acceleration
+    playerRigidbody.forceAccumulator = glm::vec3(0.0f, 0.0f, 0.0f); // Zero forces
     coordinator.AddComponent(player, playerRigidbody);
     
     Physics::ColliderComponent playerCollider;

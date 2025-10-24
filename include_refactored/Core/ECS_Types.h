@@ -8,7 +8,7 @@ namespace Core {
 
 // Defines an entity as a simple ID. The entity itself holds no data.
 using Entity = std::uint32_t;
-const Entity MAX_ENTITIES = 5000;
+const Entity MAX_ENTITIES = 100000;  // Increased for AAA-scale entity counts
 
 // Defines a component type ID.
 using ComponentType = std::uint8_t;

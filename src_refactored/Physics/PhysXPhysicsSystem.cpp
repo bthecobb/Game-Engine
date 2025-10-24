@@ -34,7 +34,8 @@ bool PhysXPhysicsSystem::Initialize() {
     }
 
     m_pxDispatcher = physx::PxDefaultCpuDispatcherCreate(2);
-    m_pxDefaultMaterial = m_pxPhysics->createMaterial(0.5f, 0.5f, 0.6f);
+    // Create material with: staticFriction=0.5, dynamicFriction=0.5, restitution=0.0 (no bounce)
+    m_pxDefaultMaterial = m_pxPhysics->createMaterial(0.5f, 0.5f, 0.0f);
 
     physx::PxSceneDesc sceneDesc(m_pxPhysics->getTolerancesScale());
     sceneDesc.gravity = physx::PxVec3(0.0f, -9.81f, 0.0f);
@@ -108,11 +109,41 @@ void PhysXPhysicsSystem::Update(float deltaTime) {
             if (actor->is<physx::PxRigidDynamic>() && !rigidbody.isKinematic) {
                 physx::PxRigidDynamic* dynamicActor = static_cast<physx::PxRigidDynamic*>(actor);
                 
-                // Sync transform position to PhysX (respect game logic updates)
-                SyncTransformToPhysX(entity, actor);
+                // Don't sync transform constantly - only on teleport/override
+                // PhysX should be the source of truth for position
                 
-                // Apply velocities
-                dynamicActor->setLinearVelocity(physx::PxVec3(rigidbody.velocity.x, rigidbody.velocity.y, rigidbody.velocity.z));
+                // Apply velocity from game logic
+                // Only set horizontal velocity, let PhysX handle vertical through collision
+                const physx::PxVec3& currentVel = dynamicActor->getLinearVelocity();
+                
+                // Sanitize velocities to prevent NaN and runaway values
+                float velX = rigidbody.velocity.x;
+                float velZ = rigidbody.velocity.z;
+                if (std::isnan(velX) || std::isnan(velZ) || std::abs(velX) > 1000.0f || std::abs(velZ) > 1000.0f) {
+                    std::cout << "[WARNING] Invalid velocity detected: (" << velX << ", " << velZ << "). Clamping to zero." << std::endl;
+                    velX = 0.0f;
+                    velZ = 0.0f;
+                    rigidbody.velocity.x = 0.0f;
+                    rigidbody.velocity.z = 0.0f;
+                }
+                
+                dynamicActor->setLinearVelocity(physx::PxVec3(
+                    velX, 
+                    currentVel.y,  // Keep PhysX's vertical velocity to avoid fighting collision response
+                    velZ
+                ));
+                
+                // Apply accumulated forces AFTER velocity (these will modify velocity via simulation)
+                // Use IMPULSE mode for immediate velocity change (better for jumps)
+                if (glm::length(rigidbody.forceAccumulator) > 0.0001f) {
+                    dynamicActor->addForce(physx::PxVec3(
+                        rigidbody.forceAccumulator.x,
+                        rigidbody.forceAccumulator.y,
+                        rigidbody.forceAccumulator.z
+                    ), physx::PxForceMode::eIMPULSE);
+                    // Clear accumulator after applying
+                    rigidbody.clearAccumulator();
+                }
             }
         }
     }
@@ -149,9 +180,11 @@ void PhysXPhysicsSystem::Update(float deltaTime) {
                     // Physics simulation results take priority
                     SyncTransformFromPhysX(entity, actor);
                     
-                    // Update velocities from simulation
+                    // Only sync vertical velocity from PhysX to preserve collision response
+                    // Horizontal velocity is controlled by game logic
                     const physx::PxVec3& vel = dynamicActor->getLinearVelocity();
-                    rigidbody.velocity = glm::vec3(vel.x, vel.y, vel.z);
+                    rigidbody.velocity.y = vel.y;  // Only Y component from PhysX
+                    // X and Z remain as set by game logic
                 }
             }
         }
@@ -235,6 +268,23 @@ void PhysXPhysicsSystem::SyncTransformFromPhysX(Core::Entity entity, physx::PxRi
                       << ") | PhysX actor position: (" 
                       << pxTransform.p.x << ", " << pxTransform.p.y << ", " << pxTransform.p.z << ")" 
                       << std::endl;
+        }
+        
+        // Clamp position to reasonable bounds to prevent runaway values
+        const float MAX_POS = 10000.0f;
+        if (std::abs(newPosition.x) > MAX_POS || std::abs(newPosition.y) > MAX_POS || std::abs(newPosition.z) > MAX_POS ||
+            std::isnan(newPosition.x) || std::isnan(newPosition.y) || std::isnan(newPosition.z)) {
+            std::cout << "[WARNING] Entity " << entity << " position out of bounds: (" 
+                      << newPosition.x << ", " << newPosition.y << ", " << newPosition.z 
+                      << "). Resetting to origin." << std::endl;
+            newPosition = glm::vec3(0.0f, 2.0f, 0.0f);
+            // Force reset the PhysX actor position
+            physx::PxTransform resetTransform(0.0f, 2.0f, 0.0f);
+            actor->setGlobalPose(resetTransform);
+            // Zero out velocity if it's a dynamic actor
+            if (actor->is<physx::PxRigidDynamic>()) {
+                static_cast<physx::PxRigidDynamic*>(actor)->setLinearVelocity(physx::PxVec3(0.0f, 0.0f, 0.0f));
+            }
         }
         
         transform.position = newPosition;

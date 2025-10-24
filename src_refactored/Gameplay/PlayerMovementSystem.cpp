@@ -31,6 +31,10 @@ void PlayerMovementSystem::Update(float deltaTime) {
         // Store previous position for debugging
         glm::vec3 previousPosition = transform.position;
         
+        // Sync vertical velocity from rigidbody (which gets it from PhysX collision response)
+        // This preserves PhysX's collision handling for Y while game logic controls X/Z
+        movement.velocity.y = rigidbody.velocity.y;
+        
         // Only process input and physics if not kinematic (kinematic = scripted/external control)
         if (!rigidbody.isKinematic) {
             HandleInput(entity, input, movement, deltaTime);
@@ -40,12 +44,19 @@ void PlayerMovementSystem::Update(float deltaTime) {
             ApplyGravity(movement, rigidbody, deltaTime);
             CheckGrounding(entity, movement);
             
-            // IMPORTANT: Temporarily re-enabling direct position updates
-            // since PhysX integration appears to have issues
-            // TODO: Fix PhysX velocity application and re-disable this
-            transform.position += movement.velocity * deltaTime; // TEMP FIX
+            // PhysX handles position updates via velocity integration
+            // DO NOT manually update position here or it causes double-update explosion
             
-            std::cout << "[PlayerMovement] [DYNAMIC] Entity " << entity 
+            // Clamp position to prevent runaway (safety check)
+            const float MAX_POSITION = 10000.0f;
+            if (glm::length(transform.position) > MAX_POSITION) {
+                transform.position = glm::normalize(transform.position) * MAX_POSITION;
+                movement.velocity = glm::vec3(0.0f);
+                rigidbody.velocity = glm::vec3(0.0f);
+                std::cout << "[PlayerMovement] WARNING: Position clamped to prevent explosion!" << std::endl;
+            }
+            
+            std::cout << "[PlayerMovement] [DYNAMIC] Entity " << entity
                       << " moved from (" << previousPosition.x << ", " << previousPosition.y << ", " << previousPosition.z << ")"
                       << " to (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
                       << " Vel: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")"
@@ -141,7 +152,16 @@ void PlayerMovementSystem::UpdateMovement(Core::Entity entity, PlayerMovementCom
     }
     
     // Apply velocity to rigidbody
-    rigidbody.velocity = movement.velocity;
+    // Only set horizontal velocity - let PhysX handle vertical velocity from collisions
+    // When grounded, don't override if velocity is zero to avoid feedback loop with collision response
+    if (!movement.isGrounded || glm::length(glm::vec2(movement.velocity.x, movement.velocity.z)) > 0.01f) {
+        rigidbody.velocity.x = movement.velocity.x;
+        rigidbody.velocity.z = movement.velocity.z;
+    }
+    // Only set vertical velocity when actively changing it (jumping, etc)
+    if (!movement.isGrounded) {
+        rigidbody.velocity.y = movement.velocity.y;
+    }
 }
 
 void PlayerMovementSystem::UpdateWallRunning(Core::Entity entity, PlayerMovementComponent& movement, 
@@ -190,9 +210,12 @@ void PlayerMovementSystem::UpdateDashing(Core::Entity entity, PlayerMovementComp
 }
 
 void PlayerMovementSystem::ApplyGravity(PlayerMovementComponent& movement, Physics::RigidbodyComponent& rigidbody, float deltaTime) {
+    // Only apply gravity when in air - let PhysX handle ground collision
     if (!movement.isGrounded && !movement.isWallRunning) {
         movement.velocity.y -= movement.gravity * deltaTime;
     }
+    // When grounded, don't modify Y velocity - let PhysX collision response handle it
+    // Rigidbody.velocity.y will be synced from PhysX each frame
 }
 
 void PlayerMovementSystem::CheckGrounding(Core::Entity entity, PlayerMovementComponent& movement) {
@@ -200,11 +223,20 @@ void PlayerMovementSystem::CheckGrounding(Core::Entity entity, PlayerMovementCom
     auto& coordinator = Core::Coordinator::GetInstance();
     auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
     
-    // Check if player is close to ground level (simplified)
-    if (transform.position.y <= 0.1f && movement.velocity.y <= 0.0f) {
+    // Ground calculations:
+    // - Ground center: y = -1.0, scale.y = 1.0, halfExtent = 0.5
+    // - Ground top surface: y = -1.0 + 0.5 = -0.5
+    // - Player collider: size = (0.8, 1.8, 0.8), halfExtent.y = 0.9
+    // - Player center when standing on ground: y = -0.5 + 0.9 = 0.4
+    const float GROUND_LEVEL = 0.4f;  // Player center position when standing on ground
+    const float GROUND_THRESHOLD = 0.3f;  // Tolerance for grounding
+    
+    // Check if player is on or near ground and falling/stopped
+    // Let PhysX handle ALL collision response including velocity - we just track grounded state
+    if (transform.position.y <= GROUND_LEVEL + GROUND_THRESHOLD && movement.velocity.y <= 0.1f) {
         movement.isGrounded = true;
-        movement.velocity.y = 0.0f;
-        transform.position.y = 0.0f;
+        // DON'T manually set velocity - PhysX collision will handle stopping
+        // DON'T manually set position - PhysX collision will handle positioning
     } else {
         movement.isGrounded = false;
     }

@@ -83,10 +83,12 @@ void OpenGLDebugRenderer::DrawPath(const glm::vec3& start, const glm::vec3& dire
 }
 
 void OpenGLDebugRenderer::DrawText3D(const glm::vec3& position, const std::string& text, const glm::vec3& color) {
+    (void)position; (void)text; (void)color; // Unused parameters
     // TODO: Implement 3D text rendering
 }
 
 void OpenGLDebugRenderer::DrawText2D(const glm::vec2& screenPosition, const std::string& text, const glm::vec3& color) {
+    (void)screenPosition; (void)text; (void)color; // Unused parameters
     // TODO: Implement 2D text rendering
 }
 

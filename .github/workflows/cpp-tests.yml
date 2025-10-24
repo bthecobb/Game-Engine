@@ -161,6 +161,9 @@ jobs:
           -DBUILD_TESTING=ON `
           -DENABLE_WARNINGS=ON `
           -DENABLE_CUDA=OFF `
+          -DENABLE_PHYSX=ON `
+          -DENABLE_RENDER_TESTS=OFF `
+          -DPHYSX_ROOT_DIR="${{github.workspace}}/vendor/PhysX-107.0-physx-5.6.0/physx" `
           -DCUDAToolkit_ROOT=$Env:CUDA_PATH
     
     - name: Configure CMake (Linux)
@@ -188,12 +191,17 @@ jobs:
         echo "Checking for built executables..."
         if [ "$RUNNER_OS" == "Windows" ]; then
           ls -la build/${{ matrix.build_type }}/*.exe || echo "Warning: No executables found"
-          # Copy PhysX DLLs to test executable directory
-          echo "Copying PhysX DLLs..."
-          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysX_64.dll build/${{ matrix.build_type }}/
-          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCommon_64.dll build/${{ matrix.build_type }}/
-          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXFoundation_64.dll build/${{ matrix.build_type }}/
-          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCooking_64.dll build/${{ matrix.build_type }}/
+          # Copy PhysX DLLs from the configured SDK (5.6.0)
+          echo "Copying PhysX DLLs from vendored SDK..."
+          PHYSX_DLL_SRC="vendor/PhysX-107.0-physx-5.6.0/physx/bin/win.x86_64.vc142.md/release"
+          if [ -d "$PHYSX_DLL_SRC" ]; then
+            cp "$PHYSX_DLL_SRC"/PhysX_64.dll build/${{ matrix.build_type }}/ || echo "Warning: PhysX DLL copy failed"
+            cp "$PHYSX_DLL_SRC"/PhysXCommon_64.dll build/${{ matrix.build_type }}/ || echo "Warning: PhysXCommon DLL copy failed"
+            cp "$PHYSX_DLL_SRC"/PhysXFoundation_64.dll build/${{ matrix.build_type }}/ || echo "Warning: PhysXFoundation DLL copy failed"
+            cp "$PHYSX_DLL_SRC"/PhysXCooking_64.dll build/${{ matrix.build_type }}/ || echo "Warning: PhysXCooking DLL copy failed"
+          else
+            echo "Warning: PhysX DLL source not found at $PHYSX_DLL_SRC"
+          fi
           ls -la build/${{ matrix.build_type }}/*.dll
         else
           ls -la build/ || echo "Warning: Build directory empty"

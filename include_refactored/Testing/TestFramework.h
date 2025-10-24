@@ -82,7 +82,7 @@ private:
 
 #define ASSERT_EQ(expected, actual) \
     if ((expected) != (actual)) { \
-        throw std::runtime_error("Assertion failed: expected " + std::to_string(expected) + ", got " + std::to_string(actual)); \
+        throw std::runtime_error("Assertion failed: " #expected " != " #actual); \
     }
 
 #define ASSERT_NE(expected, actual) \
@@ -93,6 +93,26 @@ private:
 #define ASSERT_NEAR(expected, actual, tolerance) \
     if (std::abs((expected) - (actual)) > (tolerance)) { \
         throw std::runtime_error("Assertion failed: values not within tolerance"); \
+    }
+
+#define ASSERT_LT(a, b) \
+    if (!((a) < (b))) { \
+        throw std::runtime_error("Assertion failed: " #a " < " #b); \
+    }
+
+#define ASSERT_GT(a, b) \
+    if (!((a) > (b))) { \
+        throw std::runtime_error("Assertion failed: " #a " > " #b); \
+    }
+
+#define ASSERT_LE(a, b) \
+    if (!((a) <= (b))) { \
+        throw std::runtime_error("Assertion failed: " #a " <= " #b); \
+    }
+
+#define ASSERT_GE(a, b) \
+    if (!((a) >= (b))) { \
+        throw std::runtime_error("Assertion failed: " #a " >= " #b); \
     }
 
 #define ASSERT_NULL(ptr) \

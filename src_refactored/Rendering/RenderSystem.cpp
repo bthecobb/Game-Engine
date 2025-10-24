@@ -6,7 +6,6 @@
 #include "Rendering/Mesh.h"
 #include "Gameplay/PlayerMovementSystem.h"
 #include "Gameplay/PlayerComponents.h"
-#include "../../include/Player.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -190,7 +189,11 @@ void RenderSystem::Render() {
         
         // Bind G-buffer as read framebuffer and default as draw framebuffer
         glBindFramebuffer(GL_READ_FRAMEBUFFER, m_gBuffer->GetFBO());
+        // For depth-only blit, some drivers require the read buffer to be NONE
+        glReadBuffer(GL_NONE);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        // Ensure we target the back buffer for the draw framebuffer
+        glDrawBuffer(GL_BACK);
         
         // Blit depth buffer from G-buffer to default framebuffer
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
@@ -594,74 +597,6 @@ void RenderSystem::CycleDebugMode() {
               << "\",\"timestamp\":" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() << "} }" << std::endl;
     
     std::cout << "[RenderSystem] Debug mode switched to: " << debugModeNames[m_debugMode] << std::endl;
-}
-
-
-void RenderSystem::RenderSimpleCharacter(const Player* player, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix) {
-    if (!player) return;
-
-    // For now, render player as a simple colored cube at player position
-    // This is a temporary implementation until we integrate the full character rendering
-    
-    // Use the geometry pass shader for simple rendering
-    if (!m_geometryPassShader) return;
-    
-    m_geometryPassShader->Use();
-    
-    // Set matrices
-    m_geometryPassShader->SetMat4("view", viewMatrix);
-    m_geometryPassShader->SetMat4("projection", projectionMatrix);
-    
-    // Create model matrix from player position
-    glm::mat4 modelMatrix = glm::mat4(1.0f);
-    glm::vec3 playerPos = player->getPosition();
-    modelMatrix = glm::translate(modelMatrix, playerPos);
-    
-    // Make the player cube slightly larger and different color
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(1.2f));
-    
-    m_geometryPassShader->SetMat4("model", modelMatrix);
-    
-    // Set normal matrix
-    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
-    m_geometryPassShader->SetMat3("normalMatrix", normalMatrix);
-    
-    // Set light space matrix
-    m_geometryPassShader->SetMat4("lightSpaceMatrix", m_lightSpaceMatrix);
-    
-    // Bind dummy textures
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-    m_geometryPassShader->SetInt("albedoMap", 0);
-    
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-    m_geometryPassShader->SetInt("normalMap", 1);
-    
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-    m_geometryPassShader->SetInt("metallicMap", 2);
-    
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-    m_geometryPassShader->SetInt("roughnessMap", 3);
-    
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-    m_geometryPassShader->SetInt("aoMap", 4);
-    
-    // Set player material - bright color to distinguish from other objects
-    glm::vec3 playerColor = glm::vec3(0.2f, 0.8f, 0.3f); // Green for visibility
-    m_geometryPassShader->SetVec3("albedo", playerColor);
-    m_geometryPassShader->SetFloat("metallic", 0.2f);
-    m_geometryPassShader->SetFloat("roughness", 0.8f);
-    m_geometryPassShader->SetFloat("ao", 1.0f);
-    
-    // Render the cube
-    RenderSimpleCube();
-    
-    // Log the character draw call
-    LogDrawCall("CharacterRender", 1, m_cubeVAO, "GL_TRIANGLES", 36);
 }
 
 void RenderSystem::AdjustDepthScale(float multiplier) {

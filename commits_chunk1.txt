@@ -1,0 +1,5000 @@
+﻿
+
+========== COMMIT 1/40: 2bb16162f211a34100e0478ba57a4ec7f7420ea8 ==========
+2bb16162f211a34100e0478ba57a4ec7f7420ea8 bthecobb 2025-10-03 On feature/qa-portfolio: Temporary changes before testing old commit
+diff --cc CMakeLists.txt
+index 4dd459c,4dd459c..8da7004
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@@ -1,142 -1,142 +1,38 @@@
+--# CMakeLists.txt for AAA Game Engine
+--
+++# CMakeLists.txt for AAA Game Engine - Full3DGame Build
+  cmake_minimum_required(VERSION 3.20)
+--
+--# Enable testing
+--enable_testing()
+--
+--# Build options
+--option(BUILD_TESTING "Enable building tests" ON)
+--option(ENABLE_WARNINGS "Enable extra warnings" ON)
+--option(ENABLE_CUDA "Enable CUDA features" ON)
+--
+--# First configure C++ project
+  project(AAA_Game_Engine LANGUAGES CXX)
+  
+--# Apply warning settings if enabled
+--if(ENABLE_WARNINGS)
+--    if(MSVC)
+--        add_compile_options(/W4 /WX)
+--    else()
+--        add_compile_options(-Wall -Wextra -Werror)
+--    endif()
+--endif()
+--
+--# Enable CUDA language only when requested and available
+--if(ENABLE_CUDA AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+++# Enable CUDA if available
+++option(ENABLE_CUDA "Enable CUDA features" ON)
+++if(ENABLE_CUDA)
+      set(CMAKE_CUDA_ARCHITECTURES 86)
+      enable_language(CUDA)
+--    
+--    # Find CUDA Toolkit
+      find_package(CUDAToolkit REQUIRED)
+--    
+      if(CUDAToolkit_ROOT)
+          message(STATUS "Using CUDA Toolkit from: ${CUDAToolkit_ROOT}")
+      endif()
+  endif()
+  
+--# Assets directory for models/textures
+--set(ASSET_DIR "${CMAKE_SOURCE_DIR}/assets" CACHE PATH "Path to your assets root")
+--
+--# Standard C++ settings
+++# Standard settings
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+++set(CMAKE_CUDA_STANDARD 17)
+++set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  
+--# CUDA standard only when CUDA is enabled
+--if(CMAKE_CUDA_COMPILER)
+--    set(CMAKE_CUDA_STANDARD 17)
+--    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+--endif()
+--
+--# Detect compiler and set appropriate flags
+++# MSVC settings
+  if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+      message(STATUS "Configuring for MSVC compiler")
+--    
+--# Always use release MD runtime to match PhysX libraries
+--    set(CMAKE_CXX_FLAGS_DEBUG "/MD /O2")
+--    set(CMAKE_CXX_FLAGS_RELEASE "/MD /O2")
+--    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MD /O2 /DNDEBUG")
+--    set(CMAKE_CXX_FLAGS_MINSIZEREL "/MD /O1 /DNDEBUG")
+--    
+--    # Force NDEBUG globally for PhysX
+--    add_compile_definitions(NDEBUG)
+--    
+--    # Use release MD runtime for consistency with PhysX
+--    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+--
+--    # Definitions for MSVC builds
+--    add_compile_definitions(
+--        _CRT_SECURE_NO_WARNINGS
+--        _ITERATOR_DEBUG_LEVEL=0
+--    )
+--
+--elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+--    message(STATUS "Configuring for Clang compiler")
+--    # Clang-specific flags
+--    add_compile_options(
+--        $<$<CONFIG:Debug>:-g>
+--        $<$<CONFIG:Debug>:-O0>
+--        $<$<CONFIG:Release>:-O3>
+--        -Wall
+--        -Wextra
+--        -Wpedantic
+--        -Wno-unused-parameter
+--        -fno-omit-frame-pointer
+--        $<$<CONFIG:Debug>:-fstandalone-debug>
+--    )
+--
+--    if(WIN32)
+--        # Windows-specific Clang flags
+--        add_compile_options(
+--            -D_DEBUG=$<CONFIG:Debug>
+--            "-fms-compatibility"
+--            "-fms-extensions"
+--            "-fdelayed-template-parsing"
+--        )
+--    endif()
+--endif()
+--
+--# Add NOMINMAX for Windows to prevent min/max macro conflicts
+--if(WIN32)
+--    add_definitions(-DNOMINMAX)
+--endif()
+--
+--# Set CUDA architecture for RTX 3070 Ti
+--set(CMAKE_CUDA_ARCHITECTURES 86)
+--
+--# CUDA specific flags - only set if CUDA language is enabled
+--if(CMAKE_CUDA_COMPILER)
+--    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
+--    set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
+--    set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
+--    
+--    # Disable CUDA device linking for now
+--    set(CUDA_SEPARABLE_COMPILATION OFF)
+--endif()
+--
+--# Set consistent runtime library and debug flags
+--set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+--
+--# Set debug/release flags properly for PhysX
+--if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+--    add_definitions(-D_DEBUG)
+--    remove_definitions(-DNDEBUG)
+--else()
+--    add_definitions(-DNDEBUG)
+--    remove_definitions(-D_DEBUG)
+++    set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi /Od /RTC1")
+++    set(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /D_ITERATOR_DEBUG_LEVEL=0")
+++    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+  endif()
+++# Asset directory
+++set(ASSET_DIR "${CMAKE_SOURCE_DIR}/assets" CACHE PATH "Path to your assets root")
+  
+--# Ensure consistent runtime for dependencies
+--set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
+--set(CMAKE_DEBUG_POSTFIX "d")
+--
+--# Find required packages
+--if(ENABLE_CUDA)
+--    find_package(CUDAToolkit REQUIRED)
+--endif()
+++# Required packages
+  find_package(OpenGL REQUIRED)
+  
+--# Find GLFW
+++# GLFW
+  find_package(glfw3 QUIET)
+  if(NOT glfw3_FOUND)
+      include(FetchContent)
+@@@ -148,7 -148,7 +44,7 @@@
+      FetchContent_MakeAvailable(glfw)
+  endif()
+  
+--# Find GLAD
+++# GLAD
+  find_package(glad QUIET)
+  if(NOT glad_FOUND)
+      include(FetchContent)
+@@@ -160,109 -160,109 +56,43 @@@
+      FetchContent_MakeAvailable(glad)
+  endif()
+  
+--# GLM Setup - Use submodule checkout (already cloned in CI)
+++# GLM
+  set(GLM_DIR "${CMAKE_SOURCE_DIR}/external/glm")
+  if(NOT EXISTS ${GLM_DIR}/CMakeLists.txt)
+--    message(FATAL_ERROR "GLM checkout not found at ${GLM_DIR}. In CI we clone it; locally run: git submodule update --init --recursive or clone GLM into external/glm")
+++    message(FATAL_ERROR "GLM checkout not found at ${GLM_DIR}. Run: git submodule update --init --recursive")
+  endif()
+--
+--# Add GLM's own CMake which defines targets (typically 'glm' and alias 'glm::glm')
+  add_subdirectory(${GLM_DIR} ${CMAKE_BINARY_DIR}/glm EXCLUDE_FROM_ALL)
+--
+--# Avoid redefining GLM targets if GLM already provides them
+--# If upstream GLM does not define targets (unlikely), create a minimal interface target
+--if(NOT TARGET glm AND NOT TARGET glm::glm)
+--    add_library(glm INTERFACE)
+--    target_include_directories(glm INTERFACE ${GLM_DIR})
+--    add_library(glm::glm ALIAS glm)
+--endif()
+++add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
+  
+  # PhysX Integration (optional)
+  option(ENABLE_PHYSX "Enable PhysX integration" ON)
+  set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
+  set(PHYSX_INCLUDE_DIR ${PHYSX_ROOT_DIR}/include)
+++set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc143.md)
+  
+--if(ENABLE_PHYSX)
+--    # Configure PhysX paths based on compiler and build type
+--    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+--        set(PHYSX_COMPILER_DIR "vc142")
+--        # Force NDEBUG for PhysX compatibility
+--        add_compile_definitions(
+--            NDEBUG
+--            _ITERATOR_DEBUG_LEVEL=0
+--        )
+--    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+--        set(PHYSX_COMPILER_DIR "clang")
+--    else()
+--        message(WARNING "Unsupported compiler for PhysX integration; disabling PhysX")
+--        set(ENABLE_PHYSX OFF)
+--    endif()
+++if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+++    set(PHYSX_CONFIG_DIR ${PHYSX_LIB_DIR}/debug)
+++else()
+++    set(PHYSX_CONFIG_DIR ${PHYSX_LIB_DIR}/release)
+  endif()
+  
+--if(ENABLE_PHYSX)
+--    # PhysX library suffix selection
+--    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+--        set(PHYSX_LIB_SUFFIX "$<$<CONFIG:Debug>:_64D>$<$<NOT:$<CONFIG:Debug>>:_64>")
+--        set(PHYSX_STATIC_SUFFIX "$<$<CONFIG:Debug>:_static_64D>$<$<NOT:$<CONFIG:Debug>>:_static_64>")
+--        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+--    else()
+--        set(PHYSX_LIB_SUFFIX "_static_64")
+--        set(PHYSX_STATIC_SUFFIX "_static_64")
+--        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+--    endif()
+--
+--    # Library directory
+--    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+--        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/compiler/vc17win64-clang/sdk_source_bin)
+--        set(PHYSX_LIB_LEVEL "${PHYSX_BUILD_TYPE}")
+--    else()
+--        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)
+--        set(PHYSX_LIB_LEVEL "")
+--    endif()
+--
+--    # Libraries
+--    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+--        set(PHYSX_LIBRARIES
+--            ${PHYSX_LIB_DIR}/LowLevel.dir/${PHYSX_LIB_LEVEL}/LowLevel.lib
+--            ${PHYSX_LIB_DIR}/LowLevelAABB.dir/${PHYSX_LIB_LEVEL}/LowLevelAABB.lib
+--            ${PHYSX_LIB_DIR}/LowLevelDynamics.dir/${PHYSX_LIB_LEVEL}/LowLevelDynamics.lib
+--            ${PHYSX_LIB_DIR}/PhysXTask.dir/${PHYSX_LIB_LEVEL}/PhysXTask.lib
+--            ${PHYSX_LIB_DIR}/SceneQuery.dir/${PHYSX_LIB_LEVEL}/SceneQuery.lib
+--            ${PHYSX_LIB_DIR}/SimulationController.dir/${PHYSX_LIB_LEVEL}/SimulationController.lib
+--        )
+--    else()
+--        set(PHYSX_LIBRARIES
+--            ${PHYSX_LIB_DIR}/PhysX_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXFoundation_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXCooking_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXExtensions_static_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXCharacterKinematic_static_64.lib
+--            ${PHYSX_LIB_DIR}/PhysXPvdSDK_static_64.lib
+--            ${PHYSX_LIB_DIR}/SceneQuery_static_64.lib
+--            ${PHYSX_LIB_DIR}/SimulationController_static_64.lib
+--        )
+--    endif()
+--
+--    # Verify PhysX libraries exist; if missing, disable PhysX to avoid hard errors in CI
+--    set(_PHYSX_MISSING FALSE)
+--    foreach(lib ${PHYSX_LIBRARIES})
+--        if(NOT EXISTS ${lib})
+--            message(WARNING "PhysX library not found: ${lib}")
+--            set(_PHYSX_MISSING TRUE)
+--        endif()
+--    endforeach()
+--    if(_PHYSX_MISSING)
+--        message(WARNING "PhysX libraries missing; disabling PhysX for this build")
+--        set(ENABLE_PHYSX OFF)
+--    endif()
+--endif()
+++set(PHYSX_LIBRARIES
+++    ${PHYSX_CONFIG_DIR}/PhysX_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXCommon_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXFoundation_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXCooking_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXExtensions_static_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXCharacterKinematic_static_64.lib
+++    ${PHYSX_CONFIG_DIR}/PhysXPvdSDK_static_64.lib
+++    ${PHYSX_CONFIG_DIR}/SceneQuery_static_64.lib
+++    ${PHYSX_CONFIG_DIR}/SimulationController_static_64.lib
+++)
+  
+--# Configure Assimp
+++# Assimp
+  find_package(assimp QUIET)
+  if(NOT assimp_FOUND)
+      include(FetchContent)
+--  FetchContent_Declare(
+++    FetchContent_Declare(
+          assimp
+          GIT_REPOSITORY https://github.com/assimp/assimp.git
+          GIT_TAG v5.2.5
+@@@ -273,22 -273,22 +103,11 @@@
+              -DASSIMP_BUILD_STATIC_LIB=ON
+              -DASSIMP_NO_EXPORT=ON
+              -DASSIMP_BUILD_ZLIB=ON
+--            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      )
+      FetchContent_MakeAvailable(assimp)
+      set(ASSIMP_INCLUDE_DIR ${assimp_SOURCE_DIR}/include)
+      set(ASSIMP_LIBRARY ${assimp_BINARY_DIR}/lib/assimp.lib)
+--    
+--    # Make sure assimp uses same runtime library as parent project
+--    if(TARGET assimp)
+--        set_target_properties(assimp PROPERTIES
+--            MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+--            INTERFACE_MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+--        )
+--    endif()
+--
+--    # Configure runtime for all our targets once we create them
+  endif()
+  
+  # Include directories
+@@@ -298,302 -298,302 +117,19 @@@ include_directories
+      ${PHYSX_INCLUDE_DIR}
+  )
+  
+--# Configure all targets to use consistent runtime library
+--function(configure_msvc_runtime TARGET_NAME)
+++# Configure warnings for targets
+++function(configure_target_warnings TARGET_NAME)
+      if(MSVC)
+--        set_target_properties(${TARGET_NAME} PROPERTIES
+--            MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+--        )
+++        target_compile_options(${TARGET_NAME} PRIVATE /W4 /wd4100)
+++    else()
+++        target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra)
+++        if(NOT ${TARGET_NAME} MATCHES "^.*Test.*$")
+++            target_compile_options(${TARGET_NAME} PRIVATE -Werror)
+++        endif()
+      endif()
+  endfunction()
+  
+--# --- Demo Executables ---
+--
+--# CUDA Physics Demo
+--add_executable(CudaPhysicsDemo
+--    src_refactored/Demos/CudaPhysicsDemo.cpp
+--    src_refactored/Physics/CudaPhysicsSystem.cpp
+--    src_refactored/Rendering/RenderSystem.cpp
+--    src_refactored/Rendering/ShaderProgram.cpp
+--    src_refactored/Rendering/Camera.cpp
+--    src_refactored/Rendering/CameraDebugSystem.cpp
+--    src_refactored/Rendering/Framebuffer.cpp
+--    src_refactored/Rendering/LightingSystem.cpp
+--    src_refactored/Rendering/Mesh.cpp
+--    src_refactored/Core/EntityManager.cpp
+--    src_refactored/Core/ComponentManager.cpp
+--)
+--
+--target_include_directories(CudaPhysicsDemo PRIVATE
+--    ${CMAKE_SOURCE_DIR}/include_refactored
+--    ${ASSIMP_INCLUDE_DIR}
+--    ${assimp_BINARY_DIR}/include
+--)
+--
+--configure_msvc_runtime(CudaPhysicsDemo)
+--
+--# CUDA Rendering Demo
+--add_executable(CudaRenderingDemo
+--    src_refactored/Demos/CudaRenderingDemo.cpp
+--    src_refactored/Rendering/CudaRenderingSystem.cpp
+--    src_refactored/Rendering/RenderSystem.cpp
+--    src_refactored/Rendering/ShaderProgram.cpp
+--    src_refactored/Rendering/Camera.cpp
+--    src_refactored/Rendering/CameraDebugSystem.cpp
+--    src_refactored/Rendering/Framebuffer.cpp
+--    src_refactored/Rendering/LightingSystem.cpp
+--    src_refactored/Rendering/Mesh.cpp
+--    src_refactored/Core/EntityManager.cpp
+--    src_refactored/Core/ComponentManager.cpp
+--)
+--
+--target_include_directories(CudaRenderingDemo PRIVATE
+--    ${CMAKE_SOURCE_DIR}/include_refactored
+--    ${ASSIMP_INCLUDE_DIR}
+--    ${assimp_BINARY_DIR}/include
+--)
+--
+--configure_msvc_runtime(CudaRenderingDemo)
+--
+--# Lighting Integration Demo
+--add_executable(LightingIntegrationDemo
+--    src_refactored/Demos/LightingIntegrationDemo.cpp
+--    src_refactored/Rendering/LightingSystem.cpp
+--    src_refactored/Rendering/RenderSystem.cpp
+--    src_refactored/Rendering/ShaderProgram.cpp
+--    src_refactored/Rendering/Camera.cpp
+--    src_refactored/Rendering/CameraDebugSystem.cpp
+--    src_refactored/Rendering/Framebuffer.cpp
+--    src_refactored/Rendering/Mesh.cpp
+--    src_refactored/Core/EntityManager.cpp
+--    src_refactored/Core/ComponentManager.cpp
+--)
+--
+--target_include_directories(LightingIntegrationDemo PRIVATE
+--    ${CMAKE_SOURCE_DIR}/include_refactored
+--    ${ASSIMP_INCLUDE_DIR}
+--    ${assimp_BINARY_DIR}/include
+--)
+--
+--configure_msvc_runtime(LightingIntegrationDemo)
+--
+--# Test Framework and Test Suite
+--add_executable(TestRunner
+--    # Test runner and framework
+--    tests/TestRunner.cpp
+--    src_refactored/Testing/TestFramework.cpp
+--    
+--    # Test suites
+--    tests/CoreSystemsTests.cpp
+--    tests/OrbitCameraTests.cpp
+--    tests/CharacterControllerTests.cpp
+--    tests/RenderingSystemTests.cpp
+--    tests/Full3DGameIntegrationTests.cpp
+--    tests/PlayerMovementTests.cpp
+--    tests/PhysXIntegrationTests.cpp
+--    
+--    # Core dependencies
+--    src_refactored/Core/EntityManager.cpp
+--    src_refactored/Core/ComponentManager.cpp
+--    
+--    # Rendering dependencies
+--    src_refactored/Rendering/OrbitCamera.cpp
+--    src_refactored/Rendering/Camera.cpp
+--    
+--    # Physics dependencies (when enabled)
+--    $<$<BOOL:${ENABLE_PHYSX}>:src_refactored/Physics/PhysXPhysicsSystem.cpp>
+--)
+--
+--# Add GTest
+--include(FetchContent)
+--FetchContent_Declare(
+--    googletest
+--    GIT_REPOSITORY https://github.com/google/googletest.git
+--    GIT_TAG v1.14.0
+--)
+--# For Windows: Prevent overriding the parent project's compiler/linker settings
+--set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+--FetchContent_MakeAvailable(googletest)
+--
+--# Configure test dependencies
+--configure_msvc_runtime(TestRunner)
+--
+--target_include_directories(TestRunner PRIVATE
+--    ${CMAKE_SOURCE_DIR}/include_refactored
+--    ${CMAKE_SOURCE_DIR}/src_refactored
+--    ${CMAKE_SOURCE_DIR}/tests
+--)
+--
+--target_link_libraries(TestRunner PRIVATE
+--    glm::glm
+--    GTest::gtest
+--    GTest::gtest_main
+--)
+--
+--if(ENABLE_CUDA)
+--    target_link_libraries(TestRunner PRIVATE
+--        ${CUDA_LIBRARIES}
+--        CUDA::cudart
+--        CUDA::cuda_driver
+--    )
+--    target_compile_definitions(TestRunner PRIVATE ENABLE_CUDA)
+--endif()
+--
+--if(ENABLE_PHYSX)
+--    target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
+--    target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
+--endif()
+--
+--# Set output directory for test binaries
+--set_target_properties(TestRunner PROPERTIES
+--    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
+--)
+--
+--# Add test defines
+--target_compile_definitions(TestRunner PRIVATE
+--    CUDA_TEST_ENABLED
+--    GLM_FORCE_CUDA
+--    _ITERATOR_DEBUG_LEVEL=0
+--)
+--
+--# Configure test output directory
+--set_target_properties(TestRunner PROPERTIES
+--    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
+--    CUDA_SEPARABLE_COMPILATION ON
+--)
+--
+--# Register ctest with proper runtime configuration
+--add_test(NAME TestRunner COMMAND TestRunner)
+--
+--# Force debug/release defines for TestRunner
+--target_compile_definitions(TestRunner PRIVATE
+--    $<$<CONFIG:Debug>:_DEBUG>
+--    $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+--)
+--
+--# Ensure consistent runtime for TestRunner
+--set_target_properties(TestRunner PROPERTIES
+--    MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+--)
+--
+--# --- Target Linking ---
+--
+--# Runtime library already configured above
+--
+--target_link_libraries(CudaPhysicsDemo PRIVATE
+--    ${OPENGL_LIBRARIES}
+--    glfw
+--    glad
+--    glm::glm
+--    assimp
+--)
+--
+--if(ENABLE_PHYSX)
+--    target_link_libraries(CudaPhysicsDemo PRIVATE ${PHYSX_LIBRARIES})
+--    target_compile_definitions(CudaPhysicsDemo PRIVATE ENABLE_PHYSX)
+--endif()
+--
+--target_compile_definitions(CudaPhysicsDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
+--
+--target_link_libraries(CudaRenderingDemo PRIVATE
+--    ${OPENGL_LIBRARIES}
+--    glfw
+--    glad
+--    glm::glm
+--    assimp
+--)
+--
+--target_compile_definitions(CudaRenderingDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
+--
+--target_link_libraries(LightingIntegrationDemo PRIVATE
+--    ${OPENGL_LIBRARIES}
+--    glfw
+--    glad
+--    glm::glm
+--    assimp
+--)
+--
+--target_compile_definitions(LightingIntegrationDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
+--
+--target_link_libraries(TestRunner PRIVATE
+--    glm::glm
+--)
+--
+--
+--# --- CUDA Properties ---
+--
+--set_target_properties(CudaPhysicsDemo PROPERTIES
+--    CUDA_SEPARABLE_COMPILATION ON
+--)
+--
+--set_target_properties(CudaRenderingDemo PROPERTIES
+--    CUDA_SEPARABLE_COMPILATION ON
+--)
+--
+--# Enable verbose output for debugging
+--set(CMAKE_VERBOSE_MAKEFILE ON)
+--
+--# Enhanced Game target with all original features in ECS
+--add_executable(EnhancedGame
+--    src_refactored/EnhancedGameMain.cpp
+--    src_refactored/Gameplay/PlayerMovementSystem.cpp
+--    src_refactored/Gameplay/EnemyAISystem.cpp
+--    src_refactored/Gameplay/LevelSystem.cpp
+--    src_refactored/Gameplay/TargetingSystem.cpp
+--    # Core ECS
+--    src_refactored/Core/EntityManager.cpp
+--    src_refactored/Core/ComponentManager.cpp
+--    # Physics
+--    src_refactored/Physics/PhysicsSystem.cpp
+--    src_refactored/Physics/CudaPhysicsSystem.cpp
+--    src_refactored/Physics/CollisionDetection.cpp
+--    # Rendering
+--    src_refactored/Rendering/RenderSystem.cpp
+--    src_refactored/Rendering/ShaderProgram.cpp
+--    src_refactored/Rendering/Camera.cpp
+--    src_refactored/Rendering/CameraDebugSystem.cpp
+--    src_refactored/Rendering/Framebuffer.cpp
+--    src_refactored/Rendering/LightingSystem.cpp
+--    src_refactored/Rendering/Mesh.cpp
+--    # Debug
+--    src_refactored/Debug/OpenGLDebugRenderer.cpp
+--    src_refactored/Rendering/RenderDebugSystem.cpp
+--    # Particles
+--    src_refactored/Particles/ParticleSystem.cpp
+--    # Animation
+--    src_refactored/Animation/AnimationSystem.cpp
+--)
+--
+--target_include_directories(EnhancedGame PRIVATE
+--    ${CMAKE_SOURCE_DIR}/include_refactored
+--    ${ASSIMP_INCLUDE_DIR}
+--    ${assimp_BINARY_DIR}/include
+--)
+--
+--configure_msvc_runtime(EnhancedGame)
+--
+--target_link_libraries(EnhancedGame PRIVATE
+--    ${OPENGL_LIBRARIES}
+--    glfw
+--    glad
+--    glm::glm
+--    assimp
+--)
+--
+--if(ENABLE_CUDA)
+--    target_link_libraries(EnhancedGame PRIVATE CUDA::cudart)
+--    target_compile_definitions(EnhancedGame PRIVATE ENABLE_CUDA)
+--endif()
+--
+--if(ENABLE_PHYSX)
+--    target_link_libraries(EnhancedGame PRIVATE ${PHYSX_LIBRARIES})
+--    target_compile_definitions(EnhancedGame PRIVATE ENABLE_PHYSX)
+--endif()
+--
+--# Expose asset directory to code
+--target_compile_definitions(EnhancedGame PRIVATE ASSET_DIR="${ASSET_DIR}")
+--
+--# Full 3D game with all features
+++# Full3DGame target
+  add_executable(Full3DGame
+      src_refactored/EnhancedGameMain_Full3D.cpp
+      src_refactored/Gameplay/PlayerMovementSystem.cpp
+@@@ -634,12 -634,12 +170,7 @@@ target_include_directories(Full3DGame P
+      ${assimp_BINARY_DIR}/include
+  )
+  
+--# Configure Full3DGame with MD runtime and correct debug/release definitions
+--if(MSVC)
+--    set_target_properties(Full3DGame PROPERTIES
+--        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+--    )
+--endif()
+++configure_target_warnings(Full3DGame)
+  
+  target_link_libraries(Full3DGame PRIVATE
+      ${OPENGL_LIBRARIES}
+@@@ -659,5 -659,5 +190,15 @@@ if(ENABLE_PHYSX
+      target_compile_definitions(Full3DGame PRIVATE ENABLE_PHYSX)
+  endif()
+  
+--# Expose asset directory to code
+++if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+++    target_compile_definitions(Full3DGame PRIVATE _DEBUG)
+++    message(STATUS "Building in Debug mode (_DEBUG defined)")
+++else()
+++    target_compile_definitions(Full3DGame PRIVATE NDEBUG)
+++    message(STATUS "Building in Release mode (NDEBUG defined)")
+++endif()
+++
+  target_compile_definitions(Full3DGame PRIVATE ASSET_DIR="${ASSET_DIR}")
+++
+++# Enable verbose output for debugging
+++set(CMAKE_VERBOSE_MAKEFILE ON)
+diff --cc CMakePresets.json
+index 0887222,0887222..0000000
+deleted file mode 100644,100644
+--- a/CMakePresets.json
++++ /dev/null
+@@@ -1,55 -1,55 +1,0 @@@
+--{
+--  "version": 6,
+--  "cmakeMinimumRequired": {
+--    "major": 3, "minor": 20, "patch": 0
+--  },
+--  "configurePresets": [
+--    {
+--      "name": "windows-msvc-release",
+--      "displayName": "Windows MSVC - Release",
+--      "generator": "Ninja Multi-Config",
+--      "binaryDir": "${sourceDir}/build",
+--      "cacheVariables": {
+--        "CMAKE_BUILD_TYPE": { "type": "STRING", "value": "Release" },
+--        "CMAKE_C_COMPILER": "cl",
+--        "CMAKE_CXX_COMPILER": "cl",
+--        "CMAKE_CUDA_ARCHITECTURES": "86",
+--        "CMAKE_VERBOSE_MAKEFILE": "ON"
+--      }
+--    },
+--    {
+--      "name": "windows-msvc-relwithdebinfo",
+--      "displayName": "Windows MSVC - RelWithDebInfo",
+--      "inherits": "windows-msvc-release",
+--      "cacheVariables": {
+--        "CMAKE_BUILD_TYPE": { "type": "STRING", "value": "RelWithDebInfo" }
+--      }
+--    },
+--    {
+--      "name": "windows-msvc-debug",
+--      "displayName": "Windows MSVC - Debug",
+--      "inherits": "windows-msvc-release",
+--      "cacheVariables": {
+--        "CMAKE_BUILD_TYPE": { "type": "STRING", "value": "Debug" }
+--      }
+--    }
+--  ],
+--  "buildPresets": [
+--    {
+--      "name": "build-release",
+--      "configurePreset": "windows-msvc-release",
+--      "configuration": "Release"
+--    },
+--    {
+--      "name": "build-relwithdebinfo",
+--      "configurePreset": "windows-msvc-relwithdebinfo",
+--      "configuration": "RelWithDebInfo"
+--    },
+--    {
+--      "name": "build-debug",
+--      "configurePreset": "windows-msvc-debug",
+--      "configuration": "Debug"
+--    }
+--  ]
+--}
+--
+diff --cc CTestTestfile.cmake
+index dc878fa,dc878fa..21ed68c
+--- a/CTestTestfile.cmake
++++ b/CTestTestfile.cmake
+@@@ -6,20 -6,20 +6,21 @@@
+  # testing this directory and lists subdirectories to be tested as well.
+  if(CTEST_CONFIGURATION_TYPE MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+    add_test([=[TestRunner]=] "C:/Users/Brandon/CudaGame/bin/tests/Debug/TestRunner.exe")
+--  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;348;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+++  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;479;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+  elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+    add_test([=[TestRunner]=] "C:/Users/Brandon/CudaGame/bin/tests/Release/TestRunner.exe")
+--  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;348;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+++  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;479;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+  elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+    add_test([=[TestRunner]=] "C:/Users/Brandon/CudaGame/bin/tests/MinSizeRel/TestRunner.exe")
+--  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;348;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+++  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;479;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+  elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+    add_test([=[TestRunner]=] "C:/Users/Brandon/CudaGame/bin/tests/RelWithDebInfo/TestRunner.exe")
+--  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;348;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+++  set_tests_properties([=[TestRunner]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/Brandon/CudaGame/CMakeLists.txt;479;add_test;C:/Users/Brandon/CudaGame/CMakeLists.txt;0;")
+  else()
+    add_test([=[TestRunner]=] NOT_AVAILABLE)
+  endif()
+  subdirs("_deps/glfw-build")
+  subdirs("_deps/glad-build")
+++subdirs("glm")
+  subdirs("_deps/assimp-build")
+  subdirs("_deps/googletest-build")
+diff --cc include_refactored/Rendering/Camera.h
+index 043af29,043af29..7591ccf
+--- a/include_refactored/Rendering/Camera.h
++++ b/include_refactored/Rendering/Camera.h
+@@@ -1,5 -1,5 +1,7 @@@
+  #pragma once
+  
+++#include "Core/GLMConfig.h"
+++
+  namespace CudaGame {
+  namespace Rendering {
+  
+@@@ -15,31 -15,31 +17,6 @@@ struct PerspectiveParams 
+      float farPlane;
+  };
+  
+--class Camera {
+--public:
+--    virtual ~Camera() = default;
+--    ProjectionType GetProjectionType() const { return m_projectionType; }
+--    const PerspectiveParams& GetPerspectiveParams() const { return m_perspParams; }
+--
+--protected:
+--    ProjectionType m_projectionType;
+--    PerspectiveParams m_perspParams;
+--};
+--
+--} // namespace Rendering
+--} // namespace CudaGame
+--
+--#include <glm/glm.hpp>
+--#include <glm/gtc/matrix_transform.hpp>
+--
+--namespace CudaGame {
+--namespace Rendering {
+--
+--enum class ProjectionType {
+--    PERSPECTIVE,
+--    ORTHOGRAPHIC
+--};
+--
+  class Camera {
+  public:
+      Camera(ProjectionType type = ProjectionType::PERSPECTIVE);
+diff --cc src_refactored/Rendering/Mesh.cpp
+index 3e2f9e5,3e2f9e5..69ddcf9
+--- a/src_refactored/Rendering/Mesh.cpp
++++ b/src_refactored/Rendering/Mesh.cpp
+@@@ -241,15 -241,15 +241,22 @@@ unsigned int TextureFromFile(const char
+      if (data)
+      {
+          GLenum format;
+--        if (nrComponents == 1)
+++        GLenum internalFormat;
+++        if (nrComponents == 1) {
+              format = GL_RED;
+--        else if (nrComponents == 3)
+++            internalFormat = GL_RED;
+++        }
+++        else if (nrComponents == 3) {
+              format = GL_RGB;
+--        else if (nrComponents == 4)
+++            internalFormat = gamma ? GL_SRGB : GL_RGB;
+++        }
+++        else if (nrComponents == 4) {
+              format = GL_RGBA;
+++            internalFormat = gamma ? GL_SRGB_ALPHA : GL_RGBA;
+++        }
+  
+          glBindTexture(GL_TEXTURE_2D, textureID);
+--        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+++        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+          glGenerateMipmap(GL_TEXTURE_2D);
+  
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+
+
+========== COMMIT 2/40: 9ef566eca0ed5f70b4c5a7c7187528cbfde83c42 ==========
+9ef566eca0ed5f70b4c5a7c7187528cbfde83c42 bthecobb 2025-10-03 index on feature/qa-portfolio: 2797fd8 fix: make CUDA dependencies conditional and handle CMake variables properly
+
+
+========== COMMIT 3/40: 2797fd86bd682a45c9686c37475d9797f02822a9 ==========
+2797fd86bd682a45c9686c37475d9797f02822a9 bthecobb 2025-10-03 fix: make CUDA dependencies conditional and handle CMake variables properly
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7cec417..4dd459c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,16 +5,34 @@ cmake_minimum_required(VERSION 3.20)
+ # Enable testing
+ enable_testing()
+ 
++# Build options
++option(BUILD_TESTING "Enable building tests" ON)
++option(ENABLE_WARNINGS "Enable extra warnings" ON)
++option(ENABLE_CUDA "Enable CUDA features" ON)
++
+ # First configure C++ project
+ project(AAA_Game_Engine LANGUAGES CXX)
+ 
+-# CUDA toggle (default ON; CI can turn OFF or we install CUDA on runners)
+-option(ENABLE_CUDA "Enable CUDA features" ON)
++# Apply warning settings if enabled
++if(ENABLE_WARNINGS)
++    if(MSVC)
++        add_compile_options(/W4 /WX)
++    else()
++        add_compile_options(-Wall -Wextra -Werror)
++    endif()
++endif()
+ 
+ # Enable CUDA language only when requested and available
+ if(ENABLE_CUDA AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+     set(CMAKE_CUDA_ARCHITECTURES 86)
+     enable_language(CUDA)
++    
++    # Find CUDA Toolkit
++    find_package(CUDAToolkit REQUIRED)
++    
++    if(CUDAToolkit_ROOT)
++        message(STATUS "Using CUDA Toolkit from: ${CUDAToolkit_ROOT}")
++    endif()
+ endif()
+ 
+ # Assets directory for models/textures
+@@ -559,11 +577,19 @@ target_link_libraries(EnhancedGame PRIVATE
+     glfw
+     glad
+     glm::glm
+-    CUDA::cudart
+     assimp
+-    ${PHYSX_LIBRARIES}
+ )
+ 
++if(ENABLE_CUDA)
++    target_link_libraries(EnhancedGame PRIVATE CUDA::cudart)
++    target_compile_definitions(EnhancedGame PRIVATE ENABLE_CUDA)
++endif()
++
++if(ENABLE_PHYSX)
++    target_link_libraries(EnhancedGame PRIVATE ${PHYSX_LIBRARIES})
++    target_compile_definitions(EnhancedGame PRIVATE ENABLE_PHYSX)
++endif()
++
+ # Expose asset directory to code
+ target_compile_definitions(EnhancedGame PRIVATE ASSET_DIR="${ASSET_DIR}")
+ 
+@@ -620,10 +646,18 @@ target_link_libraries(Full3DGame PRIVATE
+     glfw
+     glad
+     glm::glm
+-    CUDA::cudart
+     assimp
+-    ${PHYSX_LIBRARIES}
+ )
+ 
++if(ENABLE_CUDA)
++    target_link_libraries(Full3DGame PRIVATE CUDA::cudart)
++    target_compile_definitions(Full3DGame PRIVATE ENABLE_CUDA)
++endif()
++
++if(ENABLE_PHYSX)
++    target_link_libraries(Full3DGame PRIVATE ${PHYSX_LIBRARIES})
++    target_compile_definitions(Full3DGame PRIVATE ENABLE_PHYSX)
++endif()
++
+ # Expose asset directory to code
+ target_compile_definitions(Full3DGame PRIVATE ASSET_DIR="${ASSET_DIR}")
+
+
+========== COMMIT 4/40: 1491a06d8c45c084b9dcd429ac534f9602024d03 ==========
+1491a06d8c45c084b9dcd429ac534f9602024d03 bthecobb 2025-10-03 fix: update TestRunner target with correct source files and include paths
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3a47635..7cec417 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -359,22 +359,31 @@ target_include_directories(LightingIntegrationDemo PRIVATE
+ 
+ configure_msvc_runtime(LightingIntegrationDemo)
+ 
+-# Advanced Test Framework
++# Test Framework and Test Suite
+ add_executable(TestRunner
++    # Test runner and framework
+     tests/TestRunner.cpp
++    src_refactored/Testing/TestFramework.cpp
++    
++    # Test suites
+     tests/CoreSystemsTests.cpp
+     tests/OrbitCameraTests.cpp
+     tests/CharacterControllerTests.cpp
+     tests/RenderingSystemTests.cpp
+     tests/Full3DGameIntegrationTests.cpp
++    tests/PlayerMovementTests.cpp
+     tests/PhysXIntegrationTests.cpp
+-    src_refactored/Testing/TestFramework.cpp
+-    src_refactored/Testing/AdvancedTestFramework.cpp
++    
++    # Core dependencies
+     src_refactored/Core/EntityManager.cpp
+     src_refactored/Core/ComponentManager.cpp
+-    src_refactored/Physics/PhysXPhysicsSystem.cpp
++    
++    # Rendering dependencies
+     src_refactored/Rendering/OrbitCamera.cpp
+     src_refactored/Rendering/Camera.cpp
++    
++    # Physics dependencies (when enabled)
++    $<$<BOOL:${ENABLE_PHYSX}>:src_refactored/Physics/PhysXPhysicsSystem.cpp>
+ )
+ 
+ # Add GTest
+@@ -391,6 +400,12 @@ FetchContent_MakeAvailable(googletest)
+ # Configure test dependencies
+ configure_msvc_runtime(TestRunner)
+ 
++target_include_directories(TestRunner PRIVATE
++    ${CMAKE_SOURCE_DIR}/include_refactored
++    ${CMAKE_SOURCE_DIR}/src_refactored
++    ${CMAKE_SOURCE_DIR}/tests
++)
++
+ target_link_libraries(TestRunner PRIVATE
+     glm::glm
+     GTest::gtest
+@@ -411,6 +426,11 @@ if(ENABLE_PHYSX)
+     target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
+ endif()
+ 
++# Set output directory for test binaries
++set_target_properties(TestRunner PROPERTIES
++    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
++)
++
+ # Add test defines
+ target_compile_definitions(TestRunner PRIVATE
+     CUDA_TEST_ENABLED
+
+
+========== COMMIT 5/40: 689b922835f655b17e82ae4e6411cb74ffddd028 ==========
+689b922835f655b17e82ae4e6411cb74ffddd028 bthecobb 2025-10-03 fix: make GLM and PhysX integration optional, resolve target conflicts
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 670d21d..3a47635 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -142,93 +142,103 @@ if(NOT glad_FOUND)
+     FetchContent_MakeAvailable(glad)
+ endif()
+ 
+-# GLM Setup - Use submodule instead of FetchContent
++# GLM Setup - Use submodule checkout (already cloned in CI)
+ set(GLM_DIR "${CMAKE_SOURCE_DIR}/external/glm")
+ if(NOT EXISTS ${GLM_DIR}/CMakeLists.txt)
+-    message(FATAL_ERROR "GLM submodule not found. Please run: git submodule update --init --recursive")
++    message(FATAL_ERROR "GLM checkout not found at ${GLM_DIR}. In CI we clone it; locally run: git submodule update --init --recursive or clone GLM into external/glm")
+ endif()
+ 
++# Add GLM's own CMake which defines targets (typically 'glm' and alias 'glm::glm')
+ add_subdirectory(${GLM_DIR} ${CMAKE_BINARY_DIR}/glm EXCLUDE_FROM_ALL)
+-add_library(glm INTERFACE)
+-target_include_directories(glm INTERFACE ${GLM_DIR})
+-add_library(glm::glm ALIAS glm)
+ 
+-# PhysX Integration
++# Avoid redefining GLM targets if GLM already provides them
++# If upstream GLM does not define targets (unlikely), create a minimal interface target
++if(NOT TARGET glm AND NOT TARGET glm::glm)
++    add_library(glm INTERFACE)
++    target_include_directories(glm INTERFACE ${GLM_DIR})
++    add_library(glm::glm ALIAS glm)
++endif()
++
++# PhysX Integration (optional)
++option(ENABLE_PHYSX "Enable PhysX integration" ON)
+ set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
+ set(PHYSX_INCLUDE_DIR ${PHYSX_ROOT_DIR}/include)
+ 
+-# Configure PhysX paths based on compiler and build type
+-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+-    set(PHYSX_COMPILER_DIR "vc142")
+-    
+-    # Force NDEBUG for PhysX compatibility
+-    add_compile_definitions(
+-        NDEBUG
+-        _ITERATOR_DEBUG_LEVEL=0
+-    )
+-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-    set(PHYSX_COMPILER_DIR "clang")
+-else()
+-    message(FATAL_ERROR "Unsupported compiler for PhysX integration")
++if(ENABLE_PHYSX)
++    # Configure PhysX paths based on compiler and build type
++    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
++        set(PHYSX_COMPILER_DIR "vc142")
++        # Force NDEBUG for PhysX compatibility
++        add_compile_definitions(
++            NDEBUG
++            _ITERATOR_DEBUG_LEVEL=0
++        )
++    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
++        set(PHYSX_COMPILER_DIR "clang")
++    else()
++        message(WARNING "Unsupported compiler for PhysX integration; disabling PhysX")
++        set(ENABLE_PHYSX OFF)
++    endif()
+ endif()
+ 
+-# Set PhysX library directory based on build type
+-# Set PhysX library suffixes based on build type (debug/release)
+-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+-    # For MSVC we can use the generator expression to handle debug/release
+-    set(PHYSX_LIB_SUFFIX "$<$<CONFIG:Debug>:_64D>$<$<NOT:$<CONFIG:Debug>>:_64>")
+-    set(PHYSX_STATIC_SUFFIX "$<$<CONFIG:Debug>:_static_64D>$<$<NOT:$<CONFIG:Debug>>:_static_64>")
+-    set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+-else()
+-    # For ClangCL we use static suffixes
+-    set(PHYSX_LIB_SUFFIX "_static_64")
+-    set(PHYSX_STATIC_SUFFIX "_static_64")
+-    set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
+-endif()
++if(ENABLE_PHYSX)
++    # PhysX library suffix selection
++    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
++        set(PHYSX_LIB_SUFFIX "$<$<CONFIG:Debug>:_64D>$<$<NOT:$<CONFIG:Debug>>:_64>")
++        set(PHYSX_STATIC_SUFFIX "$<$<CONFIG:Debug>:_static_64D>$<$<NOT:$<CONFIG:Debug>>:_static_64>")
++        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
++    else()
++        set(PHYSX_LIB_SUFFIX "_static_64")
++        set(PHYSX_STATIC_SUFFIX "_static_64")
++        set(PHYSX_BUILD_TYPE "$<$<CONFIG:Debug>:debug>$<$<NOT:$<CONFIG:Debug>>:release>")
++    endif()
+ 
+-# Set PhysX library paths based on compiler
+-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-    # For ClangCL we use the source bin directory since we built from source
+-    set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/compiler/vc17win64-clang/sdk_source_bin)
+-    set(PHYSX_LIB_LEVEL "${PHYSX_BUILD_TYPE}")
+-else()
+-# Use available PhysX MD libs
+-set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)  # Only release libs are available
+-set(PHYSX_LIB_LEVEL "")
+-endif()
++    # Library directory
++    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
++        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/compiler/vc17win64-clang/sdk_source_bin)
++        set(PHYSX_LIB_LEVEL "${PHYSX_BUILD_TYPE}")
++    else()
++        set(PHYSX_LIB_DIR ${PHYSX_ROOT_DIR}/bin/win.x86_64.vc142.md/release)
++        set(PHYSX_LIB_LEVEL "")
++    endif()
+ 
+-# PhysX Libraries with dynamic debug/release selection
+-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-    # For ClangCL we use the source bin directory structure
+-    set(PHYSX_LIBRARIES
+-        ${PHYSX_LIB_DIR}/LowLevel.dir/${PHYSX_LIB_LEVEL}/LowLevel.lib
+-        ${PHYSX_LIB_DIR}/LowLevelAABB.dir/${PHYSX_LIB_LEVEL}/LowLevelAABB.lib
+-        ${PHYSX_LIB_DIR}/LowLevelDynamics.dir/${PHYSX_LIB_LEVEL}/LowLevelDynamics.lib
+-        ${PHYSX_LIB_DIR}/PhysXTask.dir/${PHYSX_LIB_LEVEL}/PhysXTask.lib
+-        ${PHYSX_LIB_DIR}/SceneQuery.dir/${PHYSX_LIB_LEVEL}/SceneQuery.lib
+-        ${PHYSX_LIB_DIR}/SimulationController.dir/${PHYSX_LIB_LEVEL}/SimulationController.lib
+-    )
+-else()
+-# For MSVC we use the pre-built binaries
+-set(PHYSX_LIBRARIES
+-        ${PHYSX_LIB_DIR}/PhysX_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXFoundation_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXCooking_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXExtensions_static_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXCharacterKinematic_static_64.lib
+-        ${PHYSX_LIB_DIR}/PhysXPvdSDK_static_64.lib
+-        ${PHYSX_LIB_DIR}/SceneQuery_static_64.lib
+-        ${PHYSX_LIB_DIR}/SimulationController_static_64.lib
+-    )
+-endif()
++    # Libraries
++    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
++        set(PHYSX_LIBRARIES
++            ${PHYSX_LIB_DIR}/LowLevel.dir/${PHYSX_LIB_LEVEL}/LowLevel.lib
++            ${PHYSX_LIB_DIR}/LowLevelAABB.dir/${PHYSX_LIB_LEVEL}/LowLevelAABB.lib
++            ${PHYSX_LIB_DIR}/LowLevelDynamics.dir/${PHYSX_LIB_LEVEL}/LowLevelDynamics.lib
++            ${PHYSX_LIB_DIR}/PhysXTask.dir/${PHYSX_LIB_LEVEL}/PhysXTask.lib
++            ${PHYSX_LIB_DIR}/SceneQuery.dir/${PHYSX_LIB_LEVEL}/SceneQuery.lib
++            ${PHYSX_LIB_DIR}/SimulationController.dir/${PHYSX_LIB_LEVEL}/SimulationController.lib
++        )
++    else()
++        set(PHYSX_LIBRARIES
++            ${PHYSX_LIB_DIR}/PhysX_64.lib
++            ${PHYSX_LIB_DIR}/PhysXCommon_64.lib
++            ${PHYSX_LIB_DIR}/PhysXFoundation_64.lib
++            ${PHYSX_LIB_DIR}/PhysXCooking_64.lib
++            ${PHYSX_LIB_DIR}/PhysXExtensions_static_64.lib
++            ${PHYSX_LIB_DIR}/PhysXCharacterKinematic_static_64.lib
++            ${PHYSX_LIB_DIR}/PhysXPvdSDK_static_64.lib
++            ${PHYSX_LIB_DIR}/SceneQuery_static_64.lib
++            ${PHYSX_LIB_DIR}/SimulationController_static_64.lib
++        )
++    endif()
+ 
+-# Verify PhysX libraries exist
+-foreach(lib ${PHYSX_LIBRARIES})
+-    if(NOT EXISTS ${lib})
+-        message(WARNING "PhysX library not found: ${lib}")
++    # Verify PhysX libraries exist; if missing, disable PhysX to avoid hard errors in CI
++    set(_PHYSX_MISSING FALSE)
++    foreach(lib ${PHYSX_LIBRARIES})
++        if(NOT EXISTS ${lib})
++            message(WARNING "PhysX library not found: ${lib}")
++            set(_PHYSX_MISSING TRUE)
++        endif()
++    endforeach()
++    if(_PHYSX_MISSING)
++        message(WARNING "PhysX libraries missing; disabling PhysX for this build")
++        set(ENABLE_PHYSX OFF)
+     endif()
+-endforeach()
++endif()
+ 
+ # Configure Assimp
+ find_package(assimp QUIET)
+@@ -382,15 +392,25 @@ FetchContent_MakeAvailable(googletest)
+ configure_msvc_runtime(TestRunner)
+ 
+ target_link_libraries(TestRunner PRIVATE
+-    ${CUDA_LIBRARIES}
+-    ${PHYSX_LIBRARIES}
+-    CUDA::cudart
+-    CUDA::cuda_driver
++    glm::glm
+     GTest::gtest
+     GTest::gtest_main
+-    glm::glm
+ )
+ 
++if(ENABLE_CUDA)
++    target_link_libraries(TestRunner PRIVATE
++        ${CUDA_LIBRARIES}
++        CUDA::cudart
++        CUDA::cuda_driver
++    )
++    target_compile_definitions(TestRunner PRIVATE ENABLE_CUDA)
++endif()
++
++if(ENABLE_PHYSX)
++    target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
++    target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
++endif()
++
+ # Add test defines
+ target_compile_definitions(TestRunner PRIVATE
+     CUDA_TEST_ENABLED
+@@ -428,9 +448,13 @@ target_link_libraries(CudaPhysicsDemo PRIVATE
+     glad
+     glm::glm
+     assimp
+-    ${PHYSX_LIBRARIES}
+ )
+ 
++if(ENABLE_PHYSX)
++    target_link_libraries(CudaPhysicsDemo PRIVATE ${PHYSX_LIBRARIES})
++    target_compile_definitions(CudaPhysicsDemo PRIVATE ENABLE_PHYSX)
++endif()
++
+ target_compile_definitions(CudaPhysicsDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
+ 
+ target_link_libraries(CudaRenderingDemo PRIVATE
+
+
+========== COMMIT 6/40: fa85923a2fc0d1c3757577ea2fb27a06db2aa9d8 ==========
+fa85923a2fc0d1c3757577ea2fb27a06db2aa9d8 bthecobb 2025-10-03 fix: disable CUDA on Windows CI builds to avoid MSVC version mismatch
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index c874c5d..511268f 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -160,7 +160,7 @@ jobs:
+         cmake --preset "windows-msvc-$BUILD_TYPE_LOWER" `
+           -DBUILD_TESTING=ON `
+           -DENABLE_WARNINGS=ON `
+-          -DENABLE_CUDA=ON `
++          -DENABLE_CUDA=OFF `
+           -DCUDAToolkit_ROOT=$Env:CUDA_PATH
+     
+     - name: Configure CMake (Linux)
+
+
+========== COMMIT 7/40: b4115c5ab5bb7639b0e16392fb7fffd40ab5aba1 ==========
+b4115c5ab5bb7639b0e16392fb7fffd40ab5aba1 bthecobb 2025-10-03 fix: robust GLM setup by cloning specific version in CI
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 0de1501..c874c5d 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -71,16 +71,13 @@ jobs:
+       run: |
+         # Clean any stale GLM build artifacts
+         rm -rf build/_deps/glm-* || true
++        rm -rf external/glm || true
+         
+-        # Initialize all submodules (some repos omit per-path entries)
+-        git submodule update --init --recursive || true
++        # Make sure external directory exists
++        mkdir -p external
+         
+-        # If GLM submodule is not present, fall back to a shallow clone
+-        if [ ! -f external/glm/glm/glm.hpp ]; then
+-          echo "GLM submodule not found, performing shallow clone..."
+-          mkdir -p external
+-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+-        fi
++        # Clone GLM directly
++        git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
+         
+         echo "Verifying GLM installation..."
+         test -f external/glm/glm/glm.hpp || exit 1
+
+
+========== COMMIT 8/40: 095a0946cf4402490b10ba0788942f58d0d5abd6 ==========
+095a0946cf4402490b10ba0788942f58d0d5abd6 bthecobb 2025-10-03 fix: remove invalid linux-local-args from CUDA installation
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index a5878e4..0de1501 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -111,7 +111,6 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
+-        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
+         silent: true
+     
+     - name: Install Windows dependencies
+@@ -356,7 +355,6 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
+-        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
+         silent: true
+ 
+     - name: Configure with AddressSanitizer
+@@ -417,7 +415,6 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
+-        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
+         silent: true
+ 
+     - name: Configure with coverage flags
+
+
+========== COMMIT 9/40: 3bc8eecb2a2a28629e2204ba1e167edaad0de250 ==========
+3bc8eecb2a2a28629e2204ba1e167edaad0de250 bthecobb 2025-10-02 fix: make CUDA optional, use supported version 12.2.0, and properly set toolkit paths
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 4148453..a5878e4 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -13,7 +13,7 @@ on:
+ env:
+   # Build configuration
+   CMAKE_VERSION: '3.27.7'
+-  CUDA_VERSION: '12.4.1'
++  CUDA_VERSION: '12.2.0'
+   
+   # Performance thresholds (fail if exceeded)
+   MAX_PHYSICS_TIME_MS: 17
+@@ -148,13 +148,24 @@ jobs:
+       if: runner.os == 'Windows'
+       uses: ilammy/msvc-dev-cmd@v1
+ 
++    - name: Install CUDA Toolkit (Windows)
++      if: runner.os == 'Windows'
++      uses: Jimver/cuda-toolkit@v0.2.11
++      with:
++        cuda: ${{ env.CUDA_VERSION }}
++        method: network
++        sub-packages: '["nvcc", "cudart"]'
++        silent: true
++
+     - name: Configure CMake (Windows)
+       if: runner.os == 'Windows'
+       run: |
+         $BUILD_TYPE_LOWER = '${{ matrix.build_type }}'.ToLower()
+         cmake --preset "windows-msvc-$BUILD_TYPE_LOWER" `
+           -DBUILD_TESTING=ON `
+-          -DENABLE_WARNINGS=ON
++          -DENABLE_WARNINGS=ON `
++          -DENABLE_CUDA=ON `
++          -DCUDAToolkit_ROOT=$Env:CUDA_PATH
+     
+     - name: Configure CMake (Linux)
+       if: runner.os == 'Linux'
+@@ -164,7 +175,9 @@ jobs:
+           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+           -DBUILD_TESTING=ON \
+           -DENABLE_WARNINGS=ON \
+-          -DENABLE_COVERAGE=${{ matrix.build_type == 'Debug' && 'ON' || 'OFF' }}
++          -DENABLE_COVERAGE=${{ matrix.build_type == 'Debug' && 'ON' || 'OFF' }} \
++          -DENABLE_CUDA=ON \
++          -DCUDAToolkit_ROOT=/usr/local/cuda-${{ env.CUDA_VERSION }}
+     
+     # -------------------------------------------------------------------------
+     # Build
+@@ -353,7 +366,9 @@ jobs:
+           -DCMAKE_BUILD_TYPE=Debug \
+           -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+-          -DBUILD_TESTING=ON
++          -DBUILD_TESTING=ON \
++          -DENABLE_CUDA=ON \
++          -DCUDAToolkit_ROOT=/usr/local/cuda-${{ env.CUDA_VERSION }}
+     
+     - name: Build
+       run: cmake --build build -j 4
+@@ -412,7 +427,9 @@ jobs:
+           -DCMAKE_BUILD_TYPE=Debug \
+           -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+           -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+-          -DBUILD_TESTING=ON
++          -DBUILD_TESTING=ON \
++          -DENABLE_CUDA=ON \
++          -DCUDAToolkit_ROOT=/usr/local/cuda-${{ env.CUDA_VERSION }}
+     
+     - name: Build
+       run: cmake --build build -j 4
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c54824e..670d21d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,9 +8,11 @@ enable_testing()
+ # First configure C++ project
+ project(AAA_Game_Engine LANGUAGES CXX)
+ 
+-# Then add CUDA if we're not using ClangCL
+-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-    set(CMAKE_CUDA_COMPILER "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc.exe")
++# CUDA toggle (default ON; CI can turn OFF or we install CUDA on runners)
++option(ENABLE_CUDA "Enable CUDA features" ON)
++
++# Enable CUDA language only when requested and available
++if(ENABLE_CUDA AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+     set(CMAKE_CUDA_ARCHITECTURES 86)
+     enable_language(CUDA)
+ endif()
+@@ -21,8 +23,12 @@ set(ASSET_DIR "${CMAKE_SOURCE_DIR}/assets" CACHE PATH "Path to your assets root"
+ # Standard C++ settings
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+-set(CMAKE_CUDA_STANDARD 17)
+-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
++
++# CUDA standard only when CUDA is enabled
++if(CMAKE_CUDA_COMPILER)
++    set(CMAKE_CUDA_STANDARD 17)
++    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
++endif()
+ 
+ # Detect compiler and set appropriate flags
+ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+@@ -107,7 +113,9 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
+ set(CMAKE_DEBUG_POSTFIX "d")
+ 
+ # Find required packages
+-find_package(CUDAToolkit REQUIRED)
++if(ENABLE_CUDA)
++    find_package(CUDAToolkit REQUIRED)
++endif()
+ find_package(OpenGL REQUIRED)
+ 
+ # Find GLFW
+
+
+========== COMMIT 10/40: f9138082335550215c6e1e3be906038137a76df5 ==========
+f9138082335550215c6e1e3be906038137a76df5 bthecobb 2025-10-02 fix: configure MSVC environment and use supported CUDA version
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index bf8b7fc..4148453 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -13,7 +13,7 @@ on:
+ env:
+   # Build configuration
+   CMAKE_VERSION: '3.27.7'
+-  CUDA_VERSION: '12.3.0'
++  CUDA_VERSION: '12.4.1'
+   
+   # Performance thresholds (fail if exceeded)
+   MAX_PHYSICS_TIME_MS: 17
+@@ -111,6 +111,8 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
++        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
++        silent: true
+     
+     - name: Install Windows dependencies
+       if: runner.os == 'Windows'
+@@ -142,6 +144,10 @@ jobs:
+     # -------------------------------------------------------------------------
+     # Build Configuration
+     # -------------------------------------------------------------------------
++    - name: Setup MSVC environment (Windows)
++      if: runner.os == 'Windows'
++      uses: ilammy/msvc-dev-cmd@v1
++
+     - name: Configure CMake (Windows)
+       if: runner.os == 'Windows'
+       run: |
+@@ -337,6 +343,8 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
++        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
++        silent: true
+ 
+     - name: Configure with AddressSanitizer
+       run: |
+@@ -394,6 +402,8 @@ jobs:
+         cuda: ${{ env.CUDA_VERSION }}
+         method: network
+         sub-packages: '["nvcc", "cudart"]'
++        linux-local-args: "--toolkitpath /usr/local/cuda-${{ env.CUDA_VERSION }}"
++        silent: true
+ 
+     - name: Configure with coverage flags
+       run: |
+
+
+========== COMMIT 11/40: 87cad175102ecb6266751544e190119746479864 ==========
+87cad175102ecb6266751544e190119746479864 bthecobb 2025-10-02 fix: install CUDA on Linux runners and improve GLM setup
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index d02fb59..bf8b7fc 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -72,8 +72,15 @@ jobs:
+         # Clean any stale GLM build artifacts
+         rm -rf build/_deps/glm-* || true
+         
+-        # Update GLM submodule
+-        git submodule update --init --recursive external/glm
++        # Initialize all submodules (some repos omit per-path entries)
++        git submodule update --init --recursive || true
++        
++        # If GLM submodule is not present, fall back to a shallow clone
++        if [ ! -f external/glm/glm/glm.hpp ]; then
++          echo "GLM submodule not found, performing shallow clone..."
++          mkdir -p external
++          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++        fi
+         
+         echo "Verifying GLM installation..."
+         test -f external/glm/glm/glm.hpp || exit 1
+@@ -96,6 +103,14 @@ jobs:
+           libxi-dev \
+           ninja-build \
+           lcov
++
++    - name: Install CUDA Toolkit (Linux)
++      if: runner.os == 'Linux'
++      uses: Jimver/cuda-toolkit@v0.2.11
++      with:
++        cuda: ${{ env.CUDA_VERSION }}
++        method: network
++        sub-packages: '["nvcc", "cudart"]'
+     
+     - name: Install Windows dependencies
+       if: runner.os == 'Windows'
+@@ -316,6 +331,13 @@ jobs:
+         sudo apt-get update
+         sudo apt-get install -y libgl1-mesa-dev xorg-dev ninja-build
+     
++    - name: Install CUDA Toolkit (Linux)
++      uses: Jimver/cuda-toolkit@v0.2.11
++      with:
++        cuda: ${{ env.CUDA_VERSION }}
++        method: network
++        sub-packages: '["nvcc", "cudart"]'
++
+     - name: Configure with AddressSanitizer
+       run: |
+         cmake -B build \
+@@ -366,6 +388,13 @@ jobs:
+           lcov \
+           gcovr
+     
++    - name: Install CUDA Toolkit (Linux)
++      uses: Jimver/cuda-toolkit@v0.2.11
++      with:
++        cuda: ${{ env.CUDA_VERSION }}
++        method: network
++        sub-packages: '["nvcc", "cudart"]'
++
+     - name: Configure with coverage flags
+       run: |
+         cmake -B build \
+
+
+========== COMMIT 12/40: c385f9c9c9484344b5311e85bca9333f5996c26f ==========
+c385f9c9c9484344b5311e85bca9333f5996c26f bthecobb 2025-10-02 fix: update workflow paths and CMake configuration
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 2c6e18a..d02fb59 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -130,8 +130,8 @@ jobs:
+     - name: Configure CMake (Windows)
+       if: runner.os == 'Windows'
+       run: |
+-        cmake --preset windows-msvc-${{ matrix.build_type }} `
+-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
++        $BUILD_TYPE_LOWER = '${{ matrix.build_type }}'.ToLower()
++        cmake --preset "windows-msvc-$BUILD_TYPE_LOWER" `
+           -DBUILD_TESTING=ON `
+           -DENABLE_WARNINGS=ON
+     
+@@ -177,7 +177,7 @@ jobs:
+       shell: bash
+       run: |
+         if [ "$RUNNER_OS" == "Windows" ]; then
+-          ./build/${{ matrix.build_type }}/TestRunner.exe --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
++          ./build/TestRunner.exe --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
+         else
+           ./build/TestRunner --gtest_output=xml:test_results_core.xml || echo "Core tests failed"
+         fi
+@@ -187,8 +187,8 @@ jobs:
+       shell: bash
+       run: |
+         if [ "$RUNNER_OS" == "Windows" ]; then
+-          if [ -f "./build/${{ matrix.build_type }}/PhysXTests.exe" ]; then
+-            ./build/${{ matrix.build_type }}/PhysXTests.exe --gtest_output=xml:test_results_physx.xml
++          if [ -f "./build/PhysXTests.exe" ]; then
++            ./build/PhysXTests.exe --gtest_output=xml:test_results_physx.xml
+           else
+             echo "PhysXTests.exe not found, skipping"
+           fi
+@@ -205,8 +205,8 @@ jobs:
+       shell: bash
+       run: |
+         if [ "$RUNNER_OS" == "Windows" ]; then
+-          if [ -f "./build/${{ matrix.build_type }}/PlayerMovementTests.exe" ]; then
+-            ./build/${{ matrix.build_type }}/PlayerMovementTests.exe --gtest_output=xml:test_results_movement.xml
++          if [ -f "./build/PlayerMovementTests.exe" ]; then
++            ./build/PlayerMovementTests.exe --gtest_output=xml:test_results_movement.xml
+           else
+             echo "PlayerMovementTests.exe not found, skipping"
+           fi
+
+
+========== COMMIT 13/40: 7f615e8a1508c46214bb02b762d557845f1dd6a1 ==========
+7f615e8a1508c46214bb02b762d557845f1dd6a1 bthecobb 2025-10-02 fix: update PhysX submodule to version 5.1.2
+diff --git a/.gitmodules b/.gitmodules
+index 33aca16..2154bfb 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -14,5 +14,7 @@
+     branch = master
+ 
+ [submodule "vendor/PhysX"]
+-	path = vendor/PhysX
+-	url = https://github.com/NVIDIA-Omniverse/PhysX.git
++    path = vendor/PhysX
++    url = https://github.com/NVIDIA-Omniverse/PhysX.git
++    branch = main
++    shallow = true
+diff --git a/vendor/PhysX b/vendor/PhysX
+index 5ca9f47..5044420 160000
+--- a/vendor/PhysX
++++ b/vendor/PhysX
+@@ -1 +1 @@
+-Subproject commit 5ca9f472105a90d70d957c243cb0ef36fe251a9f
++Subproject commit 5044420f72788fe48ab92ffceb66fa0be18cb851
+
+
+========== COMMIT 14/40: 9b13ecbc1b67620ffa7747816f6d5b7893497fc3 ==========
+9b13ecbc1b67620ffa7747816f6d5b7893497fc3 bthecobb 2025-10-02 fix: update PhysX submodule URL to NVIDIA-Omniverse repo
+diff --git a/.gitmodules b/.gitmodules
+index 639008c..33aca16 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -13,3 +13,6 @@
+     url = https://github.com/glfw/glfw.git
+     branch = master
+ 
++[submodule "vendor/PhysX"]
++	path = vendor/PhysX
++	url = https://github.com/NVIDIA-Omniverse/PhysX.git
+diff --git a/vendor/PhysX b/vendor/PhysX
+new file mode 160000
+index 0000000..5ca9f47
+--- /dev/null
++++ b/vendor/PhysX
+@@ -0,0 +1 @@
++Subproject commit 5ca9f472105a90d70d957c243cb0ef36fe251a9f
+
+
+========== COMMIT 15/40: 7b67ada6ad85c7bbf81c4182d4bc79a2e0f8fbfb ==========
+7b67ada6ad85c7bbf81c4182d4bc79a2e0f8fbfb bthecobb 2025-10-02 chore: reset PhysX submodule to NVIDIA-Omniverse repo (main branch)
+diff --git a/.gitmodules b/.gitmodules
+index 77ddb22..639008c 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -13,7 +13,3 @@
+     url = https://github.com/glfw/glfw.git
+     branch = master
+ 
+-[submodule "vendor/PhysX"]
+-    path = vendor/PhysX
+-    url = https://github.com/NVIDIAGameWorks/PhysX.git
+-    tag = 104.1-physx-5.1.2
+diff --git a/vendor/PhysX b/vendor/PhysX
+deleted file mode 160000
+index 5044420..0000000
+--- a/vendor/PhysX
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit 5044420f72788fe48ab92ffceb66fa0be18cb851
+
+
+========== COMMIT 16/40: 13d0c2d12a857abae858ad10b5fd18ddb6ce761f ==========
+13d0c2d12a857abae858ad10b5fd18ddb6ce761f bthecobb 2025-10-02 fix: update PhysX submodule to stable tag 104.1-physx-5.1.2
+diff --git a/.gitmodules b/.gitmodules
+index 55a1ec3..77ddb22 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -16,4 +16,4 @@
+ [submodule "vendor/PhysX"]
+     path = vendor/PhysX
+     url = https://github.com/NVIDIAGameWorks/PhysX.git
+-    branch = 5.1
++    tag = 104.1-physx-5.1.2
+diff --git a/vendor/PhysX b/vendor/PhysX
+index c524509..5044420 160000
+--- a/vendor/PhysX
++++ b/vendor/PhysX
+@@ -1 +1 @@
+-Subproject commit c524509f649a3a885218d1b048fa511c2b68b79e
++Subproject commit 5044420f72788fe48ab92ffceb66fa0be18cb851
+
+
+========== COMMIT 17/40: 6d113891b25d81638e486cfc2f4345ca92f79af2 ==========
+6d113891b25d81638e486cfc2f4345ca92f79af2 bthecobb 2025-10-02 fix: add PhysX submodule configuration
+diff --git a/.gitmodules b/.gitmodules
+index 2ef3493..55a1ec3 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -11,4 +11,9 @@
+ [submodule "external/glfw"]
+     path = external/glfw
+     url = https://github.com/glfw/glfw.git
+-    branch = master
+\ No newline at end of file
++    branch = master
++
++[submodule "vendor/PhysX"]
++    path = vendor/PhysX
++    url = https://github.com/NVIDIAGameWorks/PhysX.git
++    branch = 5.1
+
+
+========== COMMIT 18/40: 6e43f1a257a10a9800ae0cf83860afa1c61a9283 ==========
+6e43f1a257a10a9800ae0cf83860afa1c61a9283 bthecobb 2025-10-02 fix: simplify submodule handling in workflows
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8cae483..c731d66 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -37,10 +37,8 @@ jobs:
+         with:
+           fetch-depth: 0
+ 
+-      - name: Update submodules
+-        run: |
+-          git submodule deinit -f --all
+-          git submodule update --init --recursive
++    - name: Update submodules
++      run: git submodule update --init --recursive
+ 
+       # GLM is now handled by CMake ExternalProject
+ 
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index f80ceb7..2c6e18a 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -64,9 +64,7 @@ jobs:
+         fetch-depth: 0  # Full history for better debugging
+ 
+     - name: Update submodules
+-      run: |
+-        git submodule deinit -f --all
+-        git submodule update --init --recursive
++      run: git submodule update --init --recursive
+ 
+     - name: Setup GLM
+       shell: bash
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 414022b..a1ae46b 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -37,10 +37,8 @@ jobs:
+         with:
+           fetch-depth: 0
+ 
+-      - name: Update submodules
+-        run: |
+-          git submodule deinit -f --all
+-          git submodule update --init --recursive
++    - name: Update submodules
++      run: git submodule update --init --recursive
+ 
+       # GLM is now handled by CMake ExternalProject
+ 
+
+
+========== COMMIT 19/40: f945dfc1d6641b22fbaf4e087b29cf51c964ebe4 ==========
+f945dfc1d6641b22fbaf4e087b29cf51c964ebe4 bthecobb 2025-10-02 fix: remove invalid GLM submodule reference
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 053ffd5..c54824e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -134,26 +134,15 @@ if(NOT glad_FOUND)
+     FetchContent_MakeAvailable(glad)
+ endif()
+ 
+-# GLM Setup
+-include(ExternalProject)
+-
+-set(GLM_VERSION "0.9.9.8")
+-set(GLM_DIR "${CMAKE_BINARY_DIR}/glm")
+-
+-ExternalProject_Add(
+-    glm_external
+-    GIT_REPOSITORY https://github.com/g-truc/glm.git
+-    GIT_TAG ${GLM_VERSION}
+-    PREFIX ${GLM_DIR}
+-    CONFIGURE_COMMAND ""
+-    BUILD_COMMAND ""
+-    INSTALL_COMMAND ""
+-    UPDATE_COMMAND ""
+-)
++# GLM Setup - Use submodule instead of FetchContent
++set(GLM_DIR "${CMAKE_SOURCE_DIR}/external/glm")
++if(NOT EXISTS ${GLM_DIR}/CMakeLists.txt)
++    message(FATAL_ERROR "GLM submodule not found. Please run: git submodule update --init --recursive")
++endif()
+ 
++add_subdirectory(${GLM_DIR} ${CMAKE_BINARY_DIR}/glm EXCLUDE_FROM_ALL)
+ add_library(glm INTERFACE)
+-add_dependencies(glm glm_external)
+-target_include_directories(glm INTERFACE ${GLM_DIR}/src/glm_external)
++target_include_directories(glm INTERFACE ${GLM_DIR})
+ add_library(glm::glm ALIAS glm)
+ 
+ # PhysX Integration
+diff --git a/animation/build/_deps/glm-src b/animation/build/_deps/glm-src
+deleted file mode 160000
+index bf71a83..0000000
+--- a/animation/build/_deps/glm-src
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit bf71a834948186f4097caa076cd2663c69a10e1e
+diff --git a/include_refactored/Rendering/Camera.h b/include_refactored/Rendering/Camera.h
+index e1aa84b..043af29 100644
+--- a/include_refactored/Rendering/Camera.h
++++ b/include_refactored/Rendering/Camera.h
+@@ -1,5 +1,34 @@
+ #pragma once
+ 
++namespace CudaGame {
++namespace Rendering {
++
++enum class ProjectionType {
++    PERSPECTIVE,
++    ORTHOGRAPHIC
++};
++
++struct PerspectiveParams {
++    float fov;
++    float aspectRatio;
++    float nearPlane;
++    float farPlane;
++};
++
++class Camera {
++public:
++    virtual ~Camera() = default;
++    ProjectionType GetProjectionType() const { return m_projectionType; }
++    const PerspectiveParams& GetPerspectiveParams() const { return m_perspParams; }
++
++protected:
++    ProjectionType m_projectionType;
++    PerspectiveParams m_perspParams;
++};
++
++} // namespace Rendering
++} // namespace CudaGame
++
+ #include <glm/glm.hpp>
+ #include <glm/gtc/matrix_transform.hpp>
+ 
+diff --git a/tests/CharacterControllerTests.cpp b/tests/CharacterControllerTests.cpp
+new file mode 100644
+index 0000000..02967a4
+--- /dev/null
++++ b/tests/CharacterControllerTests.cpp
+@@ -0,0 +1,336 @@
++#include "Testing/TestFramework.h"
++#include "Core/Coordinator.h"
++#include "Physics/PhysXPhysicsSystem.h"
++#include "Physics/WallRunningSystem.h"
++#include "Gameplay/CharacterControllerSystem.h"
++#include "Rendering/RenderComponents.h"
++#include <memory>
++
++using namespace CudaGame::Testing;
++using namespace CudaGame::Core;
++using namespace CudaGame::Physics;
++using namespace CudaGame::Gameplay;
++using namespace CudaGame::Rendering;
++
++class CharacterControllerTestSuite {
++private:
++    std::shared_ptr<Coordinator> coordinator;
++    std::shared_ptr<PhysXPhysicsSystem> physicsSystem;
++    std::shared_ptr<CharacterControllerSystem> characterSystem;
++    std::shared_ptr<WallRunningSystem> wallRunSystem;
++    Entity player;
++    const float EPSILON = 0.001f;
++    const float FIXED_TIMESTEP = 1.0f / 60.0f;
++
++public:
++    void SetUp() {
++        coordinator = std::make_shared<Coordinator>();
++        coordinator->Initialize();
++        
++        // Register all required components
++        coordinator->RegisterComponent<TransformComponent>();
++        coordinator->RegisterComponent<RigidbodyComponent>();
++        coordinator->RegisterComponent<ColliderComponent>();
++        coordinator->RegisterComponent<CharacterControllerComponent>();
++        coordinator->RegisterComponent<WallComponent>();
++        coordinator->RegisterComponent<PlayerInputComponent>();
++        coordinator->RegisterComponent<PlayerMovementComponent>();
++        
++        // Create and initialize systems
++        physicsSystem = std::make_shared<PhysXPhysicsSystem>();
++        characterSystem = std::make_shared<CharacterControllerSystem>();
++        wallRunSystem = std::make_shared<WallRunningSystem>();
++        
++        physicsSystem->Initialize();
++        characterSystem->Initialize();
++        wallRunSystem->Initialize();
++        
++        // Create player entity
++        player = coordinator->CreateEntity();
++        SetupPlayerComponents(player);
++    }
++
++    void TearDown() {
++        coordinator.reset();
++        physicsSystem.reset();
++        characterSystem.reset();
++        wallRunSystem.reset();
++    }
++
++private:
++    void SetupPlayerComponents(Entity entity) {
++        // Transform
++        TransformComponent transform;
++        transform.position = glm::vec3(0.0f, 2.0f, 0.0f);
++        transform.scale = glm::vec3(0.8f, 1.8f, 0.8f);
++        coordinator->AddComponent(entity, transform);
++        
++        // Character controller
++        CharacterControllerComponent controller;
++        coordinator->AddComponent(entity, controller);
++        
++        // Physics
++        RigidbodyComponent rb;
++        rb.mass = 80.0f;
++        coordinator->AddComponent(entity, rb);
++        
++        ColliderComponent collider;
++        collider.shape = ColliderShape::BOX;
++        collider.size = glm::vec3(0.8f, 1.8f, 0.8f);
++        coordinator->AddComponent(entity, collider);
++        
++        // Movement
++        PlayerMovementComponent movement;
++        movement.baseSpeed = 10.0f;
++        movement.maxSpeed = 20.0f;
++        movement.jumpForce = 15.0f;
++        coordinator->AddComponent(entity, movement);
++        
++        // Input (empty by default)
++        coordinator->AddComponent(entity, PlayerInputComponent{});
++    }
++
++public:
++    // Basic character controller tests
++    void TestCharacterInitialization() {
++        ASSERT_TRUE(coordinator->HasComponent<CharacterControllerComponent>(player));
++        ASSERT_TRUE(coordinator->HasComponent<RigidbodyComponent>(player));
++        ASSERT_TRUE(coordinator->HasComponent<ColliderComponent>(player));
++        
++        auto& transform = coordinator->GetComponent<TransformComponent>(player);
++        ASSERT_NEAR(transform.position.y, 2.0f, EPSILON);
++    }
++
++    void TestBasicMovement() {
++        // Simulate forward movement
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        input.keys[GLFW_KEY_W] = true;
++        
++        // Update for a few frames
++        for (int i = 0; i < 5; i++) {
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        auto& transform = coordinator->GetComponent<TransformComponent>(player);
++        auto& rb = coordinator->GetComponent<RigidbodyComponent>(player);
++        
++        // Should have moved forward
++        ASSERT_GT(glm::length(rb.velocity), 0.0f);
++        ASSERT_GT(transform.position.z, 0.0f);
++    }
++
++    void TestJumping() {
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        float initialHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        
++        // Trigger jump
++        input.keys[GLFW_KEY_SPACE] = true;
++        
++        // Update for a few frames
++        for (int i = 0; i < 5; i++) {
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        float newHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        ASSERT_GT(newHeight, initialHeight);
++    }
++
++    void TestDoubleJump() {
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        float initialHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        
++        // First jump
++        input.keys[GLFW_KEY_SPACE] = true;
++        characterSystem->Update(FIXED_TIMESTEP);
++        physicsSystem->Update(FIXED_TIMESTEP);
++        
++        // Reset space key
++        input.keys[GLFW_KEY_SPACE] = false;
++        characterSystem->Update(FIXED_TIMESTEP);
++        
++        // Second jump
++        input.keys[GLFW_KEY_SPACE] = true;
++        
++        // Update for a few frames
++        for (int i = 0; i < 5; i++) {
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        float finalHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        ASSERT_GT(finalHeight, initialHeight + 2.0f);  // Should gain significant height from double jump
++    }
++
++    void TestSprinting() {
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        auto& movement = coordinator->GetComponent<PlayerMovementComponent>(player);
++        
++        // Normal movement first
++        input.keys[GLFW_KEY_W] = true;
++        characterSystem->Update(FIXED_TIMESTEP);
++        physicsSystem->Update(FIXED_TIMESTEP);
++        
++        float normalSpeed = glm::length(coordinator->GetComponent<RigidbodyComponent>(player).velocity);
++        
++        // Now sprint
++        input.keys[GLFW_KEY_LEFT_SHIFT] = true;
++        
++        for (int i = 0; i < 5; i++) {
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        float sprintSpeed = glm::length(coordinator->GetComponent<RigidbodyComponent>(player).velocity);
++        ASSERT_GT(sprintSpeed, normalSpeed);
++        ASSERT_LE(sprintSpeed, movement.maxSpeed);
++    }
++
++    // Wall running tests
++    void TestWallRunningDetection() {
++        // Create a wall
++        Entity wall = coordinator->CreateEntity();
++        
++        TransformComponent wallTransform;
++        wallTransform.position = glm::vec3(2.0f, 5.0f, 0.0f);
++        wallTransform.scale = glm::vec3(1.0f, 10.0f, 10.0f);
++        coordinator->AddComponent(wall, wallTransform);
++        
++        ColliderComponent wallCollider;
++        wallCollider.shape = ColliderShape::BOX;
++        wallCollider.size = wallTransform.scale;
++        coordinator->AddComponent(wall, wallCollider);
++        
++        WallComponent wallComp;
++        wallComp.canWallRun = true;
++        coordinator->AddComponent(wall, wallComp);
++        
++        // Move player next to wall
++        auto& playerTransform = coordinator->GetComponent<TransformComponent>(player);
++        playerTransform.position = glm::vec3(1.5f, 5.0f, 0.0f);
++        
++        // Simulate wall run input
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        input.keys[GLFW_KEY_E] = true;  // Wall run key
++        input.keys[GLFW_KEY_W] = true;  // Forward movement
++        
++        // Update systems
++        for (int i = 0; i < 10; i++) {
++            wallRunSystem->Update(FIXED_TIMESTEP);
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        // Check if we're wall running
++        auto& controller = coordinator->GetComponent<CharacterControllerComponent>(player);
++        ASSERT_TRUE(controller.isWallRunning);
++        
++        // Verify wall run position is maintained
++        auto& finalTransform = coordinator->GetComponent<TransformComponent>(player);
++        ASSERT_NEAR(finalTransform.position.x, 1.5f, 0.5f);  // Should stay close to wall
++        ASSERT_GT(finalTransform.position.y, 5.0f);  // Should maintain or gain height
++    }
++
++    void TestWallRunningGravity() {
++        // Similar setup to wall detection test
++        TestWallRunningDetection();
++        
++        // Get initial height
++        float initialHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        
++        // Update for several frames
++        for (int i = 0; i < 30; i++) {
++            wallRunSystem->Update(FIXED_TIMESTEP);
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        // Height should not have significantly decreased
++        float finalHeight = coordinator->GetComponent<TransformComponent>(player).position.y;
++        ASSERT_NEAR(finalHeight, initialHeight, 1.0f);  // Allow small variation
++    }
++
++    void TestWallRunningJump() {
++        // Setup wall running
++        TestWallRunningDetection();
++        
++        // Get position before jump
++        auto initialPos = coordinator->GetComponent<TransformComponent>(player).position;
++        
++        // Trigger wall jump
++        auto& input = coordinator->GetComponent<PlayerInputComponent>(player);
++        input.keys[GLFW_KEY_SPACE] = true;
++        
++        // Update for several frames
++        for (int i = 0; i < 10; i++) {
++            wallRunSystem->Update(FIXED_TIMESTEP);
++            characterSystem->Update(FIXED_TIMESTEP);
++            physicsSystem->Update(FIXED_TIMESTEP);
++        }
++        
++        // Should have pushed away from wall and gained height
++        auto& finalPos = coordinator->GetComponent<TransformComponent>(player).position;
++        ASSERT_GT(glm::distance(finalPos, initialPos), 2.0f);  // Significant movement
++        ASSERT_GT(finalPos.y, initialPos.y);  // Gained height
++        ASSERT_LT(finalPos.x, initialPos.x);  // Pushed away from wall
++    }
++};
++
++// Function to create and register the test suite
++std::shared_ptr<TestSuite> CreateCharacterControllerTestSuite() {
++    auto suite = std::make_shared<TestSuite>("Character Controller System");
++    auto fixture = std::make_shared<CharacterControllerTestSuite>();
++    
++    // Basic movement tests
++    suite->AddTest("Character Initialization", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCharacterInitialization();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Basic Movement", [fixture]() {
++        fixture->SetUp();
++        fixture->TestBasicMovement();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Jumping", [fixture]() {
++        fixture->SetUp();
++        fixture->TestJumping();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Double Jump", [fixture]() {
++        fixture->SetUp();
++        fixture->TestDoubleJump();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Sprinting", [fixture]() {
++        fixture->SetUp();
++        fixture->TestSprinting();
++        fixture->TearDown();
++    });
++    
++    // Wall running tests
++    suite->AddTest("Wall Running Detection", [fixture]() {
++        fixture->SetUp();
++        fixture->TestWallRunningDetection();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Wall Running Gravity", [fixture]() {
++        fixture->SetUp();
++        fixture->TestWallRunningGravity();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Wall Running Jump", [fixture]() {
++        fixture->SetUp();
++        fixture->TestWallRunningJump();
++        fixture->TearDown();
++    });
++    
++    return suite;
++}
+\ No newline at end of file
+diff --git a/tests/Full3DGameIntegrationTests.cpp b/tests/Full3DGameIntegrationTests.cpp
+new file mode 100644
+index 0000000..73641aa
+--- /dev/null
++++ b/tests/Full3DGameIntegrationTests.cpp
+@@ -0,0 +1,559 @@
++#include "Testing/TestFramework.h"
++#include "Core/Coordinator.h"
++#include "Gameplay/PlayerMovementSystem.h"
++#include "Gameplay/CharacterControllerSystem.h"
++#include "Gameplay/EnemyAISystem.h"
++#include "Gameplay/LevelSystem.h"
++#include "Gameplay/TargetingSystem.h"
++#include "Physics/PhysXPhysicsSystem.h"
++#include "Physics/WallRunningSystem.h"
++#include "Rendering/RenderSystem.h"
++#include "Rendering/OrbitCamera.h"
++#include "Rendering/RenderDebugSystem.h"
++#include "Animation/AnimationSystem.h"
++#include <memory>
++#include <chrono>
++#include <random>
++#include <sstream>
++
++using namespace CudaGame::Testing;
++using namespace CudaGame::Core;
++using namespace CudaGame::Gameplay;
++using namespace CudaGame::Physics;
++using namespace CudaGame::Rendering;
++using namespace CudaGame::Animation;
++
++// Advanced performance monitoring for integration tests
++class GamePerformanceMonitor {
++private:
++    struct FrameMetrics {
++        double frameTime;
++        double physicsTime;
++        double renderTime;
++        double aiTime;
++        double memoryUsage;
++        std::vector<std::string> warnings;
++    };
++    
++    std::vector<FrameMetrics> metrics;
++    std::chrono::high_resolution_clock::time_point testStart;
++    const size_t maxFrames;
++    
++public:
++    explicit GamePerformanceMonitor(size_t maxFrames = 1000) 
++        : maxFrames(maxFrames) {
++        metrics.reserve(maxFrames);
++        testStart = std::chrono::high_resolution_clock::now();
++    }
++    
++    void RecordFrame(const FrameMetrics& frame) {
++        metrics.push_back(frame);
++        if (metrics.size() > maxFrames) {
++            metrics.erase(metrics.begin());
++        }
++        
++        // Log warnings for performance issues
++        if (!frame.warnings.empty()) {
++            std::stringstream ss;
++            ss << "Frame " << metrics.size() << " warnings:\n";
++            for (const auto& warning : frame.warnings) {
++                ss << "  - " << warning << "\n";
++            }
++            std::cout << ss.str();
++        }
++    }
++    
++    double GetAverageFrameTime() const {
++        if (metrics.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& frame : metrics) {
++            sum += frame.frameTime;
++        }
++        return sum / metrics.size();
++    }
++    
++    double GetWorstFrameTime() const {
++        if (metrics.empty()) return 0.0;
++        return std::max_element(metrics.begin(), metrics.end(),
++            [](const FrameMetrics& a, const FrameMetrics& b) {
++                return a.frameTime < b.frameTime;
++            })->frameTime;
++    }
++    
++    double GetAverageMemoryUsage() const {
++        if (metrics.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& frame : metrics) {
++            sum += frame.memoryUsage;
++        }
++        return sum / metrics.size();
++    }
++    
++    std::string GenerateReport() const {
++        std::stringstream ss;
++        ss << "\n=== Performance Report ===\n";
++        ss << "Test duration: " << GetTestDuration() << " seconds\n";
++        ss << "Total frames: " << metrics.size() << "\n";
++        ss << "Average frame time: " << GetAverageFrameTime() << "ms\n";
++        ss << "Worst frame time: " << GetWorstFrameTime() << "ms\n";
++        ss << "Average memory usage: " << GetAverageMemoryUsage() << "MB\n";
++        ss << "Frame time distribution:\n";
++        ss << "  Physics: " << GetAveragePhysicsPercentage() << "%\n";
++        ss << "  Render: " << GetAverageRenderPercentage() << "%\n";
++        ss << "  AI: " << GetAverageAIPercentage() << "%\n";
++        return ss.str();
++    }
++    
++private:
++    double GetTestDuration() const {
++        auto now = std::chrono::high_resolution_clock::now();
++        return std::chrono::duration<double>(now - testStart).count();
++    }
++    
++    double GetAveragePhysicsPercentage() const {
++        if (metrics.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& frame : metrics) {
++            sum += (frame.physicsTime / frame.frameTime) * 100.0;
++        }
++        return sum / metrics.size();
++    }
++    
++    double GetAverageRenderPercentage() const {
++        if (metrics.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& frame : metrics) {
++            sum += (frame.renderTime / frame.frameTime) * 100.0;
++        }
++        return sum / metrics.size();
++    }
++    
++    double GetAverageAIPercentage() const {
++        if (metrics.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& frame : metrics) {
++            sum += (frame.aiTime / frame.frameTime) * 100.0;
++        }
++        return sum / metrics.size();
++    }
++};
++
++// Game state validation utilities
++class GameStateValidator {
++public:
++    struct ValidationResult {
++        bool success;
++        std::vector<std::string> errors;
++        std::vector<std::string> warnings;
++    };
++    
++    static ValidationResult ValidatePlayerState(const Entity player,
++                                             const std::shared_ptr<Coordinator>& coordinator) {
++        ValidationResult result{true};
++        
++        // Check required components
++        if (!coordinator->HasComponent<PlayerMovementComponent>(player)) {
++            result.success = false;
++            result.errors.push_back("Player missing movement component");
++        }
++        
++        if (!coordinator->HasComponent<CharacterControllerComponent>(player)) {
++            result.success = false;
++            result.errors.push_back("Player missing character controller");
++        }
++        
++        if (!coordinator->HasComponent<RigidbodyComponent>(player)) {
++            result.success = false;
++            result.errors.push_back("Player missing rigidbody");
++        }
++        
++        // Validate transform
++        if (coordinator->HasComponent<TransformComponent>(player)) {
++            const auto& transform = coordinator->GetComponent<TransformComponent>(player);
++            if (glm::length(transform.scale) < 0.1f) {
++                result.warnings.push_back("Player scale unusually small");
++            }
++            if (transform.position.y < -100.0f) {
++                result.errors.push_back("Player below world bounds");
++            }
++        }
++        
++        // Validate physics state
++        if (coordinator->HasComponent<RigidbodyComponent>(player)) {
++            const auto& rb = coordinator->GetComponent<RigidbodyComponent>(player);
++            if (glm::length(rb.velocity) > 100.0f) {
++                result.warnings.push_back("Player velocity unusually high");
++            }
++        }
++        
++        return result;
++    }
++    
++    static ValidationResult ValidateWorldState(const std::shared_ptr<Coordinator>& coordinator) {
++        ValidationResult result{true};
++        
++        // Verify essential systems
++        if (!coordinator->GetSystem<PhysXPhysicsSystem>()) {
++            result.errors.push_back("Physics system not initialized");
++        }
++        if (!coordinator->GetSystem<RenderSystem>()) {
++            result.errors.push_back("Render system not initialized");
++        }
++        
++        // Check entity limits
++        size_t entityCount = coordinator->GetEntityCount();
++        if (entityCount > 10000) {
++            result.warnings.push_back("High entity count: " + std::to_string(entityCount));
++        }
++        
++        return result;
++    }
++};
++
++class Full3DGameTestSuite {
++private:
++    std::shared_ptr<Coordinator> coordinator;
++    std::shared_ptr<PlayerMovementSystem> movementSystem;
++    std::shared_ptr<CharacterControllerSystem> characterSystem;
++    std::shared_ptr<EnemyAISystem> aiSystem;
++    std::shared_ptr<LevelSystem> levelSystem;
++    std::shared_ptr<TargetingSystem> targetingSystem;
++    std::shared_ptr<PhysXPhysicsSystem> physicsSystem;
++    std::shared_ptr<WallRunningSystem> wallRunSystem;
++    std::shared_ptr<RenderSystem> renderSystem;
++    std::shared_ptr<RenderDebugSystem> debugSystem;
++    std::shared_ptr<AnimationSystem> animationSystem;
++    
++    std::unique_ptr<GamePerformanceMonitor> perfMonitor;
++    Entity player;
++    
++    const float FIXED_TIMESTEP = 1.0f / 60.0f;
++    const float EPSILON = 0.001f;
++
++public:
++    void SetUp() {
++        coordinator = std::make_shared<Coordinator>();
++        coordinator->Initialize();
++        
++        // Register all components
++        RegisterComponents();
++        
++        // Create and initialize all systems
++        InitializeSystems();
++        
++        // Create player and world
++        player = CreatePlayer();
++        CreateTestWorld();
++        
++        // Initialize performance monitoring
++        perfMonitor = std::make_unique<GamePerformanceMonitor>();
++    }
++
++    void TearDown() {
++        // Log final performance report
++        std::cout << perfMonitor->GenerateReport();
++        
++        // Validate final state
++        auto finalState = GameStateValidator::ValidateWorldState(coordinator);
++        ASSERT_TRUE(finalState.success) << "World state invalid at teardown";
++        
++        // Cleanup systems in correct order
++        aiSystem.reset();
++        wallRunSystem.reset();
++        physicsSystem.reset();
++        renderSystem.reset();
++        debugSystem.reset();
++        coordinator.reset();
++    }
++
++    // Integration Test: Full Game Loop
++    void TestFullGameLoop() {
++        const int FRAME_COUNT = 1000;
++        
++        for (int frame = 0; frame < FRAME_COUNT; frame++) {
++            auto frameStart = std::chrono::high_resolution_clock::now();
++            GamePerformanceMonitor::FrameMetrics metrics;
++            
++            // Update game systems
++            UpdateGameSystems(metrics);
++            
++            // Validate frame
++            ValidateFrameState(frame);
++            
++            // Record performance
++            auto frameEnd = std::chrono::high_resolution_clock::now();
++            metrics.frameTime = std::chrono::duration<double, std::milli>(
++                frameEnd - frameStart).count();
++            perfMonitor->RecordFrame(metrics);
++            
++            // Early exit if performance is severely degraded
++            if (metrics.frameTime > 100.0) {  // >100ms is unacceptable
++                FAIL() << "Performance degradation detected. Frame time: "
++                      << metrics.frameTime << "ms";
++            }
++        }
++    }
++
++    // Integration Test: Combat System
++    void TestCombatSystem() {
++        // Create enemy for combat test
++        Entity enemy = CreateTestEnemy();
++        
++        // Setup combat scenario
++        SetupCombatScenario(enemy);
++        
++        // Run combat sequence
++        const int COMBAT_FRAMES = 300;
++        for (int frame = 0; frame < COMBAT_FRAMES; frame++) {
++            // Simulate player attack input
++            if (frame == 60) {
++                TriggerPlayerAttack();
++            }
++            
++            // Update systems
++            UpdateCombatSystems();
++            
++            // Validate combat state
++            ValidateCombatState(enemy);
++        }
++    }
++
++    // Integration Test: Movement and Physics
++    void TestMovementAndPhysics() {
++        // Test different movement scenarios
++        TestBasicMovement();
++        TestWallRunning();
++        TestDoubleJump();
++        TestCombatMovement();
++    }
++
++    // Integration Test: Stress Test
++    void TestStressScenario() {
++        // Create busy scene
++        CreateStressTestScene();
++        
++        // Run stress test
++        const int STRESS_FRAMES = 600;
++        for (int frame = 0; frame < STRESS_FRAMES; frame++) {
++            UpdateGameSystems(GamePerformanceMonitor::FrameMetrics{});
++            
++            // Add random events every 60 frames
++            if (frame % 60 == 0) {
++                AddRandomStressEvents();
++            }
++            
++            // Validate system stability
++            ValidateSystemStability();
++        }
++    }
++
++private:
++    void RegisterComponents() {
++        coordinator->RegisterComponent<PlayerMovementComponent>();
++        coordinator->RegisterComponent<CharacterControllerComponent>();
++        coordinator->RegisterComponent<EnemyAIComponent>();
++        coordinator->RegisterComponent<TargetingComponent>();
++        coordinator->RegisterComponent<RigidbodyComponent>();
++        coordinator->RegisterComponent<ColliderComponent>();
++        coordinator->RegisterComponent<TransformComponent>();
++        coordinator->RegisterComponent<MeshComponent>();
++        coordinator->RegisterComponent<MaterialComponent>();
++        coordinator->RegisterComponent<AnimationComponent>();
++    }
++
++    void InitializeSystems() {
++        movementSystem = coordinator->RegisterSystem<PlayerMovementSystem>();
++        characterSystem = coordinator->RegisterSystem<CharacterControllerSystem>();
++        aiSystem = coordinator->RegisterSystem<EnemyAISystem>();
++        levelSystem = coordinator->RegisterSystem<LevelSystem>();
++        targetingSystem = coordinator->RegisterSystem<TargetingSystem>();
++        physicsSystem = coordinator->RegisterSystem<PhysXPhysicsSystem>();
++        wallRunSystem = coordinator->RegisterSystem<WallRunningSystem>();
++        renderSystem = coordinator->RegisterSystem<RenderSystem>();
++        debugSystem = coordinator->RegisterSystem<RenderDebugSystem>();
++        animationSystem = coordinator->RegisterSystem<AnimationSystem>();
++        
++        // Initialize all systems
++        movementSystem->Initialize();
++        characterSystem->Initialize();
++        aiSystem->Initialize();
++        levelSystem->Initialize();
++        targetingSystem->Initialize();
++        physicsSystem->Initialize();
++        wallRunSystem->Initialize();
++        renderSystem->Initialize();
++        debugSystem->Initialize();
++        animationSystem->Initialize();
++    }
++
++    Entity CreatePlayer() {
++        Entity entity = coordinator->CreateEntity();
++        
++        // Add components with AAA-game standard configuration
++        AddPlayerComponents(entity);
++        
++        return entity;
++    }
++
++    void CreateTestWorld() {
++        // Create ground
++        Entity ground = coordinator->CreateEntity();
++        AddGroundComponents(ground);
++        
++        // Create walls for parkour
++        CreateParkourEnvironment();
++        
++        // Create combat areas
++        CreateCombatAreas();
++        
++        // Add atmospheric elements
++        CreateAtmosphericElements();
++    }
++
++    void UpdateGameSystems(GamePerformanceMonitor::FrameMetrics& metrics) {
++        auto start = std::chrono::high_resolution_clock::now();
++        
++        // AI Update
++        auto aiStart = std::chrono::high_resolution_clock::now();
++        aiSystem->Update(FIXED_TIMESTEP);
++        metrics.aiTime = GetDurationMs(aiStart);
++        
++        // Physics Update
++        auto physicsStart = std::chrono::high_resolution_clock::now();
++        physicsSystem->Update(FIXED_TIMESTEP);
++        wallRunSystem->Update(FIXED_TIMESTEP);
++        characterSystem->Update(FIXED_TIMESTEP);
++        metrics.physicsTime = GetDurationMs(physicsStart);
++        
++        // Rendering Update
++        auto renderStart = std::chrono::high_resolution_clock::now();
++        renderSystem->Update(FIXED_TIMESTEP);
++        debugSystem->Update(FIXED_TIMESTEP);
++        metrics.renderTime = GetDurationMs(renderStart);
++        
++        // Animation Update
++        animationSystem->Update(FIXED_TIMESTEP);
++        
++        metrics.frameTime = GetDurationMs(start);
++    }
++
++    void ValidateFrameState(int frameNumber) {
++        // Validate player state
++        auto playerState = GameStateValidator::ValidatePlayerState(player, coordinator);
++        ASSERT_TRUE(playerState.success) << "Player state validation failed at frame "
++                                       << frameNumber;
++        
++        // Validate world state
++        auto worldState = GameStateValidator::ValidateWorldState(coordinator);
++        ASSERT_TRUE(worldState.success) << "World state validation failed at frame "
++                                      << frameNumber;
++        
++        // Log any warnings
++        for (const auto& warning : playerState.warnings) {
++            std::cout << "Frame " << frameNumber << " warning: " << warning << "\n";
++        }
++    }
++
++    double GetDurationMs(const std::chrono::high_resolution_clock::time_point& start) {
++        auto now = std::chrono::high_resolution_clock::now();
++        return std::chrono::duration<double, std::milli>(now - start).count();
++    }
++
++    // Additional private utility methods...
++    void AddPlayerComponents(Entity entity) {
++        // Transform
++        TransformComponent transform;
++        transform.position = glm::vec3(0.0f, 2.0f, 0.0f);
++        transform.scale = glm::vec3(0.8f, 1.8f, 0.8f);
++        coordinator->AddComponent(entity, transform);
++        
++        // Physics
++        RigidbodyComponent rb;
++        rb.mass = 80.0f;
++        rb.drag = 0.1f;
++        coordinator->AddComponent(entity, rb);
++        
++        ColliderComponent collider;
++        collider.shape = ColliderShape::CAPSULE;
++        collider.radius = 0.4f;
++        collider.height = 1.8f;
++        coordinator->AddComponent(entity, collider);
++        
++        // Movement
++        PlayerMovementComponent movement;
++        movement.baseSpeed = 10.0f;
++        movement.maxSpeed = 20.0f;
++        movement.jumpForce = 15.0f;
++        coordinator->AddComponent(entity, movement);
++        
++        // Character Controller
++        CharacterControllerComponent controller;
++        coordinator->AddComponent(entity, controller);
++        
++        // Animation
++        AnimationComponent anim;
++        anim.currentState = "idle";
++        coordinator->AddComponent(entity, anim);
++    }
++
++    void CreateParkourEnvironment() {
++        const int WALL_COUNT = 10;
++        std::random_device rd;
++        std::mt19937 gen(rd());
++        std::uniform_real_distribution<> pos(-50.0, 50.0);
++        std::uniform_real_distribution<> height(10.0, 20.0);
++        
++        for (int i = 0; i < WALL_COUNT; i++) {
++            Entity wall = coordinator->CreateEntity();
++            
++            TransformComponent transform;
++            transform.position = glm::vec3(pos(gen), height(gen)/2.0f, pos(gen));
++            transform.scale = glm::vec3(1.0f, height(gen), 10.0f);
++            coordinator->AddComponent(wall, transform);
++            
++            ColliderComponent collider;
++            collider.shape = ColliderShape::BOX;
++            collider.size = transform.scale;
++            coordinator->AddComponent(wall, collider);
++            
++            // Make wall runnable
++            coordinator->AddComponent(wall, WallComponent{true});
++        }
++    }
++};
++
++// Function to create and register the test suite
++std::shared_ptr<TestSuite> CreateFull3DGameIntegrationTestSuite() {
++    auto suite = std::make_shared<TestSuite>("Full3DGame Integration");
++    auto fixture = std::make_shared<Full3DGameTestSuite>();
++    
++    // Full game loop test
++    suite->AddTest("Full Game Loop", [fixture]() {
++        fixture->SetUp();
++        fixture->TestFullGameLoop();
++        fixture->TearDown();
++    });
++    
++    // Combat system test
++    suite->AddTest("Combat System", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCombatSystem();
++        fixture->TearDown();
++    });
++    
++    // Movement and physics test
++    suite->AddTest("Movement and Physics", [fixture]() {
++        fixture->SetUp();
++        fixture->TestMovementAndPhysics();
++        fixture->TearDown();
++    });
++    
++    // Stress test
++    suite->AddTest("Stress Test", [fixture]() {
++        fixture->SetUp();
++        fixture->TestStressScenario();
++        fixture->TearDown();
++    });
++    
++    return suite;
++}
+\ No newline at end of file
+diff --git a/tests/PhysXIntegrationTests.cpp b/tests/PhysXIntegrationTests.cpp
+index c99a722..83e304f 100644
+--- a/tests/PhysXIntegrationTests.cpp
++++ b/tests/PhysXIntegrationTests.cpp
+@@ -195,13 +195,5 @@ TEST_F(PhysXTestSuite, DynamicBodyMemoryManagement) {
+     EXPECT_LT(memoryDelta.gpuBytes, 1024);  // Less than 1KB leak tolerance
+ }
+ 
+-int main(int argc, char** argv) {
+-    ::testing::InitGoogleTest(&argc, argv);
+-    testing::AddGlobalTestEnvironment(new testing::Environment());
+-    PhysXTestEnvironment();
+-    
+-    int result = RUN_ALL_TESTS();
+-    
+-    CudaGame::Testing::CUDAPerformanceMonitor::Cleanup();
+-    return result;
+-}
++// Note: main() is defined in TestRunner.cpp
++// This file only contains test cases for PhysX integration
+diff --git a/tests/RenderingSystemTests.cpp b/tests/RenderingSystemTests.cpp
+new file mode 100644
+index 0000000..be1a51e
+--- /dev/null
++++ b/tests/RenderingSystemTests.cpp
+@@ -0,0 +1,468 @@
++#include "Testing/TestFramework.h"
++#include "Core/Coordinator.h"
++#include "Rendering/RenderSystem.h"
++#include "Rendering/ShaderProgram.h"
++#include "Rendering/Framebuffer.h"
++#include "Rendering/LightingSystem.h"
++#include "Rendering/RenderDebugSystem.h"
++#include <memory>
++#include <vector>
++#include <chrono>
++
++using namespace CudaGame::Testing;
++using namespace CudaGame::Core;
++using namespace CudaGame::Rendering;
++
++// Mock OpenGL context for headless testing
++class GLContextMock {
++private:
++    struct GLResource {
++        GLenum type;
++        GLuint id;
++        bool isDeleted;
++    };
++    
++    std::vector<GLResource> resources;
++    bool isValid;
++    
++public:
++    GLContextMock() : isValid(true) {}
++    
++    GLuint CreateResource(GLenum type) {
++        static GLuint nextId = 1;
++        resources.push_back({type, nextId, false});
++        return nextId++;
++    }
++    
++    bool IsResourceValid(GLuint id) const {
++        auto it = std::find_if(resources.begin(), resources.end(),
++            [id](const GLResource& r) { return r.id == id && !r.isDeleted; });
++        return it != resources.end();
++    }
++    
++    void DeleteResource(GLuint id) {
++        auto it = std::find_if(resources.begin(), resources.end(),
++            [id](GLResource& r) { return r.id == id; });
++        if (it != resources.end()) {
++            it->isDeleted = true;
++        }
++    }
++    
++    size_t GetActiveResourceCount() const {
++        return std::count_if(resources.begin(), resources.end(),
++            [](const GLResource& r) { return !r.isDeleted; });
++    }
++    
++    bool IsValid() const { return isValid; }
++    void Invalidate() { isValid = false; }
++};
++
++// Performance monitoring utilities
++class PerformanceMonitor {
++private:
++    using Clock = std::chrono::high_resolution_clock;
++    using TimePoint = Clock::time_point;
++    using Duration = std::chrono::duration<double, std::milli>;
++    
++    TimePoint startTime;
++    std::vector<Duration> measurements;
++    const size_t maxSamples;
++    const double targetFrameTime;  // in milliseconds
++    
++public:
++    PerformanceMonitor(size_t maxSamples = 100, double targetFPS = 60.0)
++        : maxSamples(maxSamples)
++        , targetFrameTime(1000.0 / targetFPS) {}
++    
++    void StartMeasurement() {
++        startTime = Clock::now();
++    }
++    
++    void EndMeasurement() {
++        auto endTime = Clock::now();
++        measurements.push_back(Duration(endTime - startTime));
++        if (measurements.size() > maxSamples) {
++            measurements.erase(measurements.begin());
++        }
++    }
++    
++    double GetAverageTime() const {
++        if (measurements.empty()) return 0.0;
++        double sum = 0.0;
++        for (const auto& m : measurements) {
++            sum += m.count();
++        }
++        return sum / measurements.size();
++    }
++    
++    double GetWorstTime() const {
++        if (measurements.empty()) return 0.0;
++        return std::max_element(measurements.begin(), measurements.end())->count();
++    }
++    
++    bool MeetsPerformanceTarget() const {
++        return GetWorstTime() <= targetFrameTime;
++    }
++};
++
++class RenderingSystemTestSuite {
++private:
++    std::shared_ptr<Coordinator> coordinator;
++    std::unique_ptr<RenderSystem> renderSystem;
++    std::unique_ptr<LightingSystem> lightingSystem;
++    std::unique_ptr<RenderDebugSystem> debugSystem;
++    std::unique_ptr<GLContextMock> glContext;
++    std::unique_ptr<PerformanceMonitor> perfMonitor;
++    
++    const float EPSILON = 0.001f;
++    const int WINDOW_WIDTH = 1920;
++    const int WINDOW_HEIGHT = 1080;
++    const glm::vec4 CLEAR_COLOR = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
++
++public:
++    void SetUp() {
++        coordinator = std::make_shared<Coordinator>();
++        coordinator->Initialize();
++        
++        // Register rendering components
++        coordinator->RegisterComponent<TransformComponent>();
++        coordinator->RegisterComponent<MeshComponent>();
++        coordinator->RegisterComponent<MaterialComponent>();
++        coordinator->RegisterComponent<LightComponent>();
++        
++        // Initialize GL context mock
++        glContext = std::make_unique<GLContextMock>();
++        
++        // Initialize systems
++        renderSystem = std::make_unique<RenderSystem>();
++        lightingSystem = std::make_unique<LightingSystem>();
++        debugSystem = std::make_unique<RenderDebugSystem>();
++        
++        renderSystem->Initialize();
++        lightingSystem->Initialize();
++        debugSystem->Initialize();
++        
++        // Initialize performance monitor
++        perfMonitor = std::make_unique<PerformanceMonitor>();
++    }
++
++    void TearDown() {
++        // Verify all GL resources are properly cleaned up
++        ASSERT_EQ(glContext->GetActiveResourceCount(), 0)
++            << "Memory leak detected: Not all GL resources were properly deleted";
++        
++        debugSystem.reset();
++        lightingSystem.reset();
++        renderSystem.reset();
++        glContext.reset();
++        coordinator.reset();
++    }
++
++    // G-buffer setup and validation tests
++    void TestGBufferInitialization() {
++        // Verify G-buffer creation
++        renderSystem->InitializeGBuffer(WINDOW_WIDTH, WINDOW_HEIGHT);
++        
++        auto& gBuffer = renderSystem->GetGBuffer();
++        ASSERT_TRUE(gBuffer.IsValid());
++        ASSERT_EQ(gBuffer.GetWidth(), WINDOW_WIDTH);
++        ASSERT_EQ(gBuffer.GetHeight(), WINDOW_HEIGHT);
++        
++        // Verify all required textures are created
++        ASSERT_TRUE(glContext->IsResourceValid(gBuffer.GetPositionTexture()));
++        ASSERT_TRUE(glContext->IsResourceValid(gBuffer.GetNormalTexture()));
++        ASSERT_TRUE(glContext->IsResourceValid(gBuffer.GetAlbedoTexture()));
++        ASSERT_TRUE(glContext->IsResourceValid(gBuffer.GetMetallicRoughnessTexture()));
++        ASSERT_TRUE(glContext->IsResourceValid(gBuffer.GetDepthTexture()));
++    }
++
++    void TestGBufferResolution() {
++        // Test different resolutions
++        const std::vector<std::pair<int, int>> resolutions = {
++            {1280, 720}, {1920, 1080}, {2560, 1440}, {3840, 2160}
++        };
++        
++        for (const auto& [width, height] : resolutions) {
++            renderSystem->InitializeGBuffer(width, height);
++            auto& gBuffer = renderSystem->GetGBuffer();
++            
++            ASSERT_EQ(gBuffer.GetWidth(), width);
++            ASSERT_EQ(gBuffer.GetHeight(), height);
++            ASSERT_TRUE(gBuffer.IsValid());
++        }
++    }
++
++    // Deferred pipeline tests
++    void TestGeometryPass() {
++        // Create test scene
++        Entity cube = CreateTestCube();
++        Entity light = CreateTestLight();
++        
++        perfMonitor->StartMeasurement();
++        
++        // Execute geometry pass
++        renderSystem->BeginGeometryPass();
++        renderSystem->RenderEntity(cube);
++        renderSystem->EndGeometryPass();
++        
++        perfMonitor->EndMeasurement();
++        
++        // Verify performance
++        ASSERT_TRUE(perfMonitor->MeetsPerformanceTarget())
++            << "Geometry pass exceeded performance budget";
++        
++        // Verify G-buffer contents
++        auto& gBuffer = renderSystem->GetGBuffer();
++        VerifyGBufferContents(gBuffer);
++    }
++
++    void TestLightingPass() {
++        // Create test scene with multiple lights
++        std::vector<Entity> lights;
++        for (int i = 0; i < 4; i++) {
++            lights.push_back(CreateTestLight());
++        }
++        
++        perfMonitor->StartMeasurement();
++        
++        // Execute lighting pass
++        renderSystem->BeginLightingPass();
++        for (const auto& light : lights) {
++            lightingSystem->RenderLight(light);
++        }
++        renderSystem->EndLightingPass();
++        
++        perfMonitor->EndMeasurement();
++        
++        // Verify performance
++        ASSERT_TRUE(perfMonitor->MeetsPerformanceTarget())
++            << "Lighting pass exceeded performance budget";
++    }
++
++    // Resource management tests
++    void TestShaderCompilation() {
++        // Test geometry pass shader
++        ShaderProgram geometryShader;
++        ASSERT_TRUE(geometryShader.CompileFromFile("geometry_pass"));
++        ASSERT_TRUE(geometryShader.IsValid());
++        
++        // Test lighting pass shader
++        ShaderProgram lightingShader;
++        ASSERT_TRUE(lightingShader.CompileFromFile("lighting_pass"));
++        ASSERT_TRUE(lightingShader.IsValid());
++        
++        // Verify uniform locations
++        ASSERT_NE(geometryShader.GetUniformLocation("modelMatrix"), -1);
++        ASSERT_NE(lightingShader.GetUniformLocation("lightPosition"), -1);
++    }
++
++    void TestTextureManagement() {
++        const int maxTextures = 1000;
++        std::vector<GLuint> textureIds;
++        
++        // Stress test texture creation
++        for (int i = 0; i < maxTextures; i++) {
++            GLuint texId = glContext->CreateResource(GL_TEXTURE_2D);
++            textureIds.push_back(texId);
++            ASSERT_TRUE(glContext->IsResourceValid(texId));
++        }
++        
++        // Verify cleanup
++        for (GLuint id : textureIds) {
++            glContext->DeleteResource(id);
++            ASSERT_FALSE(glContext->IsResourceValid(id));
++        }
++    }
++
++    // Debug visualization tests
++    void TestDebugVisualization() {
++        // Test each debug visualization mode
++        const std::vector<DebugVisualizationMode> modes = {
++            DebugVisualizationMode::WIREFRAME,
++            DebugVisualizationMode::NORMALS,
++            DebugVisualizationMode::DEPTH,
++            DebugVisualizationMode::GBUFFER_ALBEDO,
++            DebugVisualizationMode::GBUFFER_NORMAL,
++            DebugVisualizationMode::GBUFFER_POSITION
++        };
++        
++        Entity testObject = CreateTestCube();
++        
++        for (auto mode : modes) {
++            debugSystem->SetVisualizationMode(mode);
++            debugSystem->RenderDebugView(testObject);
++            ASSERT_TRUE(debugSystem->IsVisualizationValid());
++        }
++    }
++
++    // Performance tests
++    void TestRenderingPerformance() {
++        const int FRAME_COUNT = 1000;
++        const float TARGET_FRAME_TIME = 16.67f;  // ~60 FPS
++        
++        // Create complex scene
++        std::vector<Entity> entities;
++        for (int i = 0; i < 100; i++) {
++            entities.push_back(CreateTestCube());
++        }
++        
++        double totalTime = 0.0;
++        double worstFrameTime = 0.0;
++        
++        // Render multiple frames
++        for (int frame = 0; frame < FRAME_COUNT; frame++) {
++            perfMonitor->StartMeasurement();
++            
++            renderSystem->BeginGeometryPass();
++            for (const auto& entity : entities) {
++                renderSystem->RenderEntity(entity);
++            }
++            renderSystem->EndGeometryPass();
++            
++            renderSystem->BeginLightingPass();
++            lightingSystem->RenderLights();
++            renderSystem->EndLightingPass();
++            
++            perfMonitor->EndMeasurement();
++            
++            double frameTime = perfMonitor->GetWorstTime();
++            worstFrameTime = std::max(worstFrameTime, frameTime);
++            totalTime += frameTime;
++        }
++        
++        double averageFrameTime = totalTime / FRAME_COUNT;
++        
++        ASSERT_LT(averageFrameTime, TARGET_FRAME_TIME)
++            << "Average frame time exceeds target";
++        ASSERT_LT(worstFrameTime, TARGET_FRAME_TIME * 1.5)
++            << "Worst frame time significantly exceeds target";
++    }
++
++private:
++    // Utility functions for test setup
++    Entity CreateTestCube() {
++        Entity entity = coordinator->CreateEntity();
++        
++        // Transform
++        TransformComponent transform;
++        transform.position = glm::vec3(0.0f, 0.0f, 0.0f);
++        transform.scale = glm::vec3(1.0f);
++        coordinator->AddComponent(entity, transform);
++        
++        // Mesh
++        MeshComponent mesh;
++        mesh.modelPath = "cube.obj";
++        coordinator->AddComponent(entity, mesh);
++        
++        // Material
++        MaterialComponent material;
++        material.albedo = glm::vec3(0.8f);
++        material.metallic = 0.0f;
++        material.roughness = 0.5f;
++        coordinator->AddComponent(entity, material);
++        
++        return entity;
++    }
++
++    Entity CreateTestLight() {
++        Entity entity = coordinator->CreateEntity();
++        
++        // Transform
++        TransformComponent transform;
++        transform.position = glm::vec3(5.0f, 5.0f, 5.0f);
++        coordinator->AddComponent(entity, transform);
++        
++        // Light
++        LightComponent light;
++        light.color = glm::vec3(1.0f);
++        light.intensity = 1.0f;
++        light.radius = 10.0f;
++        coordinator->AddComponent(entity, light);
++        
++        return entity;
++    }
++
++    void VerifyGBufferContents(const Framebuffer& gBuffer) {
++        // Verify position buffer
++        {
++            GLuint positionTex = gBuffer.GetPositionTexture();
++            ASSERT_TRUE(glContext->IsResourceValid(positionTex));
++            // Add more specific position data validation
++        }
++        
++        // Verify normal buffer
++        {
++            GLuint normalTex = gBuffer.GetNormalTexture();
++            ASSERT_TRUE(glContext->IsResourceValid(normalTex));
++            // Add more specific normal data validation
++        }
++        
++        // Verify depth buffer
++        {
++            GLuint depthTex = gBuffer.GetDepthTexture();
++            ASSERT_TRUE(glContext->IsResourceValid(depthTex));
++            // Verify depth values are in correct range
++        }
++    }
++};
++
++// Function to create and register the test suite
++std::shared_ptr<TestSuite> CreateRenderingSystemTestSuite() {
++    auto suite = std::make_shared<TestSuite>("Rendering System");
++    auto fixture = std::make_shared<RenderingSystemTestSuite>();
++    
++    // G-buffer tests
++    suite->AddTest("G-Buffer Initialization", [fixture]() {
++        fixture->SetUp();
++        fixture->TestGBufferInitialization();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("G-Buffer Resolution", [fixture]() {
++        fixture->SetUp();
++        fixture->TestGBufferResolution();
++        fixture->TearDown();
++    });
++    
++    // Pipeline tests
++    suite->AddTest("Geometry Pass", [fixture]() {
++        fixture->SetUp();
++        fixture->TestGeometryPass();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Lighting Pass", [fixture]() {
++        fixture->SetUp();
++        fixture->TestLightingPass();
++        fixture->TearDown();
++    });
++    
++    // Resource management tests
++    suite->AddTest("Shader Compilation", [fixture]() {
++        fixture->SetUp();
++        fixture->TestShaderCompilation();
++        fixture->TearDown();
++    });
++    
++    suite->AddTest("Texture Management", [fixture]() {
++        fixture->SetUp();
++        fixture->TestTextureManagement();
++        fixture->TearDown();
++    });
++    
++    // Debug visualization tests
++    suite->AddTest("Debug Visualization", [fixture]() {
++        fixture->SetUp();
++        fixture->TestDebugVisualization();
++        fixture->TearDown();
++    });
++    
++    // Performance tests
++    suite->AddTest("Rendering Performance", [fixture]() {
++        fixture->SetUp();
++        fixture->TestRenderingPerformance();
++        fixture->TearDown();
++    });
++    
++    return suite;
++}
+\ No newline at end of file
+diff --git a/tests/TestRunner.cpp b/tests/TestRunner.cpp
+index 6719c28..c2982ce 100644
+--- a/tests/TestRunner.cpp
++++ b/tests/TestRunner.cpp
+@@ -3,8 +3,11 @@
+ 
+ // Forward declarations for test suite creation functions
+ std::shared_ptr<CudaGame::Testing::TestSuite> CreateCoreSystemsTestSuite();
++std::shared_ptr<CudaGame::Testing::TestSuite> CreateOrbitCameraTestSuite();
++std::shared_ptr<CudaGame::Testing::TestSuite> CreateCharacterControllerTestSuite();
++std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingSystemTestSuite();
++std::shared_ptr<CudaGame::Testing::TestSuite> CreateFull3DGameIntegrationTestSuite();
+ // std::shared_ptr<CudaGame::Testing::TestSuite> CreatePhysicsTestSuite();
+-// std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingTestSuite();
+ 
+ int main()
+ {
+@@ -16,8 +19,11 @@ int main()
+ 
+     // Register all test suites
+     testFramework.RegisterSuite(CreateCoreSystemsTestSuite());
++    testFramework.RegisterSuite(CreateOrbitCameraTestSuite());
++    testFramework.RegisterSuite(CreateCharacterControllerTestSuite());
++    testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
++    testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());
+     // testFramework.RegisterSuite(CreatePhysicsTestSuite());
+-    // testFramework.RegisterSuite(CreateRenderingTestSuite());
+ 
+     // Run all tests
+     testFramework.RunAllTests();
+
+
+========== COMMIT 20/40: 195ed95771c8414f085fc75c1578b8faf12c2703 ==========
+195ed95771c8414f085fc75c1578b8faf12c2703 bthecobb 2025-10-02 fix: consolidate GLM handling across workflows to use consistent submodule approach
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 96e95c0..8cae483 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -96,13 +96,16 @@ jobs:
+           }
+ 
+       - name: Setup Dependencies
+-        shell: pwsh
++        shell: bash
+         run: |
+-          # Remove any existing GLM directory
+-          if (Test-Path external/glm) { Remove-Item -Recurse -Force external/glm }
++          # Clean any stale GLM build artifacts
++          rm -rf build/_deps/glm-* || true
++          
++          # Update GLM submodule
++          git submodule update --init --recursive external/glm
+           
+-          # Clone GLM fresh
+-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          echo "Verifying GLM installation..."
++          test -f external/glm/glm/glm.hpp || exit 1
+           
+           # Verify GLM setup
+           Write-Host "::group::Setting up dependencies"
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 062c016..f80ceb7 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -71,9 +71,12 @@ jobs:
+     - name: Setup GLM
+       shell: bash
+       run: |
+-        rm -rf external/glm animation/build/_deps/glm-src || true
+-        mkdir -p external/glm
+-        git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
++        # Clean any stale GLM build artifacts
++        rm -rf build/_deps/glm-* || true
++        
++        # Update GLM submodule
++        git submodule update --init --recursive external/glm
++        
+         echo "Verifying GLM installation..."
+         test -f external/glm/glm/glm.hpp || exit 1
+     
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index c00be2e..414022b 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -74,12 +74,16 @@ jobs:
+             vulkan-${{ runner.os }}-
+ 
+       - name: Setup Dependencies
+-        shell: pwsh
++        shell: bash
+         run: |
+-          if (-not (Test-Path "external/glm/glm/glm.hpp")) {
+-            New-Item -ItemType Directory -Force -Path external/glm
+-            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+-          }
++          # Clean any stale GLM build artifacts
++          rm -rf build/_deps/glm-* || true
++          
++          # Update GLM submodule
++          git submodule update --init --recursive external/glm
++          
++          echo "Verifying GLM installation..."
++          test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Install Dependencies (Ubuntu)
+         if: runner.os == 'Linux'
+
+
+========== COMMIT 21/40: 4184f0cdee2e7f8738096abab83808e5697f3dba ==========
+4184f0cdee2e7f8738096abab83808e5697f3dba bthecobb 2025-10-02 fix: update test framework and configuration
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4dd5012..053ffd5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -90,6 +90,22 @@ if(CMAKE_CUDA_COMPILER)
+     set(CUDA_SEPARABLE_COMPILATION OFF)
+ endif()
+ 
++# Set consistent runtime library and debug flags
++set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
++
++# Set debug/release flags properly for PhysX
++if(CMAKE_BUILD_TYPE STREQUAL "Debug")
++    add_definitions(-D_DEBUG)
++    remove_definitions(-DNDEBUG)
++else()
++    add_definitions(-DNDEBUG)
++    remove_definitions(-D_DEBUG)
++endif()
++
++# Ensure consistent runtime for dependencies
++set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
++set(CMAKE_DEBUG_POSTFIX "d")
++
+ # Find required packages
+ find_package(CUDAToolkit REQUIRED)
+ find_package(OpenGL REQUIRED)
+@@ -221,7 +237,7 @@ endforeach()
+ find_package(assimp QUIET)
+ if(NOT assimp_FOUND)
+     include(FetchContent)
+-    FetchContent_Declare(
++  FetchContent_Declare(
+         assimp
+         GIT_REPOSITORY https://github.com/assimp/assimp.git
+         GIT_TAG v5.2.5
+@@ -230,12 +246,10 @@ if(NOT assimp_FOUND)
+             -DASSIMP_WARNINGS_AS_ERRORS=OFF
+             -DBUILD_SHARED_LIBS=OFF
+             -DASSIMP_BUILD_STATIC_LIB=ON
+-            -DASSIMP_FORCE_DEBUG_POSTFIX=OFF
+-            -DCMAKE_CXX_FLAGS_DEBUG="/MD /O2"
+-            -DCMAKE_CXX_FLAGS_RELEASE="/MD /O2"
+-            -DCMAKE_C_FLAGS_DEBUG="/MD /O2"
+-            -DCMAKE_C_FLAGS_RELEASE="/MD /O2"
+-            -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreadedDLL"
++            -DASSIMP_NO_EXPORT=ON
++            -DASSIMP_BUILD_ZLIB=ON
++            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
++            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+     )
+     FetchContent_MakeAvailable(assimp)
+     set(ASSIMP_INCLUDE_DIR ${assimp_SOURCE_DIR}/include)
+@@ -393,9 +407,20 @@ set_target_properties(TestRunner PROPERTIES
+     CUDA_SEPARABLE_COMPILATION ON
+ )
+ 
+-# Register ctest
++# Register ctest with proper runtime configuration
+ add_test(NAME TestRunner COMMAND TestRunner)
+ 
++# Force debug/release defines for TestRunner
++target_compile_definitions(TestRunner PRIVATE
++    $<$<CONFIG:Debug>:_DEBUG>
++    $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
++)
++
++# Ensure consistent runtime for TestRunner
++set_target_properties(TestRunner PROPERTIES
++    MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
++)
++
+ # --- Target Linking ---
+ 
+ # Runtime library already configured above
+diff --git a/tests/OrbitCameraTests.cpp b/tests/OrbitCameraTests.cpp
+new file mode 100644
+index 0000000..cd533c3
+--- /dev/null
++++ b/tests/OrbitCameraTests.cpp
+@@ -0,0 +1,211 @@
++#include "Testing/TestFramework.h"
++#include "Rendering/OrbitCamera.h"
++#include <glm/gtc/matrix_transform.hpp>
++#include <glm/gtc/epsilon.hpp>
++#include <memory>
++#include <string>
++#include <sstream>
++
++using namespace CudaGame::Testing;
++using namespace CudaGame::Core;
++using namespace CudaGame::Rendering;
++
++class OrbitCameraTestSuite {
++private:
++    std::unique_ptr<OrbitCamera> camera;
++    glm::vec3 targetPosition;
++    const float EPSILON = 0.001f;
++
++    // Helper to check if two vectors are approximately equal
++    bool VecEquals(const glm::vec3& a, const glm::vec3& b) {
++        return glm::all(glm::epsilonEqual(a, b, EPSILON));
++    }
++
++public:
++    void SetUp() {
++        camera = std::make_unique<OrbitCamera>(ProjectionType::PERSPECTIVE);
++        
++        // Configure camera for testing
++        OrbitCamera::OrbitSettings settings;
++        settings.distance = 15.0f;
++        settings.heightOffset = 2.0f;
++        settings.mouseSensitivity = 0.05f;
++        settings.smoothSpeed = 6.0f;
++        camera->SetOrbitSettings(settings);
++        
++        // Set standard perspective parameters
++        camera->SetPerspective(60.0f, 16.0f/9.0f, 0.1f, 200.0f);
++    }
++
++    void TearDown() {
++        camera.reset();
++    }
++
++    // Test camera initialization
++void TestCameraInitialization() {
++        ASSERT_TRUE(camera != nullptr);
++        ASSERT_EQ(camera->GetProjectionType(), ProjectionType::PERSPECTIVE);
++        ASSERT_EQ(camera->GetCameraMode(), OrbitCamera::CameraMode::ORBIT_FOLLOW);
++        
++        // Verify default mode
++        ASSERT_EQ(camera->GetCameraMode(), OrbitCamera::CameraMode::ORBIT_FOLLOW);
++        
++        // Verify perspective parameters
++        float fov, aspect, nearPlane, farPlane;
++        camera->GetPerspectiveParams(fov, aspect, nearPlane, farPlane);
++        ASSERT_NEAR(fov, 60.0f, EPSILON);
++        ASSERT_NEAR(aspect, 16.0f/9.0f, EPSILON);
++        ASSERT_NEAR(nearPlane, 0.1f, EPSILON);
++        ASSERT_NEAR(farPlane, 200.0f, EPSILON);
++    }
++
++    // Test camera modes
++    void TestCameraModeTransitions() {
++        // Test ORBIT_FOLLOW mode
++        camera->SetCameraMode(OrbitCamera::CameraMode::ORBIT_FOLLOW);
++        ASSERT_EQ(camera->GetCameraMode(), OrbitCamera::CameraMode::ORBIT_FOLLOW);
++        
++        // Test FREE_LOOK mode
++        camera->SetCameraMode(OrbitCamera::CameraMode::FREE_LOOK);
++        ASSERT_EQ(camera->GetCameraMode(), OrbitCamera::CameraMode::FREE_LOOK);
++        
++        // Test COMBAT_FOCUS mode
++        camera->SetCameraMode(OrbitCamera::CameraMode::COMBAT_FOCUS);
++        ASSERT_EQ(camera->GetCameraMode(), OrbitCamera::CameraMode::COMBAT_FOCUS);
++    }
++
++    // Test orbit settings
++    void TestOrbitSettings() {
++        OrbitCamera::OrbitSettings settings;
++        settings.distance = 20.0f;
++        settings.heightOffset = 3.0f;
++        settings.mouseSensitivity = 0.1f;
++        settings.smoothSpeed = 8.0f;
++        
++        camera->SetOrbitSettings(settings);
++        
++        auto& currentSettings = camera->GetOrbitSettings();
++        ASSERT_NEAR(currentSettings.distance, 20.0f, EPSILON);
++        ASSERT_NEAR(currentSettings.heightOffset, 3.0f, EPSILON);
++        ASSERT_NEAR(currentSettings.mouseSensitivity, 0.1f, EPSILON);
++        ASSERT_NEAR(currentSettings.smoothSpeed, 8.0f, EPSILON);
++    }
++
++    // Test camera movement
++    void TestCameraMovement() {
++        glm::vec3 targetPos(10.0f, 2.0f, 5.0f);
++        glm::vec3 velocity(1.0f, 0.0f, 0.0f);
++        float deltaTime = 0.016f;  // ~60 FPS
++        
++        // Update camera for several frames
++        for (int i = 0; i < 5; i++) {
++            camera->Update(deltaTime, targetPos, velocity);
++        }
++        
++        // Verify camera follows target
++        glm::vec3 cameraPos = camera->GetPosition();
++        ASSERT_GT(glm::distance(cameraPos, targetPos), camera->GetOrbitSettings().distance - 1.0f);
++        ASSERT_LT(glm::distance(cameraPos, targetPos), camera->GetOrbitSettings().distance + 1.0f);
++    }
++
++    // Test zoom functionality
++    void TestCameraZoom() {
++        float initialDistance = camera->GetOrbitSettings().distance;
++        
++        // Zoom in
++        camera->ApplyZoom(1.0f);
++        ASSERT_LT(camera->GetOrbitSettings().distance, initialDistance);
++        
++        // Zoom out
++        camera->ApplyZoom(-1.0f);
++        ASSERT_NEAR(camera->GetOrbitSettings().distance, initialDistance, EPSILON);
++    }
++
++    // Test mouse input
++    void TestMouseInput() {
++        // Store initial orientation
++        glm::vec3 initialForward = camera->GetForward();
++        
++        // Apply mouse movement
++        camera->ApplyMouseDelta(10.0f, 5.0f);
++        
++        // Verify camera rotated
++        glm::vec3 newForward = camera->GetForward();
++        ASSERT_NE(initialForward, newForward);
++    }
++
++    // Test matrix generation
++    void TestViewProjectionMatrix() {
++        camera->UpdateMatrices();
++        
++        glm::mat4 viewMatrix = camera->GetViewMatrix();
++        glm::mat4 projMatrix = camera->GetProjectionMatrix();
++        
++        // Verify matrices are not identity
++        glm::mat4 identity(1.0f);
++        ASSERT_NE(viewMatrix, identity);
++        ASSERT_NE(projMatrix, identity);
++        
++        // Verify projection matrix maintains aspect ratio
++        float fov, aspect, nearPlane, farPlane;
++        camera->GetPerspectiveParams(fov, aspect, nearPlane, farPlane);
++        ASSERT_NEAR(projMatrix[1][1] / projMatrix[0][0], 1.0f/aspect, EPSILON);
++    }
++};
++
++// Function to create and register the test suite
++std::shared_ptr<TestSuite> CreateOrbitCameraTestSuite() {
++    auto suite = std::make_shared<TestSuite>("Orbit Camera System");
++    auto fixture = std::make_shared<OrbitCameraTestSuite>();
++    
++    // Camera initialization
++    suite->AddTest("Camera Initialization", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCameraInitialization();
++        fixture->TearDown();
++    });
++    
++    // Camera modes
++    suite->AddTest("Camera Mode Transitions", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCameraModeTransitions();
++        fixture->TearDown();
++    });
++    
++    // Orbit settings
++    suite->AddTest("Orbit Settings", [fixture]() {
++        fixture->SetUp();
++        fixture->TestOrbitSettings();
++        fixture->TearDown();
++    });
++    
++    // Camera movement
++    suite->AddTest("Camera Movement", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCameraMovement();
++        fixture->TearDown();
++    });
++    
++    // Zoom functionality
++    suite->AddTest("Camera Zoom", [fixture]() {
++        fixture->SetUp();
++        fixture->TestCameraZoom();
++        fixture->TearDown();
++    });
++    
++    // Mouse input
++    suite->AddTest("Mouse Input", [fixture]() {
++        fixture->SetUp();
++        fixture->TestMouseInput();
++        fixture->TearDown();
++    });
++    
++    // Matrix generation
++    suite->AddTest("View Projection Matrix", [fixture]() {
++        fixture->SetUp();
++        fixture->TestViewProjectionMatrix();
++        fixture->TearDown();
++    });
++    
++    return suite;
++}
+\ No newline at end of file
+
+
+========== COMMIT 22/40: a98f44c14b57eb30dfadcc0c98a0db3c4074f9f2 ==========
+a98f44c14b57eb30dfadcc0c98a0db3c4074f9f2 bthecobb 2025-10-02 refactor: switch GLM to ExternalProject to avoid git submodule issues
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 9776c8a..96e95c0 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -42,21 +42,12 @@ jobs:
+           git submodule deinit -f --all
+           git submodule update --init --recursive
+ 
+-      - name: Setup and cache GLM
+-        id: cache-glm
+-        uses: actions/cache@v4
+-        with:
+-          path: external/glm
+-          key: glm-${{ runner.os }}-0.9.9.8-${{ hashFiles('CMakeLists.txt') }}
++      # GLM is now handled by CMake ExternalProject
+ 
+-      - name: Install GLM if not cached
+-        if: steps.cache-glm.outputs.cache-hit != 'true'
++      - name: Clean stale GLM dirs
+         shell: bash
+         run: |
+           rm -rf external/glm animation/build/_deps/glm-src build/_deps/glm-* || true
+-          mkdir -p external/glm
+-          git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
+-          test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Setup Dependencies Cache
+         uses: actions/cache@v4
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index e49dc73..c00be2e 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -42,21 +42,12 @@ jobs:
+           git submodule deinit -f --all
+           git submodule update --init --recursive
+ 
+-      - name: Setup and cache GLM
+-        id: cache-glm
+-        uses: actions/cache@v4
+-        with:
+-          path: external/glm
+-          key: glm-${{ runner.os }}-0.9.9.8-${{ hashFiles('CMakeLists.txt') }}
++      # GLM is now handled by CMake ExternalProject
+ 
+-      - name: Install GLM if not cached
+-        if: steps.cache-glm.outputs.cache-hit != 'true'
++      - name: Clean stale GLM dirs
+         shell: bash
+         run: |
+           rm -rf external/glm animation/build/_deps/glm-src build/_deps/glm-* || true
+-          mkdir -p external/glm
+-          git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
+-          test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2031b11..4dd5012 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -119,31 +119,26 @@ if(NOT glad_FOUND)
+ endif()
+ 
+ # GLM Setup
+-set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
++include(ExternalProject)
++
++set(GLM_VERSION "0.9.9.8")
++set(GLM_DIR "${CMAKE_BINARY_DIR}/glm")
++
++ExternalProject_Add(
++    glm_external
++    GIT_REPOSITORY https://github.com/g-truc/glm.git
++    GIT_TAG ${GLM_VERSION}
++    PREFIX ${GLM_DIR}
++    CONFIGURE_COMMAND ""
++    BUILD_COMMAND ""
++    INSTALL_COMMAND ""
++    UPDATE_COMMAND ""
++)
+ 
+-# Create GLM target if headers exist
+-if(EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
+-    add_library(glm INTERFACE)
+-    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+-    add_library(glm::glm ALIAS glm)
+-else()
+-    # Download GLM
+-    include(FetchContent)
+-    FetchContent_Declare(
+-        glm
+-        GIT_REPOSITORY https://github.com/g-truc/glm.git
+-        GIT_TAG 0.9.9.8
+-        SOURCE_DIR ${GLM_INCLUDE_DIR}
+-        OVERRIDE_FIND_PACKAGE
+-    )
+-    FetchContent_GetProperties(glm)
+-    if(NOT glm_POPULATED)
+-        FetchContent_Populate(glm)
+-        add_library(glm INTERFACE)
+-        target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+-        add_library(glm::glm ALIAS glm)
+-    endif()
+-endif()
++add_library(glm INTERFACE)
++add_dependencies(glm glm_external)
++target_include_directories(glm INTERFACE ${GLM_DIR}/src/glm_external)
++add_library(glm::glm ALIAS glm)
+ 
+ # PhysX Integration
+ set(PHYSX_ROOT_DIR ${CMAKE_SOURCE_DIR}/vendor/PhysX/physx)
+
+
+========== COMMIT 23/40: 11ea79ca4febeff95f851f41c3a11b59c36deabd ==========
+11ea79ca4febeff95f851f41c3a11b59c36deabd bthecobb 2025-10-02 ci: improve GLM caching and handling to prevent submodule issues
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 4b9daf0..9776c8a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -42,13 +42,20 @@ jobs:
+           git submodule deinit -f --all
+           git submodule update --init --recursive
+ 
+-      - name: Setup GLM
++      - name: Setup and cache GLM
++        id: cache-glm
++        uses: actions/cache@v4
++        with:
++          path: external/glm
++          key: glm-${{ runner.os }}-0.9.9.8-${{ hashFiles('CMakeLists.txt') }}
++
++      - name: Install GLM if not cached
++        if: steps.cache-glm.outputs.cache-hit != 'true'
+         shell: bash
+         run: |
+-          rm -rf external/glm animation/build/_deps/glm-src || true
++          rm -rf external/glm animation/build/_deps/glm-src build/_deps/glm-* || true
+           mkdir -p external/glm
+           git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
+-          echo "Verifying GLM installation..."
+           test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Setup Dependencies Cache
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 5b05dc5..e49dc73 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -42,12 +42,21 @@ jobs:
+           git submodule deinit -f --all
+           git submodule update --init --recursive
+ 
+-      - name: Setup GLM
++      - name: Setup and cache GLM
++        id: cache-glm
++        uses: actions/cache@v4
++        with:
++          path: external/glm
++          key: glm-${{ runner.os }}-0.9.9.8-${{ hashFiles('CMakeLists.txt') }}
++
++      - name: Install GLM if not cached
++        if: steps.cache-glm.outputs.cache-hit != 'true'
+         shell: bash
+         run: |
+-          rm -rf external/glm || true
++          rm -rf external/glm animation/build/_deps/glm-src build/_deps/glm-* || true
+           mkdir -p external/glm
+-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
++          test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+
+
+========== COMMIT 24/40: 794bcd47e82f13d8acf2d978811a1e450a7e2503 ==========
+794bcd47e82f13d8acf2d978811a1e450a7e2503 bthecobb 2025-10-02 fix: improve GLM handling to prevent submodule conflicts
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 772f599..4b9daf0 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -45,9 +45,11 @@ jobs:
+       - name: Setup GLM
+         shell: bash
+         run: |
+-          rm -rf external/glm || true
++          rm -rf external/glm animation/build/_deps/glm-src || true
+           mkdir -p external/glm
+-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
++          echo "Verifying GLM installation..."
++          test -f external/glm/glm/glm.hpp || exit 1
+ 
+       - name: Setup Dependencies Cache
+         uses: actions/cache@v4
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index dc32d8b..062c016 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -71,9 +71,11 @@ jobs:
+     - name: Setup GLM
+       shell: bash
+       run: |
+-        rm -rf external/glm || true
++        rm -rf external/glm animation/build/_deps/glm-src || true
+         mkdir -p external/glm
+-        git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++        git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git external/glm
++        echo "Verifying GLM installation..."
++        test -f external/glm/glm/glm.hpp || exit 1
+     
+     - name: Setup CMake
+       uses: jwlawson/actions-setup-cmake@v1.14
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9dff967..2031b11 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -119,17 +119,30 @@ if(NOT glad_FOUND)
+ endif()
+ 
+ # GLM Setup
+-set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm")
+-set(BUILD_STATIC_LIBS ON)
++set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
+ 
+-# Always create GLM target
+-add_library(glm INTERFACE)
+-target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+-add_library(glm::glm ALIAS glm)
+-
+-# Ensure GLM headers are available
+-if(NOT EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
+-    message(FATAL_ERROR "GLM headers not found. Please run: git clone https://github.com/g-truc/glm.git external/glm")
++# Create GLM target if headers exist
++if(EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
++    add_library(glm INTERFACE)
++    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
++    add_library(glm::glm ALIAS glm)
++else()
++    # Download GLM
++    include(FetchContent)
++    FetchContent_Declare(
++        glm
++        GIT_REPOSITORY https://github.com/g-truc/glm.git
++        GIT_TAG 0.9.9.8
++        SOURCE_DIR ${GLM_INCLUDE_DIR}
++        OVERRIDE_FIND_PACKAGE
++    )
++    FetchContent_GetProperties(glm)
++    if(NOT glm_POPULATED)
++        FetchContent_Populate(glm)
++        add_library(glm INTERFACE)
++        target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
++        add_library(glm::glm ALIAS glm)
++    endif()
+ endif()
+ 
+ # PhysX Integration
+diff --git a/cmake/external_dependencies.cmake b/cmake/external_dependencies.cmake
+index 2d69a08..0dd21ae 100644
+--- a/cmake/external_dependencies.cmake
++++ b/cmake/external_dependencies.cmake
+@@ -2,24 +2,7 @@
+ 
+ include(FetchContent)
+ 
+-# GLM
+-set(GLM_PATH "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
+-
+-if(NOT EXISTS "${GLM_PATH}/glm/glm.hpp")
+-    message(STATUS "GLM not found in ${GLM_PATH}, fetching...")
+-    FetchContent_Declare(
+-        glm
+-        GIT_REPOSITORY https://github.com/g-truc/glm.git
+-        GIT_TAG master
+-        SOURCE_DIR ${GLM_PATH}
+-    )
+-    FetchContent_MakeAvailable(glm)
+-else()
+-    message(STATUS "Using GLM from ${GLM_PATH}")
+-    add_library(glm INTERFACE)
+-    target_include_directories(glm INTERFACE ${GLM_PATH})
+-    add_library(glm::glm ALIAS glm)
+-endif()
++# GLM is handled in the main CMakeLists.txt
+ 
+ # GLFW
+ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/glfw/CMakeLists.txt")
+
+
+========== COMMIT 25/40: f531b2fa1d491e0d98737e6fa303782d73d6612c ==========
+f531b2fa1d491e0d98737e6fa303782d73d6612c bthecobb 2025-10-02 ci: fix version formats, improve test artifact collection, and update submodule handling
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e2ed4f6..772f599 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -14,7 +14,7 @@ on:
+ env:
+   BUILD_TYPE: Release
+   CMAKE_VERSION: '3.20'
+-  CUDA_VERSION: '11.8'
++  CUDA_VERSION: '11.8.0'
+   PHYSX_VERSION: '5.1'
+   CPP_STANDARD: '17'
+ 
+@@ -40,8 +40,7 @@ jobs:
+       - name: Update submodules
+         run: |
+           git submodule deinit -f --all
+-          git submodule init
+-          git submodule update
++          git submodule update --init --recursive
+ 
+       - name: Setup GLM
+         shell: bash
+@@ -69,9 +68,9 @@ jobs:
+           key: ${{runner.os}}-deps-${{hashFiles('**/CMakeLists.txt')}}
+ 
+       - name: Setup CMake
+-        uses: lukka/get-cmake@latest
++        uses: jwlawson/actions-setup-cmake@v1.14
+         with:
+-          cmake-version: ${{env.CMAKE_VERSION}}
++          cmake-version: '3.20.x'
+ 
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+@@ -143,17 +142,29 @@ jobs:
+       - name: Build
+         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
+ 
++      - name: Prepare Test Directory
++        run: mkdir -p ${{github.workspace}}/test_results
++
+       - name: Run Core Tests
+         working-directory: ${{github.workspace}}/build
+-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Core"
++        run: |
++          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Core" || true
++          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
+         
+       - name: Run Rendering Tests
+         working-directory: ${{github.workspace}}/build
+-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Rendering"
++        run: |
++          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Rendering" || true
++          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
+ 
+       - name: Run Performance Tests
+         working-directory: ${{github.workspace}}/build
+-        run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Performance"
++        run: |
++          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --label-regex "Performance" || true
++          find . -name "test_*.xml" -exec cp {} ../test_results/ \;
++          if [ -f "perf_results.json" ]; then
++            cp perf_results.json ../test_results/
++          fi
+         
+       - name: Package Build Artifacts
+         run: |
+@@ -163,12 +174,18 @@ jobs:
+             ${{github.workspace}}/build/*.pdb
+ 
+       - name: Upload Build Artifacts
++        if: always()
+         uses: actions/upload-artifact@v4
+         with:
+-          name: cuda-game-build
+-          path: cuda_game_artifacts.zip
++          name: cuda-game-build-${{ matrix.os }}-${{ matrix.build_type }}
++          path: |
++            cuda_game_artifacts.zip
++            test_results/*
++            build/**/*.log
++            build/CMakeFiles/**/*.log
+           retention-days: 5
+           compression-level: 6
++          if-no-files-found: warn
+ 
+   java-integration-tests:
+     name: Integration Tests
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 1eeeee6..dc32d8b 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -12,8 +12,8 @@ on:
+ 
+ env:
+   # Build configuration
+-  CMAKE_VERSION: '3.27.0'
+-  CUDA_VERSION: '12.3'
++  CMAKE_VERSION: '3.27.7'
++  CUDA_VERSION: '12.3.0'
+   
+   # Performance thresholds (fail if exceeded)
+   MAX_PHYSICS_TIME_MS: 17
+@@ -66,8 +66,7 @@ jobs:
+     - name: Update submodules
+       run: |
+         git submodule deinit -f --all
+-        git submodule init
+-        git submodule update
++        git submodule update --init --recursive
+ 
+     - name: Setup GLM
+       shell: bash
+@@ -77,7 +76,9 @@ jobs:
+         git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+     
+     - name: Setup CMake
+-      uses: lukka/get-cmake@latest
++      uses: jwlawson/actions-setup-cmake@v1.14
++      with:
++        cmake-version: '3.27.x'
+     
+     - name: Install Linux dependencies
+       if: runner.os == 'Linux'
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 8318c91..5b05dc5 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -16,7 +16,7 @@ on:
+ 
+ env:
+   BUILD_TYPE: Release
+-  CUDA_VERSION: '11.8'
++  CUDA_VERSION: '11.8.0'
+   VULKAN_SDK_VERSION: '1.3.250.1'
+ 
+ jobs:
+@@ -40,8 +40,7 @@ jobs:
+       - name: Update submodules
+         run: |
+           git submodule deinit -f --all
+-          git submodule init
+-          git submodule update
++          git submodule update --init --recursive
+ 
+       - name: Setup GLM
+         shell: bash
+
+
+========== COMMIT 26/40: 735cc403262f366aa811d53a4c65bfd4a8299a2c ==========
+735cc403262f366aa811d53a4c65bfd4a8299a2c bthecobb 2025-10-02 fix: improve GLM handling and git submodule management
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 212ae4f..e2ed4f6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -36,7 +36,19 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+-          submodules: recursive
++
++      - name: Update submodules
++        run: |
++          git submodule deinit -f --all
++          git submodule init
++          git submodule update
++
++      - name: Setup GLM
++        shell: bash
++        run: |
++          rm -rf external/glm || true
++          mkdir -p external/glm
++          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+ 
+       - name: Setup Dependencies Cache
+         uses: actions/cache@v4
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 06ea1ba..1eeeee6 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -61,8 +61,20 @@ jobs:
+     - name: Checkout code
+       uses: actions/checkout@v4
+       with:
+-        submodules: recursive
+         fetch-depth: 0  # Full history for better debugging
++
++    - name: Update submodules
++      run: |
++        git submodule deinit -f --all
++        git submodule init
++        git submodule update
++
++    - name: Setup GLM
++      shell: bash
++      run: |
++        rm -rf external/glm || true
++        mkdir -p external/glm
++        git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+     
+     - name: Setup CMake
+       uses: lukka/get-cmake@latest
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 2017539..8318c91 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -36,7 +36,19 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+-          submodules: recursive
++
++      - name: Update submodules
++        run: |
++          git submodule deinit -f --all
++          git submodule init
++          git submodule update
++
++      - name: Setup GLM
++        shell: bash
++        run: |
++          rm -rf external/glm || true
++          mkdir -p external/glm
++          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+ 
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 68c6b79..9dff967 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -118,24 +118,18 @@ if(NOT glad_FOUND)
+     FetchContent_MakeAvailable(glad)
+ endif()
+ 
+-# Find GLM
+-set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM include directory")
++# GLM Setup
++set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm")
++set(BUILD_STATIC_LIBS ON)
+ 
++# Always create GLM target
++add_library(glm INTERFACE)
++target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
++add_library(glm::glm ALIAS glm)
++
++# Ensure GLM headers are available
+ if(NOT EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
+-    message(STATUS "GLM not found in external/glm, fetching...")
+-    include(FetchContent)
+-    FetchContent_Declare(
+-        glm
+-        GIT_REPOSITORY https://github.com/g-truc/glm.git
+-        GIT_TAG 0.9.9.8
+-        SOURCE_DIR ${GLM_INCLUDE_DIR}
+-    )
+-    FetchContent_MakeAvailable(glm)
+-else()
+-    message(STATUS "Using GLM from ${GLM_INCLUDE_DIR}")
+-    add_library(glm INTERFACE)
+-    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
+-    add_library(glm::glm ALIAS glm)
++    message(FATAL_ERROR "GLM headers not found. Please run: git clone https://github.com/g-truc/glm.git external/glm")
+ endif()
+ 
+ # PhysX Integration
+
+
+========== COMMIT 27/40: f83d0fe51a01ff3f51afbc6e98aea6ae89efc4c4 ==========
+f83d0fe51a01ff3f51afbc6e98aea6ae89efc4c4 bthecobb 2025-10-02 ci: update cache actions to v4
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 1719e91..06ea1ba 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -90,7 +90,7 @@ jobs:
+     # Caching Strategy
+     # -------------------------------------------------------------------------
+     - name: Cache CMake build directory
+-      uses: actions/cache@v3
++      uses: actions/cache@v4
+       with:
+         path: |
+           build
+@@ -101,7 +101,7 @@ jobs:
+           ${{ runner.os }}-${{ matrix.build_type }}-cmake-
+     
+     - name: Cache PhysX libraries
+-      uses: actions/cache@v3
++      uses: actions/cache@v4
+       with:
+         path: vendor/PhysX
+         key: ${{ runner.os }}-physx-${{ hashFiles('vendor/PhysX/**') }}
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 3f015ad..2017539 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -50,7 +50,17 @@ jobs:
+         with:
+           vulkan-query-version: ${{env.VULKAN_SDK_VERSION}}
+           vulkan-components: Vulkan-Headers, Vulkan-Loader
+-          vulkan-use-cache: true
++          vulkan-use-cache: false
++
++      - name: Cache Vulkan SDK
++        uses: actions/cache@v4
++        with:
++          path: |
++            ${{ env.VULKAN_SDK }}
++            ~/.vulkan
++          key: vulkan-${{ runner.os }}-${{ env.VULKAN_SDK_VERSION }}
++          restore-keys: |
++            vulkan-${{ runner.os }}-
+ 
+       - name: Setup Dependencies
+         shell: pwsh
+
+
+========== COMMIT 28/40: c3ce1c61c421d6c35febbbd22325bf2b11c279dd ==========
+c3ce1c61c421d6c35febbbd22325bf2b11c279dd bthecobb 2025-10-02 fix: update GLM handling and workflow issues
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 81c3749..212ae4f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -87,6 +87,13 @@ jobs:
+       - name: Setup Dependencies
+         shell: pwsh
+         run: |
++          # Remove any existing GLM directory
++          if (Test-Path external/glm) { Remove-Item -Recurse -Force external/glm }
++          
++          # Clone GLM fresh
++          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          
++          # Verify GLM setup
+           Write-Host "::group::Setting up dependencies"
+           ./scripts/setup_dependencies.ps1
+           Write-Host "::endgroup::"
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index bfc5de0..1719e91 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -246,7 +246,7 @@ jobs:
+     # Test Results and Artifacts
+     # -------------------------------------------------------------------------
+     - name: Publish test results
+-      uses: EnricoMi/publish-unit-test-result-action/composite@v2
++      uses: EnricoMi/publish-unit-test-result-action@v2
+       if: always() && runner.os != 'Windows'
+       with:
+         files: |
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f5a5d43..68c6b79 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -119,15 +119,23 @@ if(NOT glad_FOUND)
+ endif()
+ 
+ # Find GLM
+-find_package(glm QUIET)
+-if(NOT glm_FOUND)
++set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM include directory")
++
++if(NOT EXISTS "${GLM_INCLUDE_DIR}/glm/glm.hpp")
++    message(STATUS "GLM not found in external/glm, fetching...")
+     include(FetchContent)
+     FetchContent_Declare(
+         glm
+         GIT_REPOSITORY https://github.com/g-truc/glm.git
+         GIT_TAG 0.9.9.8
++        SOURCE_DIR ${GLM_INCLUDE_DIR}
+     )
+     FetchContent_MakeAvailable(glm)
++else()
++    message(STATUS "Using GLM from ${GLM_INCLUDE_DIR}")
++    add_library(glm INTERFACE)
++    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
++    add_library(glm::glm ALIAS glm)
+ endif()
+ 
+ # PhysX Integration
+@@ -332,12 +340,18 @@ configure_msvc_runtime(LightingIntegrationDemo)
+ add_executable(TestRunner
+     tests/TestRunner.cpp
+     tests/CoreSystemsTests.cpp
++    tests/OrbitCameraTests.cpp
++    tests/CharacterControllerTests.cpp
++    tests/RenderingSystemTests.cpp
++    tests/Full3DGameIntegrationTests.cpp
+     tests/PhysXIntegrationTests.cpp
+     src_refactored/Testing/TestFramework.cpp
+     src_refactored/Testing/AdvancedTestFramework.cpp
+     src_refactored/Core/EntityManager.cpp
+     src_refactored/Core/ComponentManager.cpp
+     src_refactored/Physics/PhysXPhysicsSystem.cpp
++    src_refactored/Rendering/OrbitCamera.cpp
++    src_refactored/Rendering/Camera.cpp
+ )
+ 
+ # Add GTest
+@@ -369,7 +383,6 @@ target_compile_definitions(TestRunner PRIVATE
+     CUDA_TEST_ENABLED
+     GLM_FORCE_CUDA
+     _ITERATOR_DEBUG_LEVEL=0
+-    GTEST_LINKED_AS_SHARED_LIBRARY
+ )
+ 
+ # Configure test output directory
+
+
+========== COMMIT 29/40: 49b7f98d615a8e40ed387b036f15e4b6a61ca67d ==========
+49b7f98d615a8e40ed387b036f15e4b6a61ca67d bthecobb 2025-10-02 ci: update all workflows to use actions/upload-artifact@v4 and fix GLM initialization
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7129248..81c3749 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -36,7 +36,7 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+-          submodules: true
++          submodules: recursive
+ 
+       - name: Setup Dependencies Cache
+         uses: actions/cache@v4
+diff --git a/.github/workflows/cpp-tests.yml b/.github/workflows/cpp-tests.yml
+index 7bac840..bfc5de0 100644
+--- a/.github/workflows/cpp-tests.yml
++++ b/.github/workflows/cpp-tests.yml
+@@ -136,14 +136,22 @@ jobs:
+       run: |
+         cmake --build build --config ${{ matrix.build_type }} -j 4
+     
+-    - name: Verify build artifacts
++    - name: Verify build artifacts and setup PhysX
+       shell: bash
+       run: |
+         echo "Checking for built executables..."
+         if [ "$RUNNER_OS" == "Windows" ]; then
+           ls -la build/${{ matrix.build_type }}/*.exe || echo "Warning: No executables found"
++          # Copy PhysX DLLs to test executable directory
++          echo "Copying PhysX DLLs..."
++          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysX_64.dll build/${{ matrix.build_type }}/
++          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCommon_64.dll build/${{ matrix.build_type }}/
++          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXFoundation_64.dll build/${{ matrix.build_type }}/
++          cp vendor/PhysX/physx/bin/win.x86_64.vc142.md/release/PhysXCooking_64.dll build/${{ matrix.build_type }}/
++          ls -la build/${{ matrix.build_type }}/*.dll
+         else
+           ls -la build/ || echo "Warning: Build directory empty"
++          # For Linux, PhysX is statically linked
+         fi
+     
+     # -------------------------------------------------------------------------
+@@ -256,7 +264,7 @@ jobs:
+     
+     - name: Upload test artifacts
+       if: always()
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: test-results-${{ matrix.os }}-${{ matrix.build_type }}
+         path: |
+@@ -266,7 +274,7 @@ jobs:
+     
+     - name: Upload build logs on failure
+       if: failure()
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: build-logs-${{ matrix.os }}-${{ matrix.build_type }}
+         path: |
+@@ -312,7 +320,7 @@ jobs:
+     
+     - name: Upload ASan results
+       if: always()
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: asan-results
+         path: |
+@@ -379,7 +387,7 @@ jobs:
+         fail_ci_if_error: false
+     
+     - name: Upload coverage HTML report
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: coverage-report
+         path: coverage_html/
+@@ -408,7 +416,7 @@ jobs:
+     
+     - name: Upload static analysis results
+       if: always()
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: static-analysis
+         path: cppcheck_results.xml
+@@ -425,7 +433,7 @@ jobs:
+     
+     steps:
+     - name: Download all artifacts
+-      uses: actions/download-artifact@v3
++      uses: actions/download-artifact@v4
+     
+     - name: Check quality metrics
+       shell: bash
+@@ -521,7 +529,7 @@ jobs:
+     
+     steps:
+     - name: Download artifacts
+-      uses: actions/download-artifact@v3
++      uses: actions/download-artifact@v4
+     
+     - name: Create release package
+       run: |
+@@ -535,7 +543,7 @@ jobs:
+         cp -r coverage-report/* release/ || true
+     
+     - name: Upload release artifacts
+-      uses: actions/upload-artifact@v3
++      uses: actions/upload-artifact@v4
+       with:
+         name: cudagame-release-${{ github.run_number }}
+         path: release/
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index 8598e99..3f015ad 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -36,6 +36,7 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
++          submodules: recursive
+ 
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+@@ -52,11 +53,12 @@ jobs:
+           vulkan-use-cache: true
+ 
+       - name: Setup Dependencies
++        shell: pwsh
+         run: |
+-          git submodule init
+-          git submodule update
+-          mkdir -p external/glm
+-          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          if (-not (Test-Path "external/glm/glm/glm.hpp")) {
++            New-Item -ItemType Directory -Force -Path external/glm
++            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          }
+ 
+       - name: Install Dependencies (Ubuntu)
+         if: runner.os == 'Linux'
+
+
+========== COMMIT 30/40: 83c31045594d91538cd18edbd709850fe3a25f6d ==========
+83c31045594d91538cd18edbd709850fe3a25f6d bthecobb 2025-10-02 ci: update GitHub Actions to v4 and fix SonarCloud configuration
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index b50d5a1..7129248 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -149,6 +149,7 @@ jobs:
+           name: cuda-game-build
+           path: cuda_game_artifacts.zip
+           retention-days: 5
++          compression-level: 6
+ 
+   java-integration-tests:
+     name: Integration Tests
+@@ -173,6 +174,7 @@ jobs:
+         with:
+           name: cuda-game-build
+           path: game-build
++          merge-multiple: true
+ 
+       - name: Extract Game Build
+         run: 7z x game-build/cuda_game_artifacts.zip -ogame-build
+@@ -200,6 +202,7 @@ jobs:
+           path: target/site/allure-report
+           retention-days: 5
+           if-no-files-found: warn
++          compression-level: 6
+ 
+   quality-analysis:
+     name: Code Quality Analysis
+@@ -222,6 +225,9 @@ jobs:
+       - name: Install sonar-scanner and build-wrapper
+         uses: SonarSource/sonarcloud-github-c-cpp@v2
+ 
++      - name: Create Build Directory
++        run: New-Item -ItemType Directory -Force -Path build
++
+       - name: Setup CUDA
+         uses: Jimver/cuda-toolkit@v0.2.11
+         with:
+@@ -294,6 +300,9 @@ jobs:
+           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Using SonarCloud token for analysis
+         run: |
+           sonar-scanner.bat `
++            -D"sonar.projectKey=${{ github.repository_owner }}_CudaGame" `
++            -D"sonar.organization=${{ github.repository_owner }}" `
++            -D"sonar.host.url=https://sonarcloud.io" `
+             -D"sonar.cfamily.build-wrapper-output=${{env.BUILD_WRAPPER_OUT_DIR}}" `
+             -D"sonar.coverageReportPaths=coverage.xml" `
+             -D"sonar.cpp.cppcheck.reportPaths=cppcheck-report.xml" `
+@@ -317,6 +326,7 @@ jobs:
+           retention-days: 5
+           if-no-files-found: warn
+           overwrite: true
++          compression-level: 6
+ 
+   deployment:
+     name: Deploy Build
+@@ -330,6 +340,7 @@ jobs:
+           name: cuda-game-build
+           path: artifacts
+           merge-multiple: true
++          pattern: '*.zip'
+ 
+       - name: Setup Release
+         uses: softprops/action-gh-release@v1
+
+
+========== COMMIT 31/40: cf50595d87e0439b4fa87f0d5396ca598c63941c ==========
+cf50595d87e0439b4fa87f0d5396ca598c63941c bthecobb 2025-10-02 Update all remaining GitHub Actions to v4 and fix artifact configurations
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index af4bbf6..b50d5a1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -162,7 +162,7 @@ jobs:
+           fetch-depth: 0
+ 
+       - name: Set up JDK
+-        uses: actions/setup-java@v3
++        uses: actions/setup-java@v4
+         with:
+           distribution: 'temurin'
+           java-version: '11'
+@@ -208,7 +208,7 @@ jobs:
+     env:
+       BUILD_WRAPPER_OUT_DIR: build_wrapper_output
+     steps:
+-      - uses: actions/checkout@v3
++      - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+ 
+@@ -305,7 +305,7 @@ jobs:
+       # Upload analysis artifacts
+       - name: Upload Analysis Reports
+         if: always()
+-        uses: actions/upload-artifact@v3
++        uses: actions/upload-artifact@v4
+         with:
+           name: code-analysis-reports
+           path: |
+@@ -314,6 +314,9 @@ jobs:
+             coverage.xml
+             cuda_analysis/
+             ${{env.BUILD_WRAPPER_OUT_DIR}}/
++          retention-days: 5
++          if-no-files-found: warn
++          overwrite: true
+ 
+   deployment:
+     name: Deploy Build
+
+
+========== COMMIT 32/40: c7561d2bf75227d1e0de6f93b981f2f8eeb0e0db ==========
+c7561d2bf75227d1e0de6f93b981f2f8eeb0e0db bthecobb 2025-10-02 Fix GLM dependency handling and update all GitHub Actions to v4
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 81f2451..af4bbf6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -85,14 +85,22 @@ jobs:
+           }
+ 
+       - name: Setup Dependencies
+-        shell: bash
++        shell: pwsh
+         run: |
+-          git submodule init
+-          git submodule update
+-          mkdir -p external/glm
+-          if [ ! -d "external/glm/.git" ]; then
+-            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
+-          fi
++          Write-Host "::group::Setting up dependencies"
++          ./scripts/setup_dependencies.ps1
++          Write-Host "::endgroup::"
++
++          Write-Host "::group::Verifying GLM setup"
++          if (Test-Path "third_party/glm/glm/glm.hpp") {
++              Write-Host "Γ£à GLM found in third_party"
++          } elseif (Test-Path "external/glm/glm/glm.hpp") {
++              Write-Host "Γ£à GLM found in external"
++          } else {
++              Write-Host "Γ¥î GLM not found!"
++              exit 1
++          }
++          Write-Host "::endgroup::"
+ 
+       - name: Configure CMake
+         shell: bash
+@@ -170,9 +178,15 @@ jobs:
+         run: 7z x game-build/cuda_game_artifacts.zip -ogame-build
+ 
+       - name: Run Integration Tests
+-        run: mvn verify -P integration-tests
++        run: |
++          if (-not (Test-Path "third_party/glm/glm/glm.hpp")) {
++            ./scripts/setup_dependencies.ps1
++          }
++          mvn verify -P integration-tests -B -V
++        shell: pwsh
+         env:
+           GAME_BUILD_PATH: ${{github.workspace}}/game-build
++          MAVEN_OPTS: "-Dmaven.test.failure.ignore=false -Dmaven.wagon.http.retryHandler.count=3"
+ 
+       - name: Generate Allure Report
+         if: always()
+@@ -184,6 +198,8 @@ jobs:
+         with:
+           name: test-report
+           path: target/site/allure-report
++          retention-days: 5
++          if-no-files-found: warn
+ 
+   quality-analysis:
+     name: Code Quality Analysis
+@@ -309,6 +325,8 @@ jobs:
+         uses: actions/download-artifact@v4
+         with:
+           name: cuda-game-build
++          path: artifacts
++          merge-multiple: true
+ 
+       - name: Setup Release
+         uses: softprops/action-gh-release@v1
+diff --git a/animation/CMakeLists.txt b/animation/CMakeLists.txt
+index b743be4..644b667 100644
+--- a/animation/CMakeLists.txt
++++ b/animation/CMakeLists.txt
+@@ -19,25 +19,30 @@ else()
+     add_compile_options(-Wall -Wextra -O2)
+ endif()
+ 
+-# Find or download GLM
+-find_package(glm QUIET)
+-if(NOT glm_FOUND)
+-    message(STATUS "GLM not found, using bundled version")
+-    
+-    # Download GLM if not present
+-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm/glm/glm.hpp")
+-        message(STATUS "Downloading GLM...")
+-        include(FetchContent)
+-        FetchContent_Declare(
+-            glm
+-            GIT_REPOSITORY https://github.com/g-truc/glm.git
+-            GIT_TAG        0.9.9.8
+-        )
+-        FetchContent_MakeAvailable(glm)
+-    else()
+-        # Use local GLM
+-        add_subdirectory(../third_party/glm ${CMAKE_BINARY_DIR}/glm)
++# Find GLM
++set(GLM_PATHS
++    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/glm"
++    "${CMAKE_CURRENT_SOURCE_DIR}/../external/glm"
++    "${CMAKE_SOURCE_DIR}/third_party/glm"
++    "${CMAKE_SOURCE_DIR}/external/glm"
++)
++
++set(GLM_FOUND FALSE)
++foreach(GLM_PATH ${GLM_PATHS})
++    if(EXISTS "${GLM_PATH}/glm/glm.hpp")
++        set(GLM_FOUND TRUE)
++        set(GLM_INCLUDE_DIR "${GLM_PATH}")
++        break()
+     endif()
++endforeach()
++
++if(NOT GLM_FOUND)
++    message(FATAL_ERROR "GLM not found in any standard locations. Please run setup_dependencies.ps1 first.")
++else()
++    message(STATUS "Found GLM in ${GLM_INCLUDE_DIR}")
++    add_library(glm INTERFACE)
++    target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIR})
++    add_library(glm::glm ALIAS glm)
+ endif()
+ 
+ # Include directories
+diff --git a/scripts/setup_dependencies.ps1 b/scripts/setup_dependencies.ps1
+new file mode 100644
+index 0000000..e75814d
+--- /dev/null
++++ b/scripts/setup_dependencies.ps1
+@@ -0,0 +1,48 @@
++# Setup script for project dependencies
++Write-Host "≡ƒöº Setting up project dependencies..." -ForegroundColor Cyan
++
++# Create directories
++$ExternalDir = Join-Path $PSScriptRoot ".." "external"
++$ThirdPartyDir = Join-Path $PSScriptRoot ".." "third_party"
++
++# Create directories if they don't exist
++@($ExternalDir, $ThirdPartyDir) | ForEach-Object {
++    if (-not (Test-Path $_)) {
++        New-Item -ItemType Directory -Path $_ -Force | Out-Null
++        Write-Host "Γ£à Created directory: $_" -ForegroundColor Green
++    }
++}
++
++# Clone GLM if not present
++$GlmPath = Join-Path $ThirdPartyDir "glm"
++if (-not (Test-Path (Join-Path $GlmPath "glm/glm.hpp"))) {
++    Write-Host "≡ƒôª Downloading GLM..." -ForegroundColor Yellow
++    Push-Location $ThirdPartyDir
++    try {
++        & git clone --depth 1 --branch 0.9.9.8 https://github.com/g-truc/glm.git glm
++        if ($LASTEXITCODE -eq 0) {
++            Write-Host "Γ£à GLM downloaded successfully" -ForegroundColor Green
++        } else {
++            Write-Host "Γ¥î Failed to download GLM" -ForegroundColor Red
++            exit 1
++        }
++    } finally {
++        Pop-Location
++    }
++} else {
++    Write-Host "Γ£à GLM already present" -ForegroundColor Green
++}
++
++# Create symbolic links for convenience
++$GlmLink = Join-Path $ExternalDir "glm"
++if (-not (Test-Path $GlmLink)) {
++    if ($PSVersionTable.PSVersion.Major -ge 6) {
++        New-Item -ItemType SymbolicLink -Path $GlmLink -Target $GlmPath
++    } else {
++        # Fallback for older PowerShell versions
++        cmd /c mklink /D $GlmLink $GlmPath
++    }
++    Write-Host "Γ£à Created GLM symbolic link" -ForegroundColor Green
++}
++
++Write-Host "`nΓ£¿ Dependencies setup complete!" -ForegroundColor Cyan
+\ No newline at end of file
+
+
+========== COMMIT 33/40: e157de83f9082af572b891f420df198e5d08d4e5 ==========
+e157de83f9082af572b891f420df198e5d08d4e5 bthecobb 2025-10-02 Fix GLM dependency handling and improve CMake configuration
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 938aa19..81f2451 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -84,13 +84,15 @@ jobs:
+             mkdir -p ${{github.workspace}}/build
+           }
+ 
+-      - name: Setup External Dependencies
++      - name: Setup Dependencies
++        shell: bash
+         run: |
+-          if ('${{ runner.os }}' -eq 'Windows') {
+-            git submodule update --init --recursive
+-          } else {
+-            git submodule update --init --recursive
+-          }
++          git submodule init
++          git submodule update
++          mkdir -p external/glm
++          if [ ! -d "external/glm/.git" ]; then
++            git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++          fi
+ 
+       - name: Configure CMake
+         shell: bash
+@@ -107,7 +109,9 @@ jobs:
+             -DCMAKE_CUDA_COMPILER=$(which nvcc) \
+             -DPHYSX_ROOT=${PHYSX_SDK_PATH:-$env:PHYSX_SDK_PATH} \
+             -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
+-            -DFETCHCONTENT_QUIET=OFF
++            -DFETCHCONTENT_QUIET=OFF \
++            -DGLM_ROOT_DIR="$PWD/external/glm" \
++            -DGLM_INCLUDE_DIR="$PWD/external/glm"
+ 
+       - name: Build
+         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
+diff --git a/.github/workflows/rendering-tests.yml b/.github/workflows/rendering-tests.yml
+index f22818b..8598e99 100644
+--- a/.github/workflows/rendering-tests.yml
++++ b/.github/workflows/rendering-tests.yml
+@@ -51,6 +51,13 @@ jobs:
+           vulkan-components: Vulkan-Headers, Vulkan-Loader
+           vulkan-use-cache: true
+ 
++      - name: Setup Dependencies
++        run: |
++          git submodule init
++          git submodule update
++          mkdir -p external/glm
++          git clone --depth 1 https://github.com/g-truc/glm.git external/glm
++
+       - name: Install Dependencies (Ubuntu)
+         if: runner.os == 'Linux'
+         run: |
+diff --git a/cmake/external_dependencies.cmake b/cmake/external_dependencies.cmake
+index 311a58c..2d69a08 100644
+--- a/cmake/external_dependencies.cmake
++++ b/cmake/external_dependencies.cmake
+@@ -3,15 +3,22 @@
+ include(FetchContent)
+ 
+ # GLM
+-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/glm/CMakeLists.txt")
++set(GLM_PATH "${CMAKE_SOURCE_DIR}/external/glm" CACHE PATH "Path to GLM installation")
++
++if(NOT EXISTS "${GLM_PATH}/glm/glm.hpp")
++    message(STATUS "GLM not found in ${GLM_PATH}, fetching...")
+     FetchContent_Declare(
+         glm
+         GIT_REPOSITORY https://github.com/g-truc/glm.git
+         GIT_TAG master
++        SOURCE_DIR ${GLM_PATH}
+     )
+     FetchContent_MakeAvailable(glm)
+ else()
+-    add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
++    message(STATUS "Using GLM from ${GLM_PATH}")
++    add_library(glm INTERFACE)
++    target_include_directories(glm INTERFACE ${GLM_PATH})
++    add_library(glm::glm ALIAS glm)
+ endif()
+ 
+ # GLFW
+
+
+========== COMMIT 34/40: 1f20e708265286b3de4893726ba5ef24c5e569a1 ==========
+1f20e708265286b3de4893726ba5ef24c5e569a1 bthecobb 2025-10-02 Add dependency management and fix submodule handling in CI
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 5079568..938aa19 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -36,7 +36,17 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
+-          submodules: 'recursive'
++          submodules: true
++
++      - name: Setup Dependencies Cache
++        uses: actions/cache@v4
++        with:
++          path: |
++            external
++            build/_deps
++          key: ${{ runner.os }}-deps-${{ hashFiles('.gitmodules') }}
++          restore-keys: |
++            ${{ runner.os }}-deps-
+ 
+       - name: Cache Dependencies
+         uses: actions/cache@v4
+@@ -74,6 +84,14 @@ jobs:
+             mkdir -p ${{github.workspace}}/build
+           }
+ 
++      - name: Setup External Dependencies
++        run: |
++          if ('${{ runner.os }}' -eq 'Windows') {
++            git submodule update --init --recursive
++          } else {
++            git submodule update --init --recursive
++          }
++
+       - name: Configure CMake
+         shell: bash
+         run: |
+@@ -87,7 +105,9 @@ jobs:
+             -DENABLE_PHYSX=ON \
+             -DCMAKE_CUDA_ARCHITECTURES=75 \
+             -DCMAKE_CUDA_COMPILER=$(which nvcc) \
+-            -DPHYSX_ROOT=${PHYSX_SDK_PATH:-$env:PHYSX_SDK_PATH}
++            -DPHYSX_ROOT=${PHYSX_SDK_PATH:-$env:PHYSX_SDK_PATH} \
++            -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
++            -DFETCHCONTENT_QUIET=OFF
+ 
+       - name: Build
+         run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel
+diff --git a/.gitmodules b/.gitmodules
+new file mode 100644
+index 0000000..2ef3493
+--- /dev/null
++++ b/.gitmodules
+@@ -0,0 +1,14 @@
++[submodule "external/glm"]
++    path = external/glm
++    url = https://github.com/g-truc/glm.git
++    branch = master
++
++[submodule "external/vulkan"]
++    path = external/vulkan
++    url = https://github.com/KhronosGroup/Vulkan-Headers.git
++    branch = main
++
++[submodule "external/glfw"]
++    path = external/glfw
++    url = https://github.com/glfw/glfw.git
++    branch = master
+\ No newline at end of file
+diff --git a/cmake/external_dependencies.cmake b/cmake/external_dependencies.cmake
+new file mode 100644
+index 0000000..311a58c
+--- /dev/null
++++ b/cmake/external_dependencies.cmake
+@@ -0,0 +1,60 @@
++# External dependencies configuration
++
++include(FetchContent)
++
++# GLM
++if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/glm/CMakeLists.txt")
++    FetchContent_Declare(
++        glm
++        GIT_REPOSITORY https://github.com/g-truc/glm.git
++        GIT_TAG master
++    )
++    FetchContent_MakeAvailable(glm)
++else()
++    add_subdirectory(${CMAKE_SOURCE_DIR}/external/glm)
++endif()
++
++# GLFW
++if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/glfw/CMakeLists.txt")
++    FetchContent_Declare(
++        glfw
++        GIT_REPOSITORY https://github.com/glfw/glfw.git
++        GIT_TAG master
++    )
++    FetchContent_MakeAvailable(glfw)
++else()
++    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
++    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)

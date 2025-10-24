@@ -138,7 +138,7 @@ private:
     std::unordered_map<size_t, Entity> mIndexToEntityMap;
 
     // Total size of valid entries in the array.
-    size_t mSize;
+    size_t mSize = 0;
 };
 
 // The ComponentManager is in charge of talking to all the different ComponentArrays

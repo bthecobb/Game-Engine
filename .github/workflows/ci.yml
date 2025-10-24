@@ -132,9 +132,10 @@ jobs:
             -DBUILD_TESTING=ON \
             -DENABLE_CUDA=ON \
             -DENABLE_PHYSX=ON \
+            -DENABLE_RENDER_TESTS=OFF \
             -DCMAKE_CUDA_ARCHITECTURES=75 \
             -DCMAKE_CUDA_COMPILER=$(which nvcc) \
-            -DPHYSX_ROOT=${PHYSX_SDK_PATH:-$env:PHYSX_SDK_PATH} \
+            -DPHYSX_ROOT_DIR="${{github.workspace}}/vendor/PhysX-107.0-physx-5.6.0/physx" \
             -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
             -DFETCHCONTENT_QUIET=OFF \
             -DGLM_ROOT_DIR="$PWD/external/glm" \

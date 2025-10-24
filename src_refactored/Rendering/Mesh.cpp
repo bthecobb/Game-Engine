@@ -230,6 +230,7 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
 
 unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma)
 {
+    (void)gamma; // Unused parameter
     std::string filename = std::string(path);
     filename = directory + '/' + filename;
 

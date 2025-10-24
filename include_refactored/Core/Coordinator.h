@@ -5,6 +5,7 @@
 #include "ComponentManager.h"
 #include "SystemManager.h"
 #include <memory>
+#include <vector>
 
 namespace CudaGame {
 namespace Core {
@@ -29,7 +30,20 @@ public:
     }
 
     void Cleanup() {
-        // Clear systems and components for test runs
+        // Properly destroy all living entities before resetting managers
+        // This ensures components are cleaned up and systems are notified
+        std::vector<Entity> entitiesToDestroy;
+        for (Entity entity = 0; entity < MAX_ENTITIES; ++entity) {
+            if (mEntityManager->IsEntityAlive(entity)) {
+                entitiesToDestroy.push_back(entity);
+            }
+        }
+        
+        for (Entity entity : entitiesToDestroy) {
+            DestroyEntity(entity);
+        }
+        
+        // Now reset all managers for clean test state
         mSystemManager = std::make_unique<SystemManager>();
         mComponentManager = std::make_unique<ComponentManager>();
         mEntityManager = std::make_unique<EntityManager>();

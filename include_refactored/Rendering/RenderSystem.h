@@ -11,9 +11,6 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 
-// Forward declaration
-class Player;
-
 namespace CudaGame {
 namespace Rendering {
 
@@ -74,7 +71,6 @@ public:
     void DrawDebugFrustum(const Camera::Frustum& frustum, const glm::vec3& color);
     void CycleDebugMode(); // Cycle through G-buffer debug modes
     void ToggleCameraDebug(); // Toggle camera frustum visualization
-    void RenderSimpleCharacter(const Player* player, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     float GetDepthScale() const { return m_depthScale; }
     void AdjustDepthScale(float multiplier);
 

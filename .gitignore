@@ -45,7 +45,10 @@ Testing/
 *.exe
 *.dll
 *.pdb
-*.lib
+# Allow vendor libs but ignore build outputs
+!/vendor/**/*.lib
+/x64/**/*.lib
+/build/**/*.lib
 *.a
 *.so
 *.dylib
@@ -55,9 +58,7 @@ Testing/
 **/*-subbuild/
 **/*-build/
 
-# Vendor-specific (adjust if you want to commit vendor sources)
-vendor/PhysX/**/bin/
-vendor/PhysX/**/lib/
+# Vendor-specific binaries are allowed
 
 # OS / misc
 .DS_Store
