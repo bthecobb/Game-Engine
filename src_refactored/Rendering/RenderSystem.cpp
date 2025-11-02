@@ -447,13 +447,14 @@ void RenderSystem::LightingPass() {
         m_lightingPassShader->SetVec3("viewPos", glm::vec3(0.0f, 0.0f, 3.0f));
     }
     
-    // Set a directional light
-    m_lightingPassShader->SetVec3("light.direction", glm::normalize(glm::vec3(-1.0f, -1.0f, -1.0f)));
-    m_lightingPassShader->SetVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
-    m_lightingPassShader->SetFloat("light.intensity", 1.0f);
+    // Set a directional light (from above and slightly to the side for better depth perception)
+    // Using a bright "sun" light coming from above-front-right
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.3f, -1.0f, 0.5f));
+    m_lightingPassShader->SetVec3("light.direction", lightDir);
+    m_lightingPassShader->SetVec3("light.color", glm::vec3(1.0f, 0.98f, 0.95f)); // Warm white sunlight
+    m_lightingPassShader->SetFloat("light.intensity", 1.5f); // Increased from 1.0 for better visibility
     m_lightingPassShader->SetInt("light.type", 0); // 0 = directional light
     // For directional lights, position represents the light direction at infinite distance
-    glm::vec3 lightDir = glm::normalize(glm::vec3(-1.0f, -1.0f, -1.0f));
     m_lightingPassShader->SetVec3("light.position", -lightDir * 1000.0f);
     
     // Set the light space matrix for shadow mapping

@@ -101,6 +101,7 @@ void main()
 
     vec3 radiance = light.color * light.intensity;
     vec3 Lo = (diffuseComponent + specularComponent) * radiance;
-    vec3 ambient = vec3(0.03 * albedo * ao);
+    // Increased ambient from 0.03 to 0.15 for better scene visibility
+    vec3 ambient = vec3(0.15 * albedo * ao);
     FragColor = vec4(ambient + Lo, 1.0);
 }

@@ -33,13 +33,13 @@ struct PlayerMovementComponent {
     glm::vec3 velocity{0.0f};
     MovementState movementState = MovementState::IDLE;
     
-    // Speed parameters
-    float baseSpeed = 10.0f;
-    float maxSpeed = 50.0f;
-    float sprintMultiplier = 1.5f;  // Sprint is 1.5x base speed
-    float acceleration = 30.0f;
-    float deceleration = 20.0f;
-    float airAcceleration = 15.0f;
+    // Speed parameters - tuned for smooth, controlled movement
+    float baseSpeed = 3.0f;          // Reduced significantly for smoother control
+    float maxSpeed = 8.0f;           // Sprint speed cap
+    float sprintMultiplier = 1.8f;   // Sprint multiplier
+    float acceleration = 10.0f;      // Gentler acceleration
+    float deceleration = 15.0f;      // Quick but smooth stopping
+    float airAcceleration = 8.0f;    // Reduced air control
     
     // Jump parameters
     float jumpForce = 20.0f;
