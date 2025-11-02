@@ -701,6 +701,10 @@ add_executable(Full3DGame
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    # CUDA Building Generation (conditional - use CUDA or CPU fallback)
+    $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingGenerator.cpp>
+    $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingKernels.cu>
+    $<$<NOT:$<BOOL:${ENABLE_CUDA}>>:src_refactored/Rendering/CudaBuildingGeneratorFallback.cpp>
     # Debug
     src_refactored/Debug/OpenGLDebugRenderer.cpp
     src_refactored/Rendering/RenderDebugSystem.cpp
