@@ -137,15 +137,12 @@ Core::Entity TargetingSystem::FindPlayerEntity() {
 
 void TargetingSystem::DrawTargetingIndicator(Core::Entity targetEntity) {
     // In a real implementation, this would draw UI elements or visual indicators
-    // For now, just log the targeting
-    std::cout << "Targeting enemy entity: " << targetEntity << std::endl;
+    // Console logging removed for performance - use debug overlay instead
 }
 
 void TargetingSystem::DrawCrosshair(const glm::vec3& targetPosition) {
     // In a real implementation, this would render a crosshair at the target position
-    // For now, just log the crosshair position
-    std::cout << "Crosshair at position: (" << targetPosition.x << ", " 
-              << targetPosition.y << ", " << targetPosition.z << ")" << std::endl;
+    // Console logging removed for performance - use debug overlay instead
 }
 
 } // namespace Gameplay

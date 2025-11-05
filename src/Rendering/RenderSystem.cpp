@@ -281,14 +281,16 @@ void RenderSystem::GeometryPass() {
     glViewport(0, 0, windowWidth, windowHeight);  // Use actual window dimensions
     
     // Ensure we're writing to all color attachments (AFTER binding framebuffer)
-    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-    glDrawBuffers(4, drawBuffers);
+    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+    glDrawBuffers(5, drawBuffers);
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     m_geometryPassShader->Use();
     m_geometryPassShader->SetMat4("projection", m_mainCamera->GetProjectionMatrix());
     m_geometryPassShader->SetMat4("view", m_mainCamera->GetViewMatrix());
+    // Drive geometry debug override from global debug mode (mode 5 => emissive color view)
+    m_geometryPassShader->SetInt("debugForceEmissive", (m_debugMode == 5) ? 1 : 0);
 
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
     for (auto const& entity : mEntities) {
@@ -329,6 +331,11 @@ void RenderSystem::GeometryPass() {
             glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
             m_geometryPassShader->SetInt("aoMap", 4);
             
+            // Ensure emissive map has a known texture unit (5)
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
+            m_geometryPassShader->SetInt("emissiveMap", 5);
+            
             // Set material properties if available
             if (coordinator.HasComponent<Rendering::MaterialComponent>(entity)) {
                 auto const& material = coordinator.GetComponent<Rendering::MaterialComponent>(entity);
@@ -365,7 +372,7 @@ void RenderSystem::GeometryPass() {
 
     LogPassEnd("GeometryPass", m_drawCallCount, m_triangleCount);
     // Unbind G-buffer by binding default framebuffer
-glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     // Reset draw buffer to default back-buffer
     glDrawBuffer(GL_BACK);
 }
@@ -412,27 +419,34 @@ void RenderSystem::LightingPass() {
     glActiveTexture(GL_TEXTURE2);
     uint32_t albedoTex = m_gBuffer->GetColorAttachment(2);
     glBindTexture(GL_TEXTURE_2D, albedoTex);
-    LogTextureBinding("LightingPass", 2, albedoTex, "Albedo");
+    LogTextureBinding("LightingPass", 2, albedoTex, "AlbedoSpec");
     m_lightingPassShader->SetInt("gAlbedoSpec", 2);
     
     glActiveTexture(GL_TEXTURE3);
-    uint32_t metallicTex = m_gBuffer->GetColorAttachment(3);
-    glBindTexture(GL_TEXTURE_2D, metallicTex);
-    LogTextureBinding("LightingPass", 3, metallicTex, "MetallicRoughnessAO");
-    m_lightingPassShader->SetInt("gMetallicRoughness", 3);
+    uint32_t mraoTex = m_gBuffer->GetColorAttachment(3);
+    glBindTexture(GL_TEXTURE_2D, mraoTex);
+    LogTextureBinding("LightingPass", 3, mraoTex, "MetallicRoughnessAOEmissivePower");
+    m_lightingPassShader->SetInt("gMetallicRoughnessAOEmissive", 3);
+    
+    // Emissive color buffer
+    glActiveTexture(GL_TEXTURE4);
+    uint32_t emissiveTex = m_gBuffer->GetColorAttachment(4);
+    glBindTexture(GL_TEXTURE_2D, emissiveTex);
+    LogTextureBinding("LightingPass", 4, emissiveTex, "Emissive");
+    m_lightingPassShader->SetInt("gEmissive", 4);
     
     // Bind shadow map (if available)
-    glActiveTexture(GL_TEXTURE4);
+    glActiveTexture(GL_TEXTURE5);
     uint32_t shadowTex = m_shadowMapFBO ? m_shadowMapFBO->GetDepthAttachment() : 0;
     if (shadowTex > 0) {
         glBindTexture(GL_TEXTURE_2D, shadowTex);
-        LogTextureBinding("LightingPass", 4, shadowTex, "ShadowMap");
+        LogTextureBinding("LightingPass", 5, shadowTex, "ShadowMap");
     } else {
         // Bind a default texture or use 0
         glBindTexture(GL_TEXTURE_2D, 0);
-        LogTextureBinding("LightingPass", 4, 0, "ShadowMap_Default");
+        LogTextureBinding("LightingPass", 5, 0, "ShadowMap_Default");
     }
-    m_lightingPassShader->SetInt("shadowMap", 4);
+    m_lightingPassShader->SetInt("shadowMap", 5);
     
     // Set light and camera uniforms
     // Use actual camera position
@@ -584,8 +598,17 @@ void RenderSystem::RenderSimpleCube() {
 
 void RenderSystem::CycleDebugMode() {
     int previousMode = m_debugMode;
-    m_debugMode = (m_debugMode + 1) % 5;  // 0-4: normal, position, normal, albedo, metallic/roughness
-    const char* debugModeNames[] = {"Normal Lighting", "Position Buffer", "Normal Buffer", "Albedo Buffer", "Metallic/Roughness/AO Buffer"};
+    // 0: final, 1: position, 2: normal, 3: albedo, 4: M/R/AO, 5: emissive color, 6: emissive power
+    m_debugMode = (m_debugMode + 1) % 7;
+    const char* debugModeNames[] = {
+        "Normal Lighting",
+        "Position Buffer",
+        "Normal Buffer",
+        "Albedo Buffer",
+        "Metallic/Roughness/AO Buffer",
+        "Emissive Color",
+        "Emissive Power"
+    };
     
     std::cout << "{ \"debugModeChange\":{ \"frameID\":" << m_frameID << ",\"previousMode\":" << previousMode 
               << ",\"newMode\":" << m_debugMode << ",\"modeName\":\"" << debugModeNames[m_debugMode] 
@@ -802,7 +825,7 @@ void RenderSystem::DumpGLState(const std::string& location) {
         
         // Check color attachments
         std::cout << ",\"attachments\":{";
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             GLint type, name;
             glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, 
                                                  GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);

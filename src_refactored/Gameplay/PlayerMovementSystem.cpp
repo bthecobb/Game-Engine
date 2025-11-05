@@ -56,38 +56,17 @@ void PlayerMovementSystem::Update(float deltaTime) {
                 std::cout << "[PlayerMovement] WARNING: Position clamped to prevent explosion!" << std::endl;
             }
             
-            std::cout << "[PlayerMovement] [DYNAMIC] Entity " << entity
-                      << " moved from (" << previousPosition.x << ", " << previousPosition.y << ", " << previousPosition.z << ")"
-                      << " to (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
-                      << " Vel: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")"
-                      << " Grounded: " << movement.isGrounded << std::endl;
+            // Removed per-frame console spam - use F3 debug overlay instead
         } else {
             // Kinematic mode: position is controlled externally (by scripts/cutscenes/debug)
             // Clear velocity to prevent conflicting movement calculations
             movement.velocity = glm::vec3(0.0f);
             rigidbody.velocity = glm::vec3(0.0f);
             
-            std::cout << "[PlayerMovement] [KINEMATIC] Entity " << entity 
-                      << " position held at (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
-                      << " by external control" << std::endl;
+            // Removed per-frame console spam
         }
         
-        // Enhanced debugging every 60 frames (~1 second at 60fps)
-        static int frameCounter = 0;
-        if (frameCounter++ % 60 == 0) {
-            std::cout << "\n=== PLAYER POSITION DEBUG REPORT ===" << std::endl;
-            std::cout << "Entity ID: " << entity << std::endl;
-            std::cout << "Mode: " << (rigidbody.isKinematic ? "KINEMATIC (External Control)" : "DYNAMIC (Physics)") << std::endl;
-            std::cout << "Transform Position: (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
-            std::cout << "Movement Velocity: (" << movement.velocity.x << ", " << movement.velocity.y << ", " << movement.velocity.z << ")" << std::endl;
-            std::cout << "Rigidbody Velocity: (" << rigidbody.velocity.x << ", " << rigidbody.velocity.y << ", " << rigidbody.velocity.z << ")" << std::endl;
-            std::cout << "Movement State: " << static_cast<int>(movement.movementState) << std::endl;
-            std::cout << "Grounded: " << (movement.isGrounded ? "Yes" : "No") << std::endl;
-            std::cout << "Position Change This Frame: (" << (transform.position.x - previousPosition.x) << ", "
-                      << (transform.position.y - previousPosition.y) << ", "
-                      << (transform.position.z - previousPosition.z) << ")" << std::endl;
-            std::cout << "===================================\n" << std::endl;
-        }
+        // Debug overlay available via F3 key - console logging disabled for performance
     }
 }
 
@@ -95,23 +74,29 @@ void PlayerMovementSystem::HandleInput(Core::Entity entity, PlayerInputComponent
                                      PlayerMovementComponent& movement, float deltaTime) {
     glm::vec2 moveInput = GetMovementInput(input);
     
-    // Debug input
-    static int inputDebugCounter = 0;
-    if (inputDebugCounter++ % 60 == 0 && glm::length(moveInput) > 0.0f) {
-        std::cout << "[DEBUG] Move Input: (" << moveInput.x << ", " << moveInput.y << ")" << std::endl;
-        std::cout << "[DEBUG] Keys - W:" << input.keys[GLFW_KEY_W] 
-                  << " A:" << input.keys[GLFW_KEY_A]
-                  << " S:" << input.keys[GLFW_KEY_S]
-                  << " D:" << input.keys[GLFW_KEY_D] << std::endl;
-    }
+    // Input debug available via F3 overlay - console spam removed
     
-    // Jump input
-    if (input.keys[GLFW_KEY_SPACE] && movement.isGrounded) {
-        movement.velocity.y = movement.jumpForce;
-        movement.isGrounded = false;
-        movement.movementState = MovementState::JUMPING;
-        std::cout << "[PlayerMovement] Jump!" << std::endl;
+    // Jump input - handles both ground jump and double jump
+    static bool jumpKeyWasPressed = false;
+    bool jumpKeyPressed = input.keys[GLFW_KEY_SPACE];
+    
+    // Detect new jump press (not held)
+    if (jumpKeyPressed && !jumpKeyWasPressed) {
+        if (movement.isGrounded) {
+            // Ground jump
+            movement.velocity.y = movement.jumpForce;
+            movement.isGrounded = false;
+            movement.canDoubleJump = true;  // Reset double jump when leaving ground
+            movement.movementState = MovementState::JUMPING;
+            // Jump triggered
+        } else if (movement.canDoubleJump) {
+            // Double jump
+            movement.velocity.y = movement.jumpForce;
+            movement.canDoubleJump = false;  // Consume double jump
+            // Double jump triggered
+        }
     }
+    jumpKeyWasPressed = jumpKeyPressed;
     
     // Sprint input
     bool isSprinting = input.keys[GLFW_KEY_LEFT_SHIFT];
@@ -123,7 +108,7 @@ void PlayerMovementSystem::HandleInput(Core::Entity entity, PlayerInputComponent
         movement.dashTimer = movement.dashDuration;
         movement.dashCooldownTimer = movement.dashCooldown;
         movement.movementState = MovementState::DASHING;
-        std::cout << "[PlayerMovement] Dash!" << std::endl;
+        // Dash triggered
     }
     
     // Update dash cooldown

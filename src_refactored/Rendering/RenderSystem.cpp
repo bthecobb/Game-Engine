@@ -91,6 +91,9 @@ bool RenderSystem::Initialize() {
     // Create simple cube for basic rendering
     CreateSimpleCube();
 
+    // Set a readable sky-like clear color for contrast with emissive
+    m_clearColor = glm::vec4(0.55f, 0.82f, 0.92f, 1.0f);
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     
@@ -243,8 +246,12 @@ void RenderSystem::ShadowPass() {
             glm::mat4 modelMatrix = transform.getMatrix();
             m_shadowShader->SetMat4("model", modelMatrix);
             
-            // Use simple cube for player_cube, Model class for everything else
-            if (meshComponent.modelPath == "player_cube") {
+            // Priority: generator VAO -> simple cube -> model
+            if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
+                glBindVertexArray(meshComponent.vaoId);
+                glDrawElements(GL_TRIANGLES, meshComponent.indexCount, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
+            } else if (meshComponent.modelPath == "player_cube") {
                 RenderSimpleCube();
             } else {
                 Model model(meshComponent.modelPath);
@@ -286,14 +293,16 @@ void RenderSystem::GeometryPass() {
     glViewport(0, 0, windowWidth, windowHeight);  // Use actual window dimensions
     
     // Ensure we're writing to all color attachments (AFTER binding framebuffer)
-    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-    glDrawBuffers(4, drawBuffers);
+    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
+    glDrawBuffers(5, drawBuffers);
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     m_geometryPassShader->Use();
     m_geometryPassShader->SetMat4("projection", m_mainCamera->GetProjectionMatrix());
     m_geometryPassShader->SetMat4("view", m_mainCamera->GetViewMatrix());
+    // Drive geometry debug override from global debug mode (mode 5 => emissive color view)
+    m_geometryPassShader->SetInt("debugForceEmissive", (m_debugMode == 5) ? 1 : 0);
 
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
     for (auto const& entity : mEntities) {
@@ -313,34 +322,39 @@ void RenderSystem::GeometryPass() {
             // Set the light space matrix from shadow pass
             m_geometryPassShader->SetMat4("lightSpaceMatrix", m_lightSpaceMatrix);
             
-            // Bind dummy textures to prevent shader errors
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-            m_geometryPassShader->SetInt("albedoMap", 0);
+            // Bind defaults to prevent shader errors
+            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("albedoMap", 0);
+            glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("normalMap", 1);
+            glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("metallicMap", 2);
+            glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("roughnessMap", 3);
+            glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("aoMap", 4);
+            glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_2D, m_dummyTexture); m_geometryPassShader->SetInt("emissiveMap", 5);
+            m_geometryPassShader->SetFloat("emissiveIntensity", 1.0f);
             
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-            m_geometryPassShader->SetInt("normalMap", 1);
-            
-            glActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-            m_geometryPassShader->SetInt("metallicMap", 2);
-            
-            glActiveTexture(GL_TEXTURE3);
-            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-            m_geometryPassShader->SetInt("roughnessMap", 3);
-            
-            glActiveTexture(GL_TEXTURE4);
-            glBindTexture(GL_TEXTURE_2D, m_dummyTexture);
-            m_geometryPassShader->SetInt("aoMap", 4);
-            
-            // Set material properties if available
+            // Set material properties and bind actual maps if provided
             if (coordinator.HasComponent<Rendering::MaterialComponent>(entity)) {
                 auto const& material = coordinator.GetComponent<Rendering::MaterialComponent>(entity);
                 m_geometryPassShader->SetVec3("albedo", material.albedo);
                 m_geometryPassShader->SetFloat("metallic", material.metallic);
                 m_geometryPassShader->SetFloat("roughness", material.roughness);
                 m_geometryPassShader->SetFloat("ao", material.ao);
+                
+                if (material.albedoMap)   { glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, material.albedoMap); }
+                if (material.normalMap)   { glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, material.normalMap); }
+                if (material.metallicMap) { glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, material.metallicMap); }
+                if (material.roughnessMap){ glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, material.roughnessMap); }
+                if (material.aoMap)       { glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, material.aoMap); }
+                if (material.emissiveMap) {
+                    glActiveTexture(GL_TEXTURE5);
+                    glBindTexture(GL_TEXTURE_2D, material.emissiveMap);
+                    // Log the bound emissive texture for diagnostics
+                    LogTextureBinding("GeometryPass", 5, material.emissiveMap, "EmissiveMap");
+                    GLint _w=0,_h=0; glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &_w); glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &_h);
+                    std::cout << "{ \"frame\":" << m_frameID << ",\"EmissiveTexInfo\":{\"id\":" << material.emissiveMap << ",\"w\":" << _w << ",\"h\":" << _h << "} }" << std::endl;
+                }
+                
+                // Allow per-material control of emissive intensity (fallback to 1.0)
+                m_geometryPassShader->SetFloat("emissiveIntensity", material.emissiveIntensity > 0.0f ? material.emissiveIntensity : 1.0f);
             } else {
                 // Default material
                 m_geometryPassShader->SetVec3("albedo", glm::vec3(0.7f, 0.7f, 0.7f));
@@ -349,21 +363,22 @@ void RenderSystem::GeometryPass() {
                 m_geometryPassShader->SetFloat("ao", 1.0f);
             }
             
-            // Use simple cube for player_cube
-            if (meshComponent.modelPath == "player_cube") {
-                LogDrawCall("GeometryPass", 1, m_cubeVAO, "GL_TRIANGLES", 36); // Use placeholder shader ID
+            // Draw logic priority: generator VAO -> simple cube -> model
+            if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
+                LogDrawCall("GeometryPass", 1, meshComponent.vaoId, "GL_TRIANGLES", meshComponent.indexCount);
+                glBindVertexArray(meshComponent.vaoId);
+                glDrawElements(GL_TRIANGLES, meshComponent.indexCount, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
+                entityCount++; m_drawCallCount++; m_triangleCount += meshComponent.indexCount / 3;
+            } else if (meshComponent.modelPath == "player_cube") {
+                LogDrawCall("GeometryPass", 1, m_cubeVAO, "GL_TRIANGLES", 36);
                 RenderSimpleCube();
-                entityCount++;
-                m_drawCallCount++;
-                m_triangleCount += 12; // 36 vertices / 3 = 12 triangles
+                entityCount++; m_drawCallCount++; m_triangleCount += 12;
             } else {
-                // Log model draw (approximate triangle count)
-                LogDrawCall("GeometryPass", 1, 0, "MODEL_DRAW", -1); // Use placeholder shader ID
+                LogDrawCall("GeometryPass", 1, 0, "MODEL_DRAW", -1);
                 Model model(meshComponent.modelPath);
                 model.Draw(*m_geometryPassShader);
-                entityCount++;
-                m_drawCallCount++;
-                m_triangleCount += 100; // Rough estimate for model
+                entityCount++; m_drawCallCount++; m_triangleCount += 100;
             }
         }
     }
@@ -423,21 +438,27 @@ void RenderSystem::LightingPass() {
     glActiveTexture(GL_TEXTURE3);
     uint32_t metallicTex = m_gBuffer->GetColorAttachment(3);
     glBindTexture(GL_TEXTURE_2D, metallicTex);
-    LogTextureBinding("LightingPass", 3, metallicTex, "MetallicRoughnessAO");
-    m_lightingPassShader->SetInt("gMetallicRoughness", 3);
+    LogTextureBinding("LightingPass", 3, metallicTex, "MetallicRoughnessAOEmissive");
+    m_lightingPassShader->SetInt("gMetallicRoughnessAOEmissive", 3);
+    
+    glActiveTexture(GL_TEXTURE4);
+    uint32_t emissiveTex = m_gBuffer->GetColorAttachment(4);
+    glBindTexture(GL_TEXTURE_2D, emissiveTex);
+    LogTextureBinding("LightingPass", 4, emissiveTex, "Emissive");
+    m_lightingPassShader->SetInt("gEmissive", 4);
     
     // Bind shadow map (if available)
-    glActiveTexture(GL_TEXTURE4);
+    glActiveTexture(GL_TEXTURE5);
     uint32_t shadowTex = m_shadowMapFBO ? m_shadowMapFBO->GetDepthAttachment() : 0;
     if (shadowTex > 0) {
         glBindTexture(GL_TEXTURE_2D, shadowTex);
-        LogTextureBinding("LightingPass", 4, shadowTex, "ShadowMap");
+        LogTextureBinding("LightingPass", 5, shadowTex, "ShadowMap");
     } else {
         // Bind a default texture or use 0
         glBindTexture(GL_TEXTURE_2D, 0);
-        LogTextureBinding("LightingPass", 4, 0, "ShadowMap_Default");
+        LogTextureBinding("LightingPass", 5, 0, "ShadowMap_Default");
     }
-    m_lightingPassShader->SetInt("shadowMap", 4);
+    m_lightingPassShader->SetInt("shadowMap", 5);
     
     // Set light and camera uniforms
     // Use actual camera position
@@ -447,13 +468,14 @@ void RenderSystem::LightingPass() {
         m_lightingPassShader->SetVec3("viewPos", glm::vec3(0.0f, 0.0f, 3.0f));
     }
     
-    // Set a directional light
-    m_lightingPassShader->SetVec3("light.direction", glm::normalize(glm::vec3(-1.0f, -1.0f, -1.0f)));
-    m_lightingPassShader->SetVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
-    m_lightingPassShader->SetFloat("light.intensity", 1.0f);
+    // Set a directional light (from above and slightly to the side for better depth perception)
+    // Using a bright "sun" light coming from above at an angle for good coverage
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.5f, -1.0f, 0.3f));
+    m_lightingPassShader->SetVec3("light.direction", lightDir);
+    m_lightingPassShader->SetVec3("light.color", glm::vec3(1.0f, 0.98f, 0.92f)); // Warm white sunlight
+    m_lightingPassShader->SetFloat("light.intensity", 2.2f); // Increased for better visibility
     m_lightingPassShader->SetInt("light.type", 0); // 0 = directional light
     // For directional lights, position represents the light direction at infinite distance
-    glm::vec3 lightDir = glm::normalize(glm::vec3(-1.0f, -1.0f, -1.0f));
     m_lightingPassShader->SetVec3("light.position", -lightDir * 1000.0f);
     
     // Set the light space matrix for shadow mapping
@@ -589,8 +611,16 @@ void RenderSystem::RenderSimpleCube() {
 
 void RenderSystem::CycleDebugMode() {
     int previousMode = m_debugMode;
-    m_debugMode = (m_debugMode + 1) % 5;  // 0-4: normal, position, normal, albedo, metallic/roughness
-    const char* debugModeNames[] = {"Normal Lighting", "Position Buffer", "Normal Buffer", "Albedo Buffer", "Metallic/Roughness/AO Buffer"};
+    m_debugMode = (m_debugMode + 1) % 7;  // 0..6: normal, position, normal, albedo, M/R/AO, emissiveColor, emissivePower
+    const char* debugModeNames[] = {
+        "Normal Lighting",
+        "Position Buffer",
+        "Normal Buffer",
+        "Albedo Buffer",
+        "Metallic/Roughness/AO Buffer",
+        "Emissive Color",
+        "Emissive Power"
+    };
     
     std::cout << "{ \"debugModeChange\":{ \"frameID\":" << m_frameID << ",\"previousMode\":" << previousMode 
               << ",\"newMode\":" << m_debugMode << ",\"modeName\":\"" << debugModeNames[m_debugMode] 
@@ -739,7 +769,7 @@ void RenderSystem::DumpGLState(const std::string& location) {
         
         // Check color attachments
         std::cout << ",\"attachments\":{";
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             GLint type, name;
             glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, 
                                                  GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);

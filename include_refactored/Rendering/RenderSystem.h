@@ -76,7 +76,7 @@ public:
 
 private:
     Camera* m_mainCamera = nullptr;
-    glm::vec4 m_clearColor = {0.1f, 0.1f, 0.1f, 1.0f};
+    glm::vec4 m_clearColor = {0.53f, 0.81f, 0.92f, 1.0f}; // Sky blue background
     std::shared_ptr<LightingSystem> m_lightingSystem;
     
     // PBR Deferred Rendering Pipeline

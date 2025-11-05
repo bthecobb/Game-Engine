@@ -3,11 +3,15 @@
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
-layout (location = 3) in vec3 aTangent;
+layout (location = 3) in vec3 aColor;      // Vertex color (for procedural buildings)
+layout (location = 4) in vec3 aEmissive;   // Emissive color (glowing windows)
+layout (location = 5) in vec3 aTangent;    // Tangent (for normal mapping, optional)
 
 out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
+out vec3 VertexColor;
+out vec3 Emissive;
 out vec3 Tangent;
 out vec3 Bitangent;
 out vec4 FragPosLightSpace;
@@ -25,10 +29,18 @@ void main()
     FragPosLightSpace = lightSpaceMatrix * worldPos;
     
     Normal = normalize(normalMatrix * aNormal);
-    Tangent = normalize(normalMatrix * aTangent);
-    Bitangent = normalize(normalMatrix * cross(aNormal, aTangent));
-    
     TexCoord = aTexCoord;
+    VertexColor = aColor;
+    Emissive = aEmissive;
+    
+    // Tangent space (only if tangent is provided)
+    if (length(aTangent) > 0.01) {
+        Tangent = normalize(normalMatrix * aTangent);
+        Bitangent = normalize(normalMatrix * cross(aNormal, aTangent));
+    } else {
+        Tangent = vec3(1, 0, 0);
+        Bitangent = vec3(0, 1, 0);
+    }
     
     gl_Position = projection * view * worldPos;
 }
