@@ -245,6 +245,7 @@ void CudaBuildingGenerator::GenerateFacadeTexture(BuildingTexture& texture, cons
     texture.albedoData.resize(textureSize);
     texture.normalData.resize(textureSize);
     texture.metallicRoughnessAO.resize(textureSize);
+    texture.emissiveData.resize(textureSize);
     
     auto hash = [](uint32_t x) -> float {
         x ^= x >> 16;
@@ -289,6 +290,13 @@ void CudaBuildingGenerator::GenerateFacadeTexture(BuildingTexture& texture, cons
                 texture.metallicRoughnessAO[pixelIdx + 0] = 200;
                 texture.metallicRoughnessAO[pixelIdx + 1] = 50;
                 texture.metallicRoughnessAO[pixelIdx + 2] = 255;
+                
+                // Emissive: RGB color of window light, A = intensity (0..255)
+                texture.emissiveData[pixelIdx + 0] = uint8_t(style.accentColor.x * 255);
+                texture.emissiveData[pixelIdx + 1] = uint8_t(style.accentColor.y * 255);
+                texture.emissiveData[pixelIdx + 2] = uint8_t(style.accentColor.z * 255);
+                // vary intensity a bit per-window
+                texture.emissiveData[pixelIdx + 3] = uint8_t(200 + rnd * 55);
             } else {
                 texture.albedoData[pixelIdx + 0] = uint8_t((style.baseColor.x + (rnd - 0.5f) * 0.05f) * 255);
                 texture.albedoData[pixelIdx + 1] = uint8_t((style.baseColor.y + (rnd - 0.5f) * 0.05f) * 255);
@@ -298,6 +306,12 @@ void CudaBuildingGenerator::GenerateFacadeTexture(BuildingTexture& texture, cons
                 texture.metallicRoughnessAO[pixelIdx + 0] = uint8_t(style.metallic * 255);
                 texture.metallicRoughnessAO[pixelIdx + 1] = uint8_t(style.roughness * 255);
                 texture.metallicRoughnessAO[pixelIdx + 2] = 255;
+                
+                // Non-window: no emissive
+                texture.emissiveData[pixelIdx + 0] = 0;
+                texture.emissiveData[pixelIdx + 1] = 0;
+                texture.emissiveData[pixelIdx + 2] = 0;
+                texture.emissiveData[pixelIdx + 3] = 0;
             }
             
             texture.normalData[pixelIdx + 0] = 128;

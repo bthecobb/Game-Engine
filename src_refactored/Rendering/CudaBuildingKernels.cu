@@ -20,6 +20,7 @@ struct BuildingVertex {
     float3 normal;
     float2 uv;
     float3 color;
+    float3 emissive;  // For glowing windows and neon signs
 };
 
 // Building style parameters (matches C++ struct)
@@ -142,12 +143,21 @@ __global__ void GenerateBuildingGeometryKernel(
             break;
     }
     
-    // Add some procedural color variation
+    // Add some procedural color variation with architectural detail
     float colorVar = hash(style.seed + tid);
+    
+    // Base color with variation
     float3 vertColor = float3(
         style.baseColor.x + (colorVar - 0.5f) * 0.1f,
         style.baseColor.y + (colorVar - 0.5f) * 0.1f,
         style.baseColor.z + (colorVar - 0.5f) * 0.1f
+    );
+    
+    // Darken accent color for trim effect
+    float3 trimColor = float3(
+        style.accentColor.x * 0.7f,
+        style.accentColor.y * 0.7f,
+        style.accentColor.z * 0.7f
     );
     
     // Write vertices
@@ -155,7 +165,79 @@ __global__ void GenerateBuildingGeometryKernel(
         vertices[baseVert + i].position = faceVerts[i];
         vertices[baseVert + i].normal = faceNormal;
         vertices[baseVert + i].uv = faceUVs[i];
-        vertices[baseVert + i].color = vertColor;
+        
+        // Apply architectural details via color
+        float3 finalColor = vertColor;
+        float2 uv = faceUVs[i];
+        
+        // Vertical trim on edges (left/right 10% of face)
+        if (tid >= 0 && tid <= 3) {  // Only on walls
+            if (uv.x < 0.08f || uv.x > 0.92f) {
+                finalColor = trimColor;  // Darker trim on corners
+            }
+            
+            // Horizontal floor bands (every ~15% of height)
+            float floorBand = fmodf(uv.y * 5.0f, 1.0f);  // 5 bands
+            if (floorBand < 0.06f) {
+                finalColor = trimColor;  // Darker band between floors
+            }
+        }
+        
+        vertices[baseVert + i].color = finalColor;
+        
+        // Generate procedural window lights (only on vertical walls)
+        float3 emissiveColor = float3(0, 0, 0);  // Default: no glow
+        
+        if (tid >= 0 && tid <= 3) {  // Only walls, not top/bottom
+            // Use UV coordinates to create window grid
+            float2 uv = faceUVs[i];
+            
+            // Create window grid - 6 windows wide, 10 floors tall
+            const float windowsWide = 6.0f;
+            const float floorsHigh = 10.0f;
+            
+            // Find which window cell we're in
+            float windowU = uv.x * windowsWide;
+            float windowV = uv.y * floorsHigh;
+            int windowX = int(windowU);
+            int windowY = int(windowV);
+            
+            // Get position within window cell (0-1)
+            float localU = windowU - float(windowX);
+            float localV = windowV - float(windowY);
+            
+            // Window dimensions within cell (leave gaps for walls)
+            const float windowMargin = 0.15f;  // 15% margin on each side
+            bool inWindowRegion = (localU > windowMargin && localU < (1.0f - windowMargin)) &&
+                                  (localV > windowMargin && localV < (1.0f - windowMargin));
+            
+            if (inWindowRegion) {
+                // Hash to determine if this window is lit
+                uint32_t windowHash = style.seed + tid * 1000 + windowY * 100 + windowX;
+                float isLit = hash(windowHash);
+                
+                // 70% of windows are lit
+                if (isLit > 0.3f) {
+                    // EXTREMELY bright warm yellow-orange glow for apartment lighting
+                    emissiveColor = float3(1.0f, 0.9f, 0.7f) * 15.0f;
+                    
+                    // Some windows have different colored lights
+                    float colorVariation = hash(windowHash + 12345);
+                    if (colorVariation > 0.92f) {
+                        // Cool blue light (TV glow)
+                        emissiveColor = float3(0.5f, 0.7f, 1.0f) * 12.0f;
+                    } else if (colorVariation > 0.88f) {
+                        // Neon pink/magenta (decorative)
+                        emissiveColor = float3(1.0f, 0.4f, 0.9f) * 16.0f;
+                    } else if (colorVariation > 0.84f) {
+                        // Green accent light
+                        emissiveColor = float3(0.6f, 1.0f, 0.6f) * 14.0f;
+                    }
+                }
+            }
+        }
+        
+        vertices[baseVert + i].emissive = emissiveColor;
     }
     
     // Write indices (two triangles per face)
@@ -281,6 +363,92 @@ __global__ void SimplifyMeshKernel(
     }
 }
 
+// Generate procedural emissive texture (glowing windows)
+__global__ void GenerateEmissiveTextureKernel(
+    uint8_t* emissiveData,  // RGBA output: RGB=emissive color, A=intensity
+    int width,
+    int height,
+    const BuildingStyleGPU style
+) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    if (x >= width || y >= height) return;
+    
+    int pixelIdx = (y * width + x) * 4;  // RGBA
+    
+    // Calculate UV coordinates (0-1)
+    float u = float(x) / float(width);
+    float v = float(y) / float(height);
+    
+    // Create window grid - matches facade layout
+    const float windowsWide = 6.0f;
+    const float floorsHigh = 10.0f;
+    
+    // Find which window cell we're in
+    float windowU = u * windowsWide;
+    float windowV = v * floorsHigh;
+    int windowX = int(windowU);
+    int windowY = int(windowV);
+    
+    // Get position within window cell (0-1)
+    float localU = windowU - float(windowX);
+    float localV = windowV - float(windowY);
+    
+    // Window dimensions within cell (leave gaps for walls)
+    const float windowMargin = 0.15f;  // 15% margin on each side
+    bool inWindowRegion = (localU > windowMargin && localU < (1.0f - windowMargin)) &&
+                          (localV > windowMargin && localV < (1.0f - windowMargin));
+    
+    // Default: no emission
+    uint8_t emissiveR = 0;
+    uint8_t emissiveG = 0;
+    uint8_t emissiveB = 0;
+    uint8_t intensity = 0;
+    
+    if (inWindowRegion) {
+        // Hash to determine if this window is lit
+        uint32_t windowHash = style.seed + windowY * 100 + windowX;
+        float isLit = hash(windowHash);
+        
+        // 70% of windows are lit
+        if (isLit > 0.3f) {
+            // Choose window light color
+            float colorVariation = hash(windowHash + 12345);
+            
+            // Base warm yellow-orange glow (most common)
+            float3 emissiveColor = float3(1.0f, 0.9f, 0.7f);
+            float emissiveIntensity = 1.0f;  // Full intensity
+            
+            if (colorVariation > 0.92f) {
+                // Cool blue light (TV glow)
+                emissiveColor = float3(0.5f, 0.7f, 1.0f);
+                emissiveIntensity = 0.85f;
+            } else if (colorVariation > 0.88f) {
+                // Neon pink/magenta (decorative)
+                emissiveColor = float3(1.0f, 0.4f, 0.9f);
+                emissiveIntensity = 0.95f;
+            } else if (colorVariation > 0.84f) {
+                // Green accent light
+                emissiveColor = float3(0.6f, 1.0f, 0.6f);
+                emissiveIntensity = 0.8f;
+            }
+            
+            // Store normalized emissive color (0-255)
+            emissiveR = uint8_t(emissiveColor.x * 255);
+            emissiveG = uint8_t(emissiveColor.y * 255);
+            emissiveB = uint8_t(emissiveColor.z * 255);
+            intensity = uint8_t(emissiveIntensity * 255);
+        }
+    }
+    
+    // Write to texture
+    emissiveData[pixelIdx + 0] = emissiveR;
+    emissiveData[pixelIdx + 1] = emissiveG;
+    emissiveData[pixelIdx + 2] = emissiveB;
+    emissiveData[pixelIdx + 3] = intensity;  // Alpha = intensity multiplier
+}
+
 // C-linkage wrapper functions for calling from C++
 extern "C" {
 
@@ -355,6 +523,27 @@ void LaunchMeshSimplificationKernel(
         reduction,
         &outCounts[0],
         &outCounts[1]
+    );
+    
+    cudaDeviceSynchronize();
+}
+
+void LaunchEmissiveTextureKernel(
+    void* emissiveData,
+    int width,
+    int height,
+    const void* styleData
+) {
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + 15) / 16, (height + 15) / 16);
+    
+    const BuildingStyleGPU* style = static_cast<const BuildingStyleGPU*>(styleData);
+    
+    GenerateEmissiveTextureKernel<<<gridSize, blockSize>>>(
+        static_cast<uint8_t*>(emissiveData),
+        width,
+        height,
+        *style
     );
     
     cudaDeviceSynchronize();

@@ -60,7 +60,8 @@ struct BuildingMesh {
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> uvs;
-    std::vector<glm::vec3> colors;  // Vertex colors for variety
+    std::vector<glm::vec3> colors;     // Vertex colors for variety
+    std::vector<glm::vec3> emissive;   // Emissive colors for glowing windows
     
     // Index data
     std::vector<uint32_t> indices;
@@ -86,10 +87,12 @@ struct BuildingTexture {
     std::vector<uint8_t> albedoData;      // RGBA
     std::vector<uint8_t> normalData;      // RGB (tangent space normals)
     std::vector<uint8_t> metallicRoughnessAO;  // R=metallic, G=roughness, B=AO
+    std::vector<uint8_t> emissiveData;    // RGBA: RGB=emissive color, A=intensity
     
     uint32_t albedoTexture = 0;
     uint32_t normalTexture = 0;
     uint32_t metallicRoughnessTexture = 0;
+    uint32_t emissiveTexture = 0;
 };
 
 // Main CUDA building generator class

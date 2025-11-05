@@ -13,6 +13,7 @@ std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingSystemTestSuite();
 #endif
 // std::shared_ptr<CudaGame::Testing::TestSuite> CreateFull3DGameIntegrationTestSuite();
 // std::shared_ptr<CudaGame::Testing::TestSuite> CreatePlayerMovementTestSuite();
+// std::shared_ptr<CudaGame::Testing::TestSuite> CreateEmissiveTextureTestSuite();
 
 int main()
 {
@@ -35,6 +36,7 @@ int main()
 #ifdef ENABLE_RENDER_TESTS
     testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
 #endif
+// testFramework.RegisterSuite(CreateEmissiveTextureTestSuite());
     // testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());
     // testFramework.RegisterSuite(CreatePlayerMovementTestSuite());
 

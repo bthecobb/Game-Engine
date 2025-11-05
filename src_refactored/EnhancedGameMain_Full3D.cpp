@@ -19,6 +19,7 @@
 #include "Rendering/Debug.h"
 #include "Debug/OpenGLDebugRenderer.h"
 #include "Rendering/RenderDebugSystem.h"
+#include "Rendering/CudaBuildingGenerator.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -33,6 +34,8 @@ const unsigned int WINDOW_HEIGHT = 1080;
 
 // GLFW window
 GLFWwindow* window = nullptr;
+// RenderSystem pointer for debug toggles
+static CudaGame::Rendering::RenderSystem* g_renderSystemPtr = nullptr;
 
 // Camera controls
 float lastX = WINDOW_WIDTH / 2.0f;
@@ -72,6 +75,19 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         } else {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+    }
+
+    // Debug view toggles
+    if (action == GLFW_PRESS && g_renderSystemPtr) {
+        if (key == GLFW_KEY_F1) {
+            g_renderSystemPtr->CycleDebugMode();
+        } else if (key == GLFW_KEY_F2) {
+            g_renderSystemPtr->AdjustDepthScale(1.5f);
+        } else if (key == GLFW_KEY_F3) {
+            g_renderSystemPtr->AdjustDepthScale(1.0f/1.5f);
+        } else if (key == GLFW_KEY_F5) {
+            g_renderSystemPtr->ToggleCameraDebug();
         }
     }
 }
@@ -187,6 +203,11 @@ bool InitializeWindow() {
     return true;
 }
 
+// Persistent storage for procedurally generated buildings
+static std::unique_ptr<Rendering::CudaBuildingGenerator> g_buildingGen;
+static std::vector<Rendering::BuildingMesh> g_buildingMeshes;  // Keep meshes alive for VAO lifetime
+static std::vector<GLuint> g_emissiveTextures;
+
 void CreateGameEnvironment(Core::Coordinator& coordinator) {
     std::cout << "Creating 3D game environment..." << std::endl;
     
@@ -208,9 +229,19 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         Physics::ColliderShape::BOX,
         glm::vec3(150.0f, 0.5f, 150.0f)  // Half extents matching the scale
     });
-    // Ground is static so we don't need RigidbodyComponent (PhysX will create static actor)
-    std::cout << "[DEBUG] Ground created at y=-1.0, scale.y=1.0, top surface at y=-0.5" << std::endl;
+    // Ground treated as static: either omit Rigidbody or set mass to 0
+    Physics::RigidbodyComponent groundRB;
+    groundRB.setMass(0.0f);  // Zero mass = static (inverseMass=0)
+    groundRB.isKinematic = true; // explicit non-dynamic behavior
+    coordinator.AddComponent(ground, groundRB);
+    std::cout << "[DEBUG] Ground created at y=-1.0, scale.y=1.0, top surface at y=-0.5 (STATIC)" << std::endl;
     
+    // Initialize CUDA building generator once
+    if (!g_buildingGen) {
+        g_buildingGen = std::make_unique<Rendering::CudaBuildingGenerator>();
+        g_buildingGen->Initialize();
+    }
+
     // Create buildings/walls for wall-running
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -227,27 +258,54 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         float buildingWidth = 6.0f + (i % 4) * 2.0f;  // 6, 8, 10, 12
         float buildingDepth = 6.0f + ((i + 1) % 4) * 2.0f;
         
+        // Procedurally generate building geometry + emissive texture
+        Rendering::BuildingStyle style;
+        style.baseWidth = buildingWidth;
+        style.baseDepth = buildingDepth;
+        style.height = height;
+        style.seed = static_cast<uint32_t>(i * 1337 + 42);
+
+        Rendering::BuildingMesh mesh = g_buildingGen->GenerateBuilding(style);
+        g_buildingGen->UploadToGPU(mesh);
+        
+        Rendering::BuildingTexture btex = g_buildingGen->GenerateBuildingTexture(style, 512);
+        // Upload emissive texture
+        GLuint emissiveTex = 0;
+        glGenTextures(1, &emissiveTex);
+        glBindTexture(GL_TEXTURE_2D, emissiveTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, btex.width, btex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, btex.emissiveData.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        // Persist resources for lifetime
+        g_emissiveTextures.push_back(emissiveTex);
+        g_buildingMeshes.push_back(mesh);
+
+        // Components
         coordinator.AddComponent(building, Rendering::TransformComponent{
             glm::vec3(x, height/2.0f, z),
             glm::vec3(0.0f),
-            glm::vec3(buildingWidth, height, buildingDepth)
+            glm::vec3(1.0f)
         });
-        coordinator.AddComponent(building, Rendering::MeshComponent{"player_cube"});
+        Rendering::MeshComponent meshComp{};
+        meshComp.modelPath = ""; // use VAO path
+        meshComp.vaoId = mesh.vao; meshComp.vbo = mesh.vbo; meshComp.ebo = mesh.ebo;
+        meshComp.indexCount = static_cast<uint32_t>(mesh.indices.size());
+        coordinator.AddComponent(building, meshComp);
         
-        // Vary building colors for visual detail
-        float colorVariation = 0.5f + (i % 5) * 0.1f;
-        glm::vec3 buildingColor = glm::vec3(colorVariation * 0.6f, colorVariation * 0.65f, colorVariation * 0.75f);
-        coordinator.AddComponent(building, Rendering::MaterialComponent{
-            buildingColor,
-            0.4f + (i % 3) * 0.2f,  // Varying metallic
-            0.5f + (i % 4) * 0.1f,  // Varying roughness
-            1.0f
-        });
-        Gameplay::WallComponent wallComp;
-        wallComp.canWallRun = true;
+        Rendering::MaterialComponent mat{};
+        mat.albedo = glm::vec3(0.6f); // color from vertex color will dominate
+        mat.metallic = 0.3f; mat.roughness = 0.6f; mat.ao = 1.0f;
+        mat.emissiveMap = emissiveTex;
+        mat.emissiveIntensity = 2.5f; // stronger window glow
+        coordinator.AddComponent(building, mat);
+
+        Gameplay::WallComponent wallComp; wallComp.canWallRun = true;
         coordinator.AddComponent(building, wallComp);
         
-        // Collider half-extents must match visual scale
+        // Collider half-extents should match mesh bounds; approximate with style
         coordinator.AddComponent(building, Physics::ColliderComponent{
             Physics::ColliderShape::BOX,
             glm::vec3(buildingWidth/2.0f, height/2.0f, buildingDepth/2.0f)
@@ -383,6 +441,19 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
 }
 
 void CleanupWindow() {
+    // Cleanup generated building resources
+    if (g_buildingGen) {
+        for (auto& m : g_buildingMeshes) {
+            g_buildingGen->CleanupGPUMesh(m);
+        }
+        g_buildingMeshes.clear();
+        g_buildingGen->Shutdown();
+        g_buildingGen.reset();
+    }
+    if (!g_emissiveTextures.empty()) {
+        glDeleteTextures(static_cast<GLsizei>(g_emissiveTextures.size()), g_emissiveTextures.data());
+        g_emissiveTextures.clear();
+    }
     if (window) {
         glfwDestroyWindow(window);
     }
@@ -434,6 +505,7 @@ int main() {
     auto physicsSystem = coordinator.RegisterSystem<Physics::PhysXPhysicsSystem>();
     auto wallRunSystem = coordinator.RegisterSystem<Physics::WallRunningSystem>();
     auto renderSystem = coordinator.RegisterSystem<Rendering::RenderSystem>();
+    g_renderSystemPtr = renderSystem.get();
     auto particleSystem = coordinator.RegisterSystem<Particles::ParticleSystem>();
     
     // Set system signatures
@@ -614,15 +686,15 @@ int main() {
     std::cout << "Right Click - Heavy Attack" << std::endl;
     std::cout << "Q - Block/Parry" << std::endl;
     std::cout << "K - Toggle Physics Mode (Dynamic/Kinematic) [DEBUG]" << std::endl;
-    std::cout << "F4 - Cycle G-buffer Debug Mode" << std::endl;
+    std::cout << "F1 - Cycle G-buffer Debug Mode (includes Emissive Color/Power)" << std::endl;
     std::cout << "F5 - Toggle Camera Frustum Debug" << std::endl;
-    std::cout << "PageUp/PageDown - Adjust Depth Scale" << std::endl;
+    std::cout << "F2/F3 - Adjust Depth Scale (for Position debug)" << std::endl;
     std::cout << "ESC - Exit" << std::endl;
     std::cout << "\n*** Press TAB first to enable mouse control! ***\n" << std::endl;
     
 const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulation
     float accumulator = 0.0f;
-    float deltaTime = 0.016f; // Initialize with 60 FPS default
+    float deltaTime = 0.016f; // Initialize with 60...(truncated)
     auto lastFrame = std::chrono::high_resolution_clock::now();
     int frameCount = 0;
     

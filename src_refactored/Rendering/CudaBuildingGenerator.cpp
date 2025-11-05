@@ -9,6 +9,7 @@
 extern "C" {
     void LaunchBuildingGeometryKernel(void* vertices, void* indices, const void* styleData, int* vertexCount, int* indexCount);
     void LaunchBuildingTextureKernel(void* albedo, void* normal, void* material, int width, int height, const void* styleData);
+    void LaunchEmissiveTextureKernel(void* emissiveData, int width, int height, const void* styleData);
     void LaunchMeshSimplificationKernel(const void* srcVerts, const void* srcIdxs, void* dstVerts, void* dstIdxs, 
                                        int srcVertCount, int srcIdxCount, float reduction, int* outCounts);
 }
@@ -195,7 +196,7 @@ void CudaBuildingGenerator::UploadToGPU(BuildingMesh& mesh) {
     
     // Interleave vertex data
     std::vector<float> vertexData;
-    vertexData.reserve(mesh.positions.size() * 11);  // pos(3) + normal(3) + uv(2) + color(3)
+    vertexData.reserve(mesh.positions.size() * 14);  // pos(3) + normal(3) + uv(2) + color(3) + emissive(3)
     
     for (size_t i = 0; i < mesh.positions.size(); ++i) {
         vertexData.push_back(mesh.positions[i].x);
@@ -212,25 +213,33 @@ void CudaBuildingGenerator::UploadToGPU(BuildingMesh& mesh) {
         vertexData.push_back(mesh.colors[i].x);
         vertexData.push_back(mesh.colors[i].y);
         vertexData.push_back(mesh.colors[i].z);
+        
+        vertexData.push_back(mesh.emissive[i].x);
+        vertexData.push_back(mesh.emissive[i].y);
+        vertexData.push_back(mesh.emissive[i].z);
     }
     
     glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
     
-    // Position attribute
+    // Position attribute (location 0)
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)0);
     
-    // Normal attribute
+    // Normal attribute (location 1)
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(3 * sizeof(float)));
     
-    // UV attribute
+    // UV attribute (location 2)
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(6 * sizeof(float)));
     
-    // Color attribute
+    // Color attribute (location 3)
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(8 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
+    
+    // Emissive attribute (location 4)
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
     
     // Create EBO
     glGenBuffers(1, &mesh.ebo);
@@ -260,7 +269,7 @@ void CudaBuildingGenerator::GenerateBaseGeometry(BuildingMesh& mesh, const Build
     int* d_vertexCount = nullptr;
     int* d_indexCount = nullptr;
     
-    cudaMalloc(&d_vertices, 24 * 11 * sizeof(float));  // 24 verts max * 11 floats per vert
+    cudaMalloc(&d_vertices, 24 * 14 * sizeof(float));  // 24 verts max * 14 floats per vert
     cudaMalloc(&d_indices, 36 * sizeof(uint32_t));      // 36 indices max
     cudaMalloc(&d_vertexCount, sizeof(int));
     cudaMalloc(&d_indexCount, sizeof(int));
@@ -274,21 +283,23 @@ void CudaBuildingGenerator::GenerateBaseGeometry(BuildingMesh& mesh, const Build
     cudaMemcpy(&indexCount, d_indexCount, sizeof(int), cudaMemcpyDeviceToHost);
     
     // Allocate host memory and copy vertex data
-    std::vector<float> vertexData(vertexCount * 11);
-    cudaMemcpy(vertexData.data(), d_vertices, vertexCount * 11 * sizeof(float), cudaMemcpyDeviceToHost);
+    std::vector<float> vertexData(vertexCount * 14);
+    cudaMemcpy(vertexData.data(), d_vertices, vertexCount * 14 * sizeof(float), cudaMemcpyDeviceToHost);
     
     // Deinterleave into separate arrays
     mesh.positions.resize(vertexCount);
     mesh.normals.resize(vertexCount);
     mesh.uvs.resize(vertexCount);
     mesh.colors.resize(vertexCount);
+    mesh.emissive.resize(vertexCount);
     
     for (int i = 0; i < vertexCount; ++i) {
-        int offset = i * 11;
+        int offset = i * 14;
         mesh.positions[i] = glm::vec3(vertexData[offset+0], vertexData[offset+1], vertexData[offset+2]);
         mesh.normals[i] = glm::vec3(vertexData[offset+3], vertexData[offset+4], vertexData[offset+5]);
         mesh.uvs[i] = glm::vec2(vertexData[offset+6], vertexData[offset+7]);
         mesh.colors[i] = glm::vec3(vertexData[offset+8], vertexData[offset+9], vertexData[offset+10]);
+        mesh.emissive[i] = glm::vec3(vertexData[offset+11], vertexData[offset+12], vertexData[offset+13]);
     }
     
     // Copy index data
@@ -331,27 +342,33 @@ void CudaBuildingGenerator::GenerateFacadeTexture(BuildingTexture& texture, cons
     uint8_t* d_albedo = nullptr;
     uint8_t* d_normal = nullptr;
     uint8_t* d_material = nullptr;
+    uint8_t* d_emissive = nullptr;
     
     cudaMalloc(&d_albedo, textureSize);
     cudaMalloc(&d_normal, textureSize);
     cudaMalloc(&d_material, textureSize);
+    cudaMalloc(&d_emissive, textureSize);
     
-    // Launch texture generation kernel
+    // Launch texture generation kernels
     LaunchBuildingTextureKernel(d_albedo, d_normal, d_material, texture.width, texture.height, &gpuStyle);
+    LaunchEmissiveTextureKernel(d_emissive, texture.width, texture.height, &gpuStyle);
     
     // Copy results back
     texture.albedoData.resize(textureSize);
     texture.normalData.resize(textureSize);
     texture.metallicRoughnessAO.resize(textureSize);
+    texture.emissiveData.resize(textureSize);
     
     cudaMemcpy(texture.albedoData.data(), d_albedo, textureSize, cudaMemcpyDeviceToHost);
     cudaMemcpy(texture.normalData.data(), d_normal, textureSize, cudaMemcpyDeviceToHost);
     cudaMemcpy(texture.metallicRoughnessAO.data(), d_material, textureSize, cudaMemcpyDeviceToHost);
+    cudaMemcpy(texture.emissiveData.data(), d_emissive, textureSize, cudaMemcpyDeviceToHost);
     
     // Cleanup
     cudaFree(d_albedo);
     cudaFree(d_normal);
     cudaFree(d_material);
+    cudaFree(d_emissive);
 }
 
 void CudaBuildingGenerator::GenerateWindowTexture(BuildingTexture&, const BuildingStyle&) {

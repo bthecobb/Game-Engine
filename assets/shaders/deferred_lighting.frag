@@ -8,7 +8,8 @@ in vec2 TexCoord;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
-uniform sampler2D gMetallicRoughness;
+uniform sampler2D gMetallicRoughnessAOEmissive;
+uniform sampler2D gEmissive;
 
 // Shadow mapping
 uniform sampler2D shadowMap;
@@ -61,10 +62,12 @@ void main()
     vec3 normal = texture(gNormal, TexCoord).rgb;
     vec3 albedo = texture(gAlbedoSpec, TexCoord).rgb;
     float specular = texture(gAlbedoSpec, TexCoord).a;
-    vec3 metallicRoughness = texture(gMetallicRoughness, TexCoord).rgb;
-    float metallic = metallicRoughness.r;
-    float roughness = metallicRoughness.g;
-    float ao = metallicRoughness.b;
+    vec4 metallicRoughnessAOEmissive = texture(gMetallicRoughnessAOEmissive, TexCoord);
+    float metallic = metallicRoughnessAOEmissive.r;
+    float roughness = metallicRoughnessAOEmissive.g;
+    float ao = metallicRoughnessAOEmissive.b;
+    float emissivePower = metallicRoughnessAOEmissive.a;
+    vec3 emissive = texture(gEmissive, TexCoord).rgb;
     
     // Debug mode visualization
     if (debugMode == 1) {
@@ -91,6 +94,17 @@ void main()
         FragColor = vec4(metallic, roughness, ao, 1.0);
         return;
     }
+    else if (debugMode == 5) {
+        // Emissive color only
+        FragColor = vec4(texture(gEmissive, TexCoord).rgb, 1.0);
+        return;
+    }
+    else if (debugMode == 6) {
+        // Emissive power only
+        float ePow = texture(gMetallicRoughnessAOEmissive, TexCoord).a;
+        FragColor = vec4(vec3(ePow / 15.0), 1.0); // normalized visualization
+        return;
+    }
 
     // Simplified Lighting Without Shadows
     vec3 lightDir = normalize(-light.direction); // Assume directional for simplicity
@@ -101,7 +115,21 @@ void main()
 
     vec3 radiance = light.color * light.intensity;
     vec3 Lo = (diffuseComponent + specularComponent) * radiance;
-    // Increased ambient from 0.03 to 0.15 for better scene visibility
-    vec3 ambient = vec3(0.15 * albedo * ao);
-    FragColor = vec4(ambient + Lo, 1.0);
+    
+    // Enhanced ambient lighting for better visibility
+    // Sky ambient (bluish tint from above)
+    vec3 skyAmbient = vec3(0.53, 0.81, 0.92) * 0.3 * max(normal.y, 0.0);
+    // Ground ambient (darker, from below)
+    vec3 groundAmbient = vec3(0.2, 0.25, 0.3) * 0.15 * max(-normal.y, 0.0);
+    // Base ambient
+    vec3 baseAmbient = vec3(0.25) * albedo * ao;
+    
+    vec3 ambient = baseAmbient + skyAmbient + groundAmbient;
+    
+    // Add emissive glow (window lights, neon signs, etc.)
+    // Reconstruct full emissive: normalized color * power
+    vec3 emissiveContribution = emissive * emissivePower;
+    vec3 finalColor = ambient + Lo + emissiveContribution;
+    
+    FragColor = vec4(finalColor, 1.0);
 }

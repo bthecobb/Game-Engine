@@ -299,6 +299,13 @@ void CharacterControllerSystem::ApplyMovement(Physics::CharacterControllerCompon
         glm::vec3 force = velocityDiff * rigidbody.mass * accel;
         rigidbody.addForce(force);
         
+        static int movementDebugCounter = 0;
+        if (movementDebugCounter++ % 60 == 0) {
+            std::cout << "[CharacterController] Movement - Force: (" << force.x << ", " << force.y << ", " << force.z << ")" 
+                      << " Velocity: (" << rigidbody.velocity.x << ", " << rigidbody.velocity.y << ", " << rigidbody.velocity.z << ")" 
+                      << " Grounded: " << (controller.isGrounded ? "YES" : "NO") << std::endl;
+        }
+        
         // Clamp horizontal velocity to maxSpeed
         glm::vec3 horizontalVel = glm::vec3(rigidbody.velocity.x, 0, rigidbody.velocity.z);
         float horizontalSpeed = glm::length(horizontalVel);
