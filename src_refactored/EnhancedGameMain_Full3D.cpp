@@ -238,11 +238,13 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         0.0f, 0.8f, 1.0f
     });
     
-    // Add physics components for collision
-    coordinator.AddComponent(ground, Physics::ColliderComponent{
-        Physics::ColliderShape::BOX,
-        glm::vec3(1125.0f, 0.5f, 1125.0f)  // Half extents for 2250x2250 world
-    });
+    // Add physics components for collision (use halfExtents explicitly)
+    {
+        Physics::ColliderComponent groundCol{};
+        groundCol.shape = Physics::ColliderShape::BOX;
+        groundCol.halfExtents = glm::vec3(1125.0f, 0.5f, 1125.0f);  // Half extents for 2250x2250 world
+        coordinator.AddComponent(ground, groundCol);
+    }
     // Ground treated as static: either omit Rigidbody or set mass to 0
     Physics::RigidbodyComponent groundRB;
     groundRB.setMass(0.0f);  // Zero mass = static (inverseMass=0)
@@ -322,10 +324,12 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         coordinator.AddComponent(building, wallComp);
         
         // Collider half-extents should match mesh bounds; approximate with style
-        coordinator.AddComponent(building, Physics::ColliderComponent{
-            Physics::ColliderShape::BOX,
-            glm::vec3(buildingWidth/2.0f, height/2.0f, buildingDepth/2.0f)
-        });
+        {
+            Physics::ColliderComponent col{};
+            col.shape = Physics::ColliderShape::BOX;
+            col.halfExtents = glm::vec3(buildingWidth/2.0f, height/2.0f, buildingDepth/2.0f);
+            coordinator.AddComponent(building, col);
+        }
     }
     
 // Create enemies throughout the map (ensure not spawning too close to player)
@@ -682,9 +686,10 @@ Core::Signature enemyAISignature;
     playerRigidbody.forceAccumulator = glm::vec3(0.0f, 0.0f, 0.0f); // Zero forces
     coordinator.AddComponent(player, playerRigidbody);
     
-    Physics::ColliderComponent playerCollider;
+    Physics::ColliderComponent playerCollider{};
     playerCollider.shape = Physics::ColliderShape::BOX;
-    playerCollider.size = glm::vec3(0.8f, 1.8f, 0.8f);
+    // Half extents for an 0.8 x 1.8 x 0.8 box
+    playerCollider.halfExtents = glm::vec3(0.4f, 0.9f, 0.4f);
     coordinator.AddComponent(player, playerCollider);
     
     // Player visual representation
