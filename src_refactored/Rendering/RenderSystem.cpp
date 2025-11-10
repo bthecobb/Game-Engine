@@ -271,7 +271,10 @@ void RenderSystem::ShadowPass() {
             glm::mat4 modelMatrix = transform.getMatrix();
             m_shadowShader->SetMat4("model", modelMatrix);
             
-            // Priority: generator VAO -> simple cube -> model
+            // Priority: generator VAO -> simple cube -> model (draw double-sided for generator/cube)
+            bool forceDoubleSided = (meshComponent.modelPath == "player_cube") || (meshComponent.vaoId != 0);
+            if (forceDoubleSided) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
+
             if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
                 glBindVertexArray(meshComponent.vaoId);
                 glDrawElements(GL_TRIANGLES, meshComponent.indexCount, GL_UNSIGNED_INT, 0);
@@ -282,6 +285,8 @@ void RenderSystem::ShadowPass() {
                 Model model(meshComponent.modelPath);
                 model.Draw(*m_shadowShader);
             }
+
+            glEnable(GL_CULL_FACE);
             submitted++;
         }
     }
@@ -400,6 +405,10 @@ void RenderSystem::GeometryPass() {
                 m_geometryPassShader->SetFloat("ao", 1.0f);
             }
             
+            // For generator VAO and simple cubes, render double-sided to avoid missing faces on opposite sides
+            bool forceDoubleSided = (meshComponent.modelPath == "player_cube") || (meshComponent.vaoId != 0);
+            if (forceDoubleSided) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
+
             // Draw logic priority: generator VAO -> simple cube -> model
             if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
                 LogDrawCall("GeometryPass", 1, meshComponent.vaoId, "GL_TRIANGLES", meshComponent.indexCount);
@@ -417,6 +426,9 @@ void RenderSystem::GeometryPass() {
                 model.Draw(*m_geometryPassShader);
                 entityCount++; m_drawCallCount++; m_triangleCount += 100;
             }
+
+            // Restore default culling
+            glEnable(GL_CULL_FACE);
         }
     }
 
