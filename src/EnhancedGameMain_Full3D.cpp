@@ -659,6 +659,44 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         } else {
             f5Pressed = false;
         }
+
+        // F6/F7 to toggle culling modes, [ and ] to adjust max distance
+        static bool f6Pressed = false;
+        static bool f7Pressed = false;
+        static bool lbPressed = false;
+        static bool rbPressed = false;
+        if (keys[GLFW_KEY_F6]) {
+            if (!f6Pressed) {
+                renderSystem->SetFrustumCullingEnabled(!renderSystem->GetFrustumCullingEnabled());
+                std::cout << "[RenderSystem] Frustum culling " << (renderSystem->GetFrustumCullingEnabled() ? "ENABLED" : "DISABLED") << std::endl;
+                f6Pressed = true;
+            }
+        } else { f6Pressed = false; }
+        if (keys[GLFW_KEY_F7]) {
+            if (!f7Pressed) {
+                renderSystem->SetDistanceCullingEnabled(!renderSystem->GetDistanceCullingEnabled());
+                std::cout << "[RenderSystem] Distance culling " << (renderSystem->GetDistanceCullingEnabled() ? "ENABLED" : "DISABLED") << std::endl;
+                f7Pressed = true;
+            }
+        } else { f7Pressed = false; }
+        if (keys[GLFW_KEY_LEFT_BRACKET]) {
+            if (!lbPressed) {
+                float d = renderSystem->GetCullMaxDistance();
+                d = std::max(50.0f, d * 0.8f);
+                renderSystem->SetCullMaxDistance(d);
+                std::cout << "[RenderSystem] Cull max distance: " << d << std::endl;
+                lbPressed = true;
+            }
+        } else { lbPressed = false; }
+        if (keys[GLFW_KEY_RIGHT_BRACKET]) {
+            if (!rbPressed) {
+                float d = renderSystem->GetCullMaxDistance();
+                d = d * 1.25f;
+                renderSystem->SetCullMaxDistance(d);
+                std::cout << "[RenderSystem] Cull max distance: " << d << std::endl;
+                rbPressed = true;
+            }
+        } else { rbPressed = false; }
         
         // PageUp/PageDown to adjust depth scale for position buffer visualization
         static bool pageUpPressed = false;

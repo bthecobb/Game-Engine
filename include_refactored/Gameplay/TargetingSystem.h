@@ -16,6 +16,8 @@ public:
     void Shutdown() override;
     void Update(float deltaTime) override;
 
+    void SetPlayerEntity(Core::Entity player) { m_playerEntity = player; }
+
 private:
     void UpdateTargeting(Core::Entity entity, TargetingComponent& targeting, 
                         Rendering::TransformComponent& transform);
@@ -33,6 +35,8 @@ private:
     float autoTargetRange = 15.0f;
     float manualTargetRange = 25.0f;
     bool isAutoTargetingEnabled = true;
+
+    Core::Entity m_playerEntity = 0;
 };
 
 } // namespace Gameplay

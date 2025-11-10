@@ -124,14 +124,14 @@ Core::Entity TargetingSystem::FindNearestEnemy(const glm::vec3& position, float 
 }
 
 Core::Entity TargetingSystem::FindPlayerEntity() {
+    if (m_playerEntity != 0) return m_playerEntity;
+
     auto& coordinator = Core::Coordinator::GetInstance();
-    
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<PlayerMovementComponent>(entity)) {
             return entity;
         }
     }
-    
     return 0;
 }
 

@@ -20,6 +20,7 @@
 #include "Debug/OpenGLDebugRenderer.h"
 #include "Rendering/RenderDebugSystem.h"
 #include "Rendering/CudaBuildingGenerator.h"
+#include "UI/UIRenderer.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -49,6 +50,14 @@ bool keysPressed[1024] = {false}; // Track single key presses
 bool mouseButtons[8] = {false};
 Rendering::OrbitCamera* mainCamera = nullptr;
 
+// UI
+std::unique_ptr<UI::UIRenderer> g_uiRenderer = nullptr;
+bool g_showHUD = false; // start hidden by default
+
+// Startup UX
+bool g_hasEnabledMouse = false;   // becomes true on first TAB press
+bool g_showWelcomePrompt = true;  // show center prompt until TAB
+
 // Scroll callback for zoom
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     if (mainCamera) {
@@ -75,6 +84,11 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         } else {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+        // Mark welcome prompt complete on first TAB
+        if (!g_hasEnabledMouse) {
+            g_hasEnabledMouse = true;
+            g_showWelcomePrompt = false;
         }
     }
 
@@ -211,12 +225,12 @@ static std::vector<GLuint> g_emissiveTextures;
 void CreateGameEnvironment(Core::Coordinator& coordinator) {
     std::cout << "Creating 3D game environment..." << std::endl;
     
-    // Create ground plane (larger for 3D world)
+    // Create ground plane (OPTIMAL - 2250x2250, ~50x larger than original)
     auto ground = coordinator.CreateEntity();
     coordinator.AddComponent(ground, Rendering::TransformComponent{
         glm::vec3(0.0f, -1.0f, 0.0f),
         glm::vec3(0.0f),
-        glm::vec3(300.0f, 1.0f, 300.0f)
+        glm::vec3(2250.0f, 1.0f, 2250.0f)  // Was 300→3000→2250 (25% smaller)
     });
     coordinator.AddComponent(ground, Rendering::MeshComponent{"player_cube"});
     coordinator.AddComponent(ground, Rendering::MaterialComponent{
@@ -227,7 +241,7 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
     // Add physics components for collision
     coordinator.AddComponent(ground, Physics::ColliderComponent{
         Physics::ColliderShape::BOX,
-        glm::vec3(150.0f, 0.5f, 150.0f)  // Half extents matching the scale
+        glm::vec3(1125.0f, 0.5f, 1125.0f)  // Half extents for 2250x2250 world
     });
     // Ground treated as static: either omit Rigidbody or set mass to 0
     Physics::RigidbodyComponent groundRB;
@@ -242,13 +256,15 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         g_buildingGen->Initialize();
     }
 
-    // Create buildings/walls for wall-running
+    // Create buildings/walls for wall-running (OPTIMAL SCALE)
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(-120.0, 120.0);  // Expanded to cover more of the 300x300 ground
-    std::uniform_real_distribution<> height_dis(8.0, 25.0);  // Taller buildings
+    std::uniform_real_distribution<> dis(-900.0, 900.0);  // 2250x2250 world
+    std::uniform_real_distribution<> height_dis(12.0, 40.0);  // Varied heights
     
-    for (int i = 0; i < 30; ++i) {  // More buildings for better coverage
+    std::cout << "[OPTIMAL WORLD] Generating 150 buildings across 2250x2250 units..." << std::endl;
+    std::cout << "[LIMITS] Tested: 6000x6000/500 buildings (too heavy), 3000x3000/200 (still heavy)" << std::endl;
+    for (int i = 0; i < 150; ++i) {  // Optimal: 150 buildings (25% reduction)
         auto building = coordinator.CreateEntity();
         float x = dis(gen);
         float z = dis(gen);
@@ -312,10 +328,21 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         });
     }
     
-    // Create enemies throughout the map
-    std::uniform_real_distribution<> enemy_pos(-30.0, 30.0);
-    for (int i = 0; i < 10; ++i) {
+// Create enemies throughout the map (ensure not spawning too close to player)
+    std::uniform_real_distribution<> enemy_pos(-300.0, 300.0);
+for (int i = 0; i < 10; ++i) {
         auto enemy = coordinator.CreateEntity();
+
+        // Ensure enemy spawns at a safe distance from player origin
+        float x = enemy_pos(gen);
+        float z = enemy_pos(gen);
+        int safetyIterations = 0;
+        const float minDist = 60.0f;
+        while ((x * x + z * z) < (minDist * minDist) && safetyIterations < 10) {
+            x = enemy_pos(gen);
+            z = enemy_pos(gen);
+            safetyIterations++;
+        }
         
         // Enemy AI component
         Gameplay::EnemyAIComponent enemyAI;
@@ -344,9 +371,9 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
             glm::vec3(0.8f, 1.8f, 0.8f)
         });
         
-        // Enemy visual
+// Enemy visual
         coordinator.AddComponent(enemy, Rendering::TransformComponent{
-            glm::vec3(enemy_pos(gen), 1.0f, enemy_pos(gen)),
+            glm::vec3(x, 1.0f, z),
             glm::vec3(0.0f),
             glm::vec3(1.2f, 2.0f, 1.2f)
         });
@@ -524,7 +551,12 @@ int main() {
     characterControllerSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
     coordinator.SetSystemSignature<Gameplay::CharacterControllerSystem>(characterControllerSignature);
 
-    Core::Signature enemyAISignature;
+Core::Signature enemyAISignature;
+    enemyAISignature.set(coordinator.GetComponentType<Gameplay::EnemyAIComponent>());
+    enemyAISignature.set(coordinator.GetComponentType<Gameplay::EnemyCombatComponent>());
+    enemyAISignature.set(coordinator.GetComponentType<Gameplay::EnemyMovementComponent>());
+    enemyAISignature.set(coordinator.GetComponentType<Physics::RigidbodyComponent>());
+    enemyAISignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
     coordinator.SetSystemSignature<Gameplay::EnemyAISystem>(enemyAISignature);
 
     Core::Signature levelSignature;
@@ -572,16 +604,26 @@ int main() {
     renderSystem->Initialize();
     particleSystem->Initialize();
     
+    // Load HDR skybox
+    std::cout << "Loading HDR skybox..." << std::endl;
+    if (renderSystem->LoadSkyboxHDR("C:\\Users\\Brandon\\CudaGame\\assets\\hdri\\qwantani_noon_puresky_4k.hdr", 512)) {
+        std::cout << "HDR skybox loaded successfully!" << std::endl;
+    } else {
+        std::cerr << "Warning: Failed to load HDR skybox" << std::endl;
+    }
+    
     // Create and setup OrbitCamera with proper 3D positioning
     std::cout << "Creating 3D OrbitCamera..." << std::endl;
     auto camera = std::make_unique<Rendering::OrbitCamera>(Rendering::ProjectionType::PERSPECTIVE);
     
-    // Configure orbit camera settings
+    // Configure orbit camera settings (Zelda/Kirby-style)
     Rendering::OrbitCamera::OrbitSettings orbitSettings;
-    orbitSettings.distance = 15.0f;
-    orbitSettings.heightOffset = 2.0f;
-    orbitSettings.mouseSensitivity = 0.05f;  // Reduced sensitivity for smoother control
-    orbitSettings.smoothSpeed = 6.0f;
+    orbitSettings.distance = 8.0f;            // closer to character
+    orbitSettings.heightOffset = 3.0f;        // slightly higher
+    orbitSettings.mouseSensitivity = 0.03f;   // less twitchy
+    orbitSettings.smoothSpeed = 12.0f;        // faster smoothing
+    orbitSettings.minDistance = 5.0f;
+    orbitSettings.maxDistance = 20.0f;
     camera->SetOrbitSettings(orbitSettings);
     
     camera->SetPerspective(60.0f, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 200.0f);
@@ -662,7 +704,20 @@ int main() {
     playerMaterial.roughness = 0.6f;
     coordinator.AddComponent(player, playerMaterial);
     
-    std::cout << "Player created with full component set!" << std::endl;
+std::cout << "Player created with full component set!" << std::endl;
+    
+    // Bind player entity to systems that need it
+    enemyAISystem->SetPlayerEntity(player);
+    targetingSystem->SetPlayerEntity(player);
+    
+    // Initialize UI Renderer
+    g_uiRenderer = std::make_unique<UI::UIRenderer>();
+    if (g_uiRenderer->Initialize()) {
+        g_uiRenderer->SetViewportSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+        std::cout << "UI Renderer initialized successfully!" << std::endl;
+    } else {
+        std::cerr << "Failed to initialize UI Renderer" << std::endl;
+    }
     
     // Create the game environment
     CreateGameEnvironment(coordinator);
@@ -689,6 +744,10 @@ int main() {
     std::cout << "F1 - Cycle G-buffer Debug Mode (includes Emissive Color/Power)" << std::endl;
     std::cout << "F5 - Toggle Camera Frustum Debug" << std::endl;
     std::cout << "F2/F3 - Adjust Depth Scale (for Position debug)" << std::endl;
+    std::cout << "\nSkybox Controls:" << std::endl;
+    std::cout << "+/- - Adjust skybox exposure" << std::endl;
+    std::cout << "[/] - Rotate skybox" << std::endl;
+    std::cout << "B - Toggle skybox on/off" << std::endl;
     std::cout << "ESC - Exit" << std::endl;
     std::cout << "\n*** Press TAB first to enable mouse control! ***\n" << std::endl;
     
@@ -766,6 +825,84 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
             kPressed = true;
         } else if (!keys[GLFW_KEY_K]) {
             kPressed = false;
+        }
+        
+        // Skybox controls
+        // Toggle skybox with B key
+        static bool bPressed = false;
+        if (keys[GLFW_KEY_B] && !bPressed) {
+            bool currentEnabled = renderSystem->GetSkyboxEnabled();
+            renderSystem->SetSkyboxEnabled(!currentEnabled);
+            std::cout << "Skybox " << (currentEnabled ? "disabled" : "enabled") << std::endl;
+            bPressed = true;
+        } else if (!keys[GLFW_KEY_B]) {
+            bPressed = false;
+        }
+        
+        // Adjust skybox exposure with +/- (using = and - keys)
+        static bool plusPressed = false;
+        static bool minusPressed = false;
+        if (keys[GLFW_KEY_EQUAL] && !plusPressed) { // + key (GLFW_KEY_EQUAL is same physical key)
+            renderSystem->AdjustSkyboxExposure(0.1f);
+            plusPressed = true;
+        } else if (!keys[GLFW_KEY_EQUAL]) {
+            plusPressed = false;
+        }
+        
+        if (keys[GLFW_KEY_MINUS] && !minusPressed) {
+            renderSystem->AdjustSkyboxExposure(-0.1f);
+            minusPressed = true;
+        } else if (!keys[GLFW_KEY_MINUS]) {
+            minusPressed = false;
+        }
+        
+        // Rotate skybox with [ and ] keys
+        static bool leftBracketPressed = false;
+        static bool rightBracketPressed = false;
+        if (keys[GLFW_KEY_LEFT_BRACKET] && !leftBracketPressed) {
+            renderSystem->AdjustSkyboxRotation(-0.1f); // Rotate counter-clockwise
+            leftBracketPressed = true;
+        } else if (!keys[GLFW_KEY_LEFT_BRACKET]) {
+            leftBracketPressed = false;
+        }
+        
+        if (keys[GLFW_KEY_RIGHT_BRACKET] && !rightBracketPressed) {
+            renderSystem->AdjustSkyboxRotation(0.1f); // Rotate clockwise
+            rightBracketPressed = true;
+        } else if (!keys[GLFW_KEY_RIGHT_BRACKET]) {
+            rightBracketPressed = false;
+        }
+        
+        // Reset player and camera with R key
+        static bool rPressed = false;
+        if (keys[GLFW_KEY_R] && !rPressed) {
+            // Reset player position
+            auto& playerTrans = coordinator.GetComponent<Rendering::TransformComponent>(player);
+            playerTrans.position = glm::vec3(0.0f, 2.0f, 0.0f);
+            
+            // Reset player velocity
+            auto& playerRB = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
+            playerRB.velocity = glm::vec3(0.0f);
+            playerRB.acceleration = glm::vec3(0.0f);
+            playerRB.forceAccumulator = glm::vec3(0.0f);
+            
+            // Reset camera
+            mainCamera->SetTarget(glm::vec3(0.0f, 2.0f, 0.0f));
+            
+            std::cout << "[RESET] Player and camera reset to starting position" << std::endl;
+            rPressed = true;
+        } else if (!keys[GLFW_KEY_R]) {
+            rPressed = false;
+        }
+        
+        // Toggle HUD with H key
+        static bool hPressed = false;
+        if (keys[GLFW_KEY_H] && !hPressed) {
+            g_showHUD = !g_showHUD;
+            std::cout << "HUD " << (g_showHUD ? "enabled" : "disabled") << std::endl;
+            hPressed = true;
+        } else if (!keys[GLFW_KEY_H]) {
+            hPressed = false;
         }
         
         // Clear other key press states at the end of frame
@@ -906,6 +1043,74 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
 
         debugRenderer->EndFrame();
         
+        // Render UI/HUD
+        if (g_uiRenderer) {
+            g_uiRenderer->BeginFrame();
+
+            // Center prompt until TAB pressed
+            if (g_showWelcomePrompt && !g_hasEnabledMouse) {
+                const float panelW = 520.0f;
+                const float panelH = 140.0f;
+                const float px = WINDOW_WIDTH * 0.5f - panelW * 0.5f;
+                const float py = WINDOW_HEIGHT * 0.5f - panelH * 0.5f;
+                g_uiRenderer->DrawFilledRect((int)px, (int)py, (int)panelW, (int)panelH, glm::vec4(0.0f,0.0f,0.0f,0.8f));
+                g_uiRenderer->RenderText("WELCOME TO CUDAGAME", (int)(px + 20), (int)(py + 20), 1.1f, glm::vec3(0.0f,1.0f,1.0f));
+                g_uiRenderer->RenderText("Press TAB to enable mouse control", (int)(px + 20), (int)(py + 60), 0.95f, glm::vec3(1.0f));
+                g_uiRenderer->RenderText("Press H to show the controls panel", (int)(px + 20), (int)(py + 90), 0.9f, glm::vec3(0.8f));
+            }
+            else if (g_showHUD) {
+                // Draw HUD background panel
+                g_uiRenderer->DrawFilledRect(10, 10, 320, 280, glm::vec4(0.0f, 0.0f, 0.0f, 0.7f));
+                
+                float yPos = 20.0f;
+                float lineHeight = 20.0f;
+                
+                // Title
+                g_uiRenderer->RenderText("=== CUDAGAME CONTROLS ===", 20, yPos, 1.0f, glm::vec3(0.0f, 1.0f, 1.0f));
+                yPos += lineHeight * 1.5f;
+                
+                // Movement
+                g_uiRenderer->RenderText("TAB: Toggle Mouse", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 1.0f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("WASD: Move", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 1.0f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("Space: Jump", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 1.0f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("Shift: Sprint", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 1.0f));
+                yPos += lineHeight;
+                
+                // Debug
+                yPos += lineHeight * 0.5f;
+                g_uiRenderer->RenderText("F1: Debug Mode", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 0.0f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("F5: Camera Debug", 20, yPos, 0.8f, glm::vec3(1.0f, 1.0f, 0.0f));
+                yPos += lineHeight;
+                
+                // Skybox
+                yPos += lineHeight * 0.5f;
+                g_uiRenderer->RenderText("+/-: Skybox Exposure", 20, yPos, 0.8f, glm::vec3(0.5f, 1.0f, 0.5f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("[/]: Rotate Skybox", 20, yPos, 0.8f, glm::vec3(0.5f, 1.0f, 0.5f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("B: Toggle Skybox", 20, yPos, 0.8f, glm::vec3(0.5f, 1.0f, 0.5f));
+                yPos += lineHeight;
+                
+                // Utility
+                yPos += lineHeight * 0.5f;
+                g_uiRenderer->RenderText("R: Reset Position", 20, yPos, 0.8f, glm::vec3(1.0f, 0.5f, 0.5f));
+                yPos += lineHeight;
+                g_uiRenderer->RenderText("H: Toggle HUD", 20, yPos, 0.8f, glm::vec3(0.8f, 0.8f, 0.8f));
+                yPos += lineHeight;
+                
+                // Status info
+                yPos += lineHeight * 0.5f;
+                std::string fpsText = "FPS: " + std::to_string((int)currentFPS);
+                g_uiRenderer->RenderText(fpsText, 20, yPos, 0.8f, glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+            
+            g_uiRenderer->EndFrame();
+        }
+        
         // Swap front and back buffers
         glfwSwapBuffers(window);
         
@@ -970,6 +1175,12 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
     }
 
     std::cout << "\nGame ended. Thanks for playing!" << std::endl;
+    
+    // Cleanup UI
+    if (g_uiRenderer) {
+        g_uiRenderer->Shutdown();
+        g_uiRenderer.reset();
+    }
     
     // Cleanup
     CleanupWindow();

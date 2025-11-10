@@ -17,10 +17,9 @@ void EnemyAISystem::Shutdown() {
 
 void EnemyAISystem::Update(float deltaTime) {
     auto& coordinator = Core::Coordinator::GetInstance();
-    
-    // Iterate through all entities and check for enemy components
-    for (Core::Entity entity = 0; entity < 1000; ++entity) {
-        // Check if entity has all required components before accessing them
+
+    // Iterate over filtered enemy entities only
+    for (auto const& entity : mEntities) {
         if (!coordinator.HasComponent<EnemyAIComponent>(entity) ||
             !coordinator.HasComponent<EnemyCombatComponent>(entity) ||
             !coordinator.HasComponent<EnemyMovementComponent>(entity) ||
@@ -28,13 +27,13 @@ void EnemyAISystem::Update(float deltaTime) {
             !coordinator.HasComponent<Rendering::TransformComponent>(entity)) {
             continue;
         }
-        
+
         auto& ai = coordinator.GetComponent<EnemyAIComponent>(entity);
         auto& combat = coordinator.GetComponent<EnemyCombatComponent>(entity);
         auto& movement = coordinator.GetComponent<EnemyMovementComponent>(entity);
         auto& rigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(entity);
         auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
-        
+
         UpdateAI(entity, ai, combat, movement, rigidbody, transform, deltaTime);
     }
 }
@@ -43,6 +42,12 @@ void EnemyAISystem::UpdateAI(Core::Entity entity, EnemyAIComponent& ai, EnemyCom
                   EnemyMovementComponent& movement, Physics::RigidbodyComponent& rigidbody, 
                   Rendering::TransformComponent& transform, float deltaTime) {
     
+    // If player not bound yet, remain in patrol and skip targeting
+    if (m_playerEntity == 0) {
+        ai.aiState = AIState::PATROL;
+        return;
+    }
+
     glm::vec3 playerPos = GetPlayerPosition();
     
     // Check if can see player for state transitions
@@ -159,27 +164,28 @@ bool EnemyAISystem::CanSeePlayer(const EnemyAIComponent& ai, const Rendering::Tr
 }
 
 Core::Entity EnemyAISystem::FindPlayerEntity() {
+    if (m_playerEntity != 0) return m_playerEntity;
+
     auto& coordinator = Core::Coordinator::GetInstance();
-    
-    // Find entity with PlayerMovementComponent
+    // Fallback (should be avoided once SetPlayerEntity is called)
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<PlayerMovementComponent>(entity)) {
             return entity;
         }
     }
-    
-    return 0; // No player found
+    return 0;
 }
 
 glm::vec3 EnemyAISystem::GetPlayerPosition() {
     auto& coordinator = Core::Coordinator::GetInstance();
-    Core::Entity playerEntity = FindPlayerEntity();
+    Core::Entity playerEntity = (m_playerEntity != 0) ? m_playerEntity : FindPlayerEntity();
     
     if (playerEntity != 0 && coordinator.HasComponent<Rendering::TransformComponent>(playerEntity)) {
         auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(playerEntity);
         return transform.position;
     }
     
+    // Should not be used if player not found; caller should guard using m_playerEntity check
     return glm::vec3(0.0f, 0.0f, 0.0f);
 }
 

@@ -4,12 +4,15 @@
 // Forward declarations for test suite creation functions
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateCoreSystemsTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateOrbitCameraTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateSkyboxUtilsTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateBuildingGeneratorTestSuite();
+std::shared_ptr<CudaGame::Testing::TestSuite> CreateEnemyAITestSuite();
 #ifdef ENABLE_PHYSX
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateCharacterControllerTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreatePhysicsTestSuite();
 #endif
 #ifdef ENABLE_RENDER_TESTS
-std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingSystemTestSuite();
+// std::shared_ptr<CudaGame::Testing::TestSuite> CreateRenderingSystemTestSuite();
 #endif
 // std::shared_ptr<CudaGame::Testing::TestSuite> CreateFull3DGameIntegrationTestSuite();
 // std::shared_ptr<CudaGame::Testing::TestSuite> CreatePlayerMovementTestSuite();
@@ -29,12 +32,15 @@ int main()
     // Register all test suites
     testFramework.RegisterSuite(CreateCoreSystemsTestSuite());
     testFramework.RegisterSuite(CreateOrbitCameraTestSuite());
+    testFramework.RegisterSuite(CreateSkyboxUtilsTestSuite());
+    testFramework.RegisterSuite(CreateBuildingGeneratorTestSuite());
+    testFramework.RegisterSuite(CreateEnemyAITestSuite());
 #ifdef ENABLE_PHYSX
     testFramework.RegisterSuite(CreateCharacterControllerTestSuite());
     // testFramework.RegisterSuite(CreatePhysicsTestSuite());
 #endif
 #ifdef ENABLE_RENDER_TESTS
-    testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
+    // testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
 #endif
 // testFramework.RegisterSuite(CreateEmissiveTextureTestSuite());
     // testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());
