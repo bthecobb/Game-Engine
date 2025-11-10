@@ -78,6 +78,14 @@ public:
     float GetDepthScale() const { return m_depthScale; }
     void AdjustDepthScale(float multiplier);
 
+    // Culling controls
+    void SetFrustumCullingEnabled(bool enabled) { m_enableFrustumCulling = enabled; }
+    void SetDistanceCullingEnabled(bool enabled) { m_enableDistanceCulling = enabled; }
+    void SetCullMaxDistance(float dist) { m_cullMaxDistance = dist; }
+    bool GetFrustumCullingEnabled() const { return m_enableFrustumCulling; }
+    bool GetDistanceCullingEnabled() const { return m_enableDistanceCulling; }
+    float GetCullMaxDistance() const { return m_cullMaxDistance; }
+
 private:
     Camera* m_mainCamera = nullptr;
     glm::vec4 m_clearColor = {0.53f, 0.81f, 0.92f, 1.0f}; // Sky blue background (was dark gray)
@@ -138,6 +146,14 @@ private:
     int m_drawCallCount = 0;
     int m_triangleCount = 0;
     
+    // Culling settings
+    bool m_enableFrustumCulling = true;
+    bool m_enableDistanceCulling = true;
+    float m_cullMaxDistance = 800.0f; // Units in world space
+
+    // Helpers
+    bool IsSphereVisible(const glm::vec3& center, float radius) const;
+
     // Diagnostic helper methods
     void LogFrameStart();
     void LogPassStart(const std::string& passName, uint32_t fbo, int width, int height);

@@ -4,6 +4,11 @@
 #include <iostream>
 #include <cstring>
 
+// Undefine Windows DrawText macro to avoid conflicts
+#ifdef DrawText
+#undef DrawText
+#endif
+
 namespace CudaGame {
 namespace UI {
 
@@ -114,7 +119,7 @@ void UIRenderer::SetViewportSize(int width, int height) {
     m_viewportHeight = height;
 }
 
-void UIRenderer::DrawText(const std::string& text, float x, float y, float scale, glm::vec3 color) {
+void UIRenderer::RenderText(const std::string& text, float x, float y, float scale, glm::vec3 color) {
     const float CHAR_WIDTH = 8.0f * scale;
     const float CHAR_HEIGHT = 8.0f * scale;
     const float FONT_TEX_WIDTH = 128.0f;
@@ -179,7 +184,7 @@ void UIRenderer::DrawDebugInfo(float fps, const glm::vec3& playerPos, int enemyC
     
     // FPS Counter
     std::string fpsText = "FPS: " + std::to_string((int)fps);
-    DrawText(fpsText, 10.0f, yPos, 1.0f, glm::vec3(1.0f));
+    RenderText(fpsText, 10.0f, yPos, 1.0f, glm::vec3(1.0f));
     yPos += LINE_HEIGHT;
     
     // Player Position
@@ -187,12 +192,12 @@ void UIRenderer::DrawDebugInfo(float fps, const glm::vec3& playerPos, int enemyC
         std::to_string((int)playerPos.x) + ", " + 
         std::to_string((int)playerPos.y) + ", " + 
         std::to_string((int)playerPos.z) + ")";
-    DrawText(posText, 10.0f, yPos, 1.0f, glm::vec3(0.8f, 0.8f, 1.0f));
+    RenderText(posText, 10.0f, yPos, 1.0f, glm::vec3(0.8f, 0.8f, 1.0f));
     yPos += LINE_HEIGHT;
     
     // Enemy Count
     std::string enemyText = "Enemies: " + std::to_string(enemyCount);
-    DrawText(enemyText, 10.0f, yPos, 1.0f, glm::vec3(1.0f, 0.8f, 0.8f));
+    RenderText(enemyText, 10.0f, yPos, 1.0f, glm::vec3(1.0f, 0.8f, 0.8f));
 }
 
 void UIRenderer::AddQuad(float x, float y, float width, float height, const glm::vec4& color,

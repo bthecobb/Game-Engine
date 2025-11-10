@@ -7,6 +7,7 @@
 #include "Rendering/CudaRenderingSystem.h"
 #include "Rendering/ShaderProgram.h"
 #include "Rendering/Framebuffer.h"
+#include "Rendering/Skybox.h"
 #include <memory>
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -73,6 +74,22 @@ public:
     void ToggleCameraDebug(); // Toggle camera frustum visualization
     float GetDepthScale() const { return m_depthScale; }
     void AdjustDepthScale(float multiplier);
+    
+    // Skybox controls
+    Skybox* GetSkybox() { return m_skybox.get(); }
+    bool LoadSkyboxHDR(const std::string& hdrPath, int cubemapSize = 512);
+    void SetSkyboxEnabled(bool enabled) { m_skyboxEnabled = enabled; }
+    bool GetSkyboxEnabled() const { return m_skyboxEnabled; }
+    void AdjustSkyboxExposure(float delta);
+    void AdjustSkyboxRotation(float delta);
+
+    // Culling controls
+    void SetFrustumCullingEnabled(bool enabled) { m_enableFrustumCulling = enabled; }
+    void SetDistanceCullingEnabled(bool enabled) { m_enableDistanceCulling = enabled; }
+    void SetCullMaxDistance(float dist) { m_cullMaxDistance = dist; }
+    bool GetFrustumCullingEnabled() const { return m_enableFrustumCulling; }
+    bool GetDistanceCullingEnabled() const { return m_enableDistanceCulling; }
+    float GetCullMaxDistance() const { return m_cullMaxDistance; }
 
 private:
     Camera* m_mainCamera = nullptr;
@@ -129,10 +146,22 @@ private:
     std::unique_ptr<CameraDebugSystem> m_cameraDebugSystem;
     bool m_cameraDebugEnabled = false;
     
+    // Skybox system (Phase 1: HDR loading and rendering)
+    std::unique_ptr<Skybox> m_skybox;
+    bool m_skyboxEnabled = true;
+    
     // Frame tracking for diagnostic logging
     uint64_t m_frameID = 0;
     int m_drawCallCount = 0;
     int m_triangleCount = 0;
+
+    // Culling settings
+    bool m_enableFrustumCulling = true;
+    bool m_enableDistanceCulling = true;
+    float m_cullMaxDistance = 800.0f; // world units
+
+    // Helpers
+    bool IsSphereVisible(const glm::vec3& center, float radius) const;
     
     // Diagnostic helper methods
     void LogFrameStart();

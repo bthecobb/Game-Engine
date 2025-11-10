@@ -10,6 +10,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
+#include <algorithm>
 #include <iostream>
 #include <chrono>
 
@@ -227,12 +228,22 @@ void RenderSystem::ShadowPass() {
 
     // Render scene from light's perspective
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
+    int culled = 0, submitted = 0;
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<Rendering::TransformComponent>(entity) &&
             coordinator.HasComponent<Rendering::MeshComponent>(entity)) {
 
             auto const& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
             auto const& meshComponent = coordinator.GetComponent<Rendering::MeshComponent>(entity);
+
+            // Distance + frustum culling (use camera frustum for now)
+            if (m_mainCamera) {
+                glm::vec3 center = transform.position;
+                float radius = 0.5f * std::max(transform.scale.x, std::max(transform.scale.y, transform.scale.z));
+                bool tooFar = m_enableDistanceCulling && (glm::distance(center, m_mainCamera->GetPosition()) > m_cullMaxDistance);
+                bool outside = m_enableFrustumCulling && !IsSphereVisible(center, radius);
+                if (tooFar || outside) { culled++; continue; }
+            }
 
             // Set model matrix for shadow pass
             glm::mat4 modelMatrix = transform.getMatrix();
@@ -245,8 +256,10 @@ void RenderSystem::ShadowPass() {
                 Model model(meshComponent.modelPath);
                 model.Draw(*m_shadowShader);
             }
+            submitted++;
         }
     }
+    std::cout << "{ \"frame\":" << m_frameID << ",\"ShadowPassCulling\":{\"submitted\":" << submitted << ",\"culled\":" << culled << "} }" << std::endl;
 
     m_shadowMapFBO->Unbind();
 }
@@ -292,6 +305,7 @@ void RenderSystem::GeometryPass() {
     // Drive geometry debug override from global debug mode (mode 5 => emissive color view)
     m_geometryPassShader->SetInt("debugForceEmissive", (m_debugMode == 5) ? 1 : 0);
 
+    int culled = 0;
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<Rendering::TransformComponent>(entity) && 
@@ -299,6 +313,15 @@ void RenderSystem::GeometryPass() {
             
             auto const& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
             auto const& meshComponent = coordinator.GetComponent<Rendering::MeshComponent>(entity);
+
+            // Distance + frustum culling
+            if (m_mainCamera) {
+                glm::vec3 center = transform.position;
+                float radius = 0.5f * std::max(transform.scale.x, std::max(transform.scale.y, transform.scale.z));
+                bool tooFar = m_enableDistanceCulling && (glm::distance(center, m_mainCamera->GetPosition()) > m_cullMaxDistance);
+                bool outside = m_enableFrustumCulling && !IsSphereVisible(center, radius);
+                if (tooFar || outside) { culled++; continue; }
+            }
 
             glm::mat4 modelMatrix = transform.getMatrix();
             m_geometryPassShader->SetMat4("model", modelMatrix);
@@ -370,6 +393,7 @@ void RenderSystem::GeometryPass() {
         }
     }
 
+    std::cout << "{ \"frame\":" << m_frameID << ",\"GeometryPassCulling\":{\"culled\":" << culled << "} }" << std::endl;
     LogPassEnd("GeometryPass", m_drawCallCount, m_triangleCount);
     // Unbind G-buffer by binding default framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -691,6 +715,17 @@ void RenderSystem::AdjustDepthScale(float multiplier) {
     std::cout << "[Debug] Depth Scale: " << m_depthScale << std::endl;
 }
 
+bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const {
+    if (!m_mainCamera) return true;
+    const auto& fr = m_mainCamera->GetFrustum();
+    for (int i = 0; i < 6; ++i) {
+        const glm::vec4& p = fr.planes[i];
+        float dist = glm::dot(glm::vec3(p), center) + p.w;
+        if (dist < -radius) return false; // completely outside this plane
+    }
+    return true;
+}
+
 void RenderSystem::ValidateAndLogCameraState() {
     if (!m_mainCamera) {
         std::cerr << "[RenderSystem] WARNING: No main camera available for validation!" << std::endl;
@@ -914,7 +949,7 @@ void RenderSystem::ForwardPass(const Player* player) {
     // Log forward pass start
     LogPassStart("ForwardPass", 0, 0, 0); // Default framebuffer
     
-    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardPassStart\":true }" << std::endl;
+    std::cout << "{ \"frame\":" << m_frameID << ",\"forwardPassStart\":true,\"culling\":{\"frustum\":" << (m_enableFrustumCulling?1:0) << ",\"distance\":" << (m_enableDistanceCulling?1:0) << ",\"maxDist\":" << m_cullMaxDistance << "} }" << std::endl;
     
     // Enable depth testing but don't write to depth (preserve depth from deferred pass)
     glEnable(GL_DEPTH_TEST);

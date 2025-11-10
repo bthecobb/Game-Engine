@@ -16,6 +16,9 @@ public:
     void Shutdown() override;
     void Update(float deltaTime) override;
 
+    // Bind the player entity explicitly to avoid fragile lookups
+    void SetPlayerEntity(Core::Entity player) { m_playerEntity = player; }
+
 private:
     void UpdateAI(Core::Entity entity, EnemyAIComponent& ai, EnemyCombatComponent& combat, 
                   EnemyMovementComponent& movement, Physics::RigidbodyComponent& rigidbody, 
@@ -39,6 +42,8 @@ private:
     
     void MoveTowardsTarget(EnemyMovementComponent& movement, Physics::RigidbodyComponent& rigidbody,
                           const glm::vec3& currentPos, const glm::vec3& targetPos, float deltaTime);
+
+    Core::Entity m_playerEntity = 0;
 };
 
 } // namespace Gameplay

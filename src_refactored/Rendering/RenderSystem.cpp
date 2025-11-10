@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
+#include <algorithm>
 #include <iostream>
 #include <chrono>
 
@@ -102,6 +103,12 @@ bool RenderSystem::Initialize() {
     
     // Initialize camera debug system
     m_cameraDebugSystem = std::make_unique<CameraDebugSystem>(this);
+    
+    // Initialize skybox system
+    m_skybox = std::make_unique<Skybox>();
+    // Load a default procedural sky (for now, we'll need an HDR file later)
+    // Optional: Load HDR if available, otherwise skybox will not render until LoadHDR is called
+    // m_skybox->LoadHDR(ASSET_DIR "/hdri/default_sky.hdr", 512);
     
     std::cout << "[RenderSystem] Deferred rendering pipeline initialized successfully. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
@@ -210,6 +217,14 @@ void RenderSystem::Render() {
         std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"SKIPPED_NO_GBUFFER\" }" << std::endl;
     }
     
+    // === STEP 5.5: Skybox Pass (render as background with depth = 1.0) ===
+    if (m_skybox && m_skyboxEnabled && m_mainCamera) {
+        std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"SkyboxPass\",\"status\":\"Starting\" }" << std::endl;
+        m_skybox->Render(m_mainCamera->GetViewMatrix(), m_mainCamera->GetProjectionMatrix());
+        LogGLError("AfterSkyboxPass");
+        std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"SkyboxPass\",\"status\":\"Complete\" }" << std::endl;
+    }
+    
     // === STEP 6: Forward Pass (character, debug, transparent objects) ===
     ForwardPass();
     LogGLError("AfterForwardPass");
@@ -235,12 +250,22 @@ void RenderSystem::ShadowPass() {
 
     // Render scene from light's perspective
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
+    int culled = 0, submitted = 0;
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<Rendering::TransformComponent>(entity) &&
             coordinator.HasComponent<Rendering::MeshComponent>(entity)) {
 
             auto const& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
             auto const& meshComponent = coordinator.GetComponent<Rendering::MeshComponent>(entity);
+
+            // Distance + frustum culling (camera frustum)
+            if (m_mainCamera) {
+                glm::vec3 center = transform.position;
+                float radius = 0.5f * std::max(transform.scale.x, std::max(transform.scale.y, transform.scale.z));
+                bool tooFar = m_enableDistanceCulling && (glm::distance(center, m_mainCamera->GetPosition()) > m_cullMaxDistance);
+                bool outside = m_enableFrustumCulling && !IsSphereVisible(center, radius);
+                if (tooFar || outside) { culled++; continue; }
+            }
 
             // Set model matrix for shadow pass
             glm::mat4 modelMatrix = transform.getMatrix();
@@ -257,8 +282,10 @@ void RenderSystem::ShadowPass() {
                 Model model(meshComponent.modelPath);
                 model.Draw(*m_shadowShader);
             }
+            submitted++;
         }
     }
+    std::cout << "{ \"frame\":" << m_frameID << ",\"ShadowPassCulling\":{\"submitted\":" << submitted << ",\"culled\":" << culled << "} }" << std::endl;
 
     m_shadowMapFBO->Unbind();
 }
@@ -304,6 +331,7 @@ void RenderSystem::GeometryPass() {
     // Drive geometry debug override from global debug mode (mode 5 => emissive color view)
     m_geometryPassShader->SetInt("debugForceEmissive", (m_debugMode == 5) ? 1 : 0);
 
+    int culled = 0;
     Core::Coordinator& coordinator = Core::Coordinator::GetInstance();
     for (auto const& entity : mEntities) {
         if (coordinator.HasComponent<Rendering::TransformComponent>(entity) && 
@@ -311,6 +339,15 @@ void RenderSystem::GeometryPass() {
             
             auto const& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
             auto const& meshComponent = coordinator.GetComponent<Rendering::MeshComponent>(entity);
+
+            // Distance + frustum culling
+            if (m_mainCamera) {
+                glm::vec3 center = transform.position;
+                float radius = 0.5f * std::max(transform.scale.x, std::max(transform.scale.y, transform.scale.z));
+                bool tooFar = m_enableDistanceCulling && (glm::distance(center, m_mainCamera->GetPosition()) > m_cullMaxDistance);
+                bool outside = m_enableFrustumCulling && !IsSphereVisible(center, radius);
+                if (tooFar || outside) { culled++; continue; }
+            }
 
             glm::mat4 modelMatrix = transform.getMatrix();
             m_geometryPassShader->SetMat4("model", modelMatrix);
@@ -383,9 +420,10 @@ void RenderSystem::GeometryPass() {
         }
     }
 
+    std::cout << "{ \"frame\":" << m_frameID << ",\"GeometryPassCulling\":{\"culled\":" << culled << "} }" << std::endl;
     LogPassEnd("GeometryPass", m_drawCallCount, m_triangleCount);
     // Unbind G-buffer by binding default framebuffer
-glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     // Reset draw buffer to default back-buffer
     glDrawBuffer(GL_BACK);
 }
@@ -633,6 +671,17 @@ void RenderSystem::AdjustDepthScale(float multiplier) {
     m_depthScale *= multiplier;
     m_depthScale = glm::clamp(m_depthScale, 0.1f, 1000.0f);
     std::cout << "[Debug] Depth Scale: " << m_depthScale << std::endl;
+}
+
+bool RenderSystem::IsSphereVisible(const glm::vec3& center, float radius) const {
+    if (!m_mainCamera) return true;
+    const auto& fr = m_mainCamera->GetFrustum();
+    for (int i = 0; i < 6; ++i) {
+        const glm::vec4& p = fr.planes[i];
+        float dist = glm::dot(glm::vec3(p), center) + p.w;
+        if (dist < -radius) return false;
+    }
+    return true;
 }
 
 void RenderSystem::ValidateAndLogCameraState() {
@@ -1034,6 +1083,35 @@ void RenderSystem::ToggleCameraDebug() {
     m_cameraDebugEnabled = !m_cameraDebugEnabled;
     std::cout << "[RenderSystem] Camera debug visualization " 
               << (m_cameraDebugEnabled ? "ENABLED" : "DISABLED") << std::endl;
+}
+
+bool RenderSystem::LoadSkyboxHDR(const std::string& hdrPath, int cubemapSize) {
+    if (!m_skybox) {
+        std::cerr << "[RenderSystem] Skybox not initialized" << std::endl;
+        return false;
+    }
+    
+    bool success = m_skybox->LoadHDR(hdrPath, cubemapSize);
+    if (success) {
+        std::cout << "[RenderSystem] Skybox HDR loaded successfully: " << hdrPath << std::endl;
+    } else {
+        std::cerr << "[RenderSystem] Failed to load skybox HDR: " << hdrPath << std::endl;
+    }
+    return success;
+}
+
+void RenderSystem::AdjustSkyboxExposure(float delta) {
+    if (!m_skybox) return;
+    float newExposure = glm::clamp(m_skybox->GetExposure() + delta, 0.1f, 10.0f);
+    m_skybox->SetExposure(newExposure);
+    std::cout << "[RenderSystem] Skybox exposure: " << newExposure << std::endl;
+}
+
+void RenderSystem::AdjustSkyboxRotation(float delta) {
+    if (!m_skybox) return;
+    float newRotation = m_skybox->GetRotation() + delta;
+    m_skybox->SetRotation(newRotation);
+    std::cout << "[RenderSystem] Skybox rotation: " << glm::degrees(newRotation) << " degrees" << std::endl;
 }
 
 } // namespace Rendering
