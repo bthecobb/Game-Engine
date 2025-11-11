@@ -20,6 +20,7 @@
 #include "Debug/OpenGLDebugRenderer.h"
 #include "Rendering/RenderDebugSystem.h"
 #include "Rendering/CudaBuildingGenerator.h"
+#include "Rendering/ProceduralCharacter.h"
 #include "UI/UIRenderer.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -221,6 +222,7 @@ bool InitializeWindow() {
 static std::unique_ptr<Rendering::CudaBuildingGenerator> g_buildingGen;
 static std::vector<Rendering::BuildingMesh> g_buildingMeshes;  // Keep meshes alive for VAO lifetime
 static std::vector<GLuint> g_emissiveTextures;
+static Rendering::CharacterMeshGPU g_characterMesh{};
 
 void CreateGameEnvironment(Core::Coordinator& coordinator) {
     std::cout << "Creating 3D game environment..." << std::endl;
@@ -485,6 +487,18 @@ void CleanupWindow() {
         glDeleteTextures(static_cast<GLsizei>(g_emissiveTextures.size()), g_emissiveTextures.data());
         g_emissiveTextures.clear();
     }
+    if (g_characterMesh.vao) {
+        glDeleteVertexArrays(1, &g_characterMesh.vao);
+        g_characterMesh.vao = 0;
+    }
+    if (g_characterMesh.vbo) {
+        glDeleteBuffers(1, &g_characterMesh.vbo);
+        g_characterMesh.vbo = 0;
+    }
+    if (g_characterMesh.ebo) {
+        glDeleteBuffers(1, &g_characterMesh.ebo);
+        g_characterMesh.ebo = 0;
+    }
     if (window) {
         glfwDestroyWindow(window);
     }
@@ -695,18 +709,27 @@ Core::Signature enemyAISignature;
     // Player visual representation
     Rendering::TransformComponent playerTransform;
     playerTransform.position = glm::vec3(0.0f, 2.0f, 0.0f);  // Start closer to ground
-    playerTransform.scale = glm::vec3(0.8f, 1.8f, 0.8f);
+    playerTransform.scale = glm::vec3(1.0f); // natural scale; mesh is ~2.0 units tall
     coordinator.AddComponent(player, playerTransform);
     std::cout << "[DEBUG] Player spawned at y=2.0, collider halfHeight=0.9, should rest at y=0.4" << std::endl;
     
+    // Create procedural character GPU mesh once
+    if (g_characterMesh.vao == 0) {
+        g_characterMesh = Rendering::CreateLowPolyCharacterGPU();
+        std::cout << "[DEBUG] Procedural character VAO created: " << g_characterMesh.vao 
+                  << ", indices: " << g_characterMesh.indexCount << std::endl;
+    }
+    
     Rendering::MeshComponent playerMesh;
-    playerMesh.modelPath = "player_cube";
+    playerMesh.modelPath.clear();
+    playerMesh.vaoId = g_characterMesh.vao;
+    playerMesh.indexCount = g_characterMesh.indexCount;
     coordinator.AddComponent(player, playerMesh);
     
     Rendering::MaterialComponent playerMaterial;
-    playerMaterial.albedo = glm::vec3(0.0f, 0.5f, 1.0f); // Blue player
-    playerMaterial.metallic = 0.2f;
-    playerMaterial.roughness = 0.6f;
+    playerMaterial.albedo = glm::vec3(0.2f, 0.5f, 0.95f); // bright jacket blue
+    playerMaterial.metallic = 0.1f;
+    playerMaterial.roughness = 0.7f;
     coordinator.AddComponent(player, playerMaterial);
     
 std::cout << "Player created with full component set!" << std::endl;

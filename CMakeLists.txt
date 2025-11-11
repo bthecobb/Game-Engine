@@ -354,6 +354,8 @@ add_executable(CudaPhysicsDemo
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -377,6 +379,8 @@ add_executable(CudaRenderingDemo
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -399,6 +403,8 @@ add_executable(LightingIntegrationDemo
     src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -439,6 +445,12 @@ list(APPEND TEST_SOURCES tests/SkyboxUtilsTests.cpp)
 list(APPEND TEST_SOURCES 
     tests/EnemyAITests.cpp
     src_refactored/Gameplay/EnemyAISystem.cpp
+)
+
+# Procedural character tests
+list(APPEND TEST_SOURCES
+    tests/ProceduralCharacterTests.cpp
+    src_refactored/Rendering/ProceduralCharacter.cpp
 )
 
 # Add OpenGL-dependent skybox tests (conditionally)
@@ -681,6 +693,8 @@ add_executable(EnhancedGame
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     # Debug
     src_refactored/Debug/OpenGLDebugRenderer.cpp
     src_refactored/Rendering/RenderDebugSystem.cpp
