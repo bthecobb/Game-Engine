@@ -10,6 +10,9 @@ option(BUILD_TESTING "Enable building tests" ON)
 option(ENABLE_WARNINGS "Enable extra warnings" ON)
 option(ENABLE_CUDA "Enable CUDA features" ON)
 option(ENABLE_RENDER_TESTS "Build rendering tests (requires API alignment)" OFF)
+# Focused build options
+option(BUILD_DEMOS "Build demo executables (CudaPhysicsDemo, CudaRenderingDemo, LightingIntegrationDemo)" OFF)
+option(BUILD_ENHANCEDGAME "Build EnhancedGame executable" OFF)
 
 # First configure C++ project
 project(AAA_Game_Engine LANGUAGES CXX)
@@ -343,6 +346,7 @@ endfunction()
 
 # --- Demo Executables ---
 
+if(BUILD_DEMOS)
 # CUDA Physics Demo
 add_executable(CudaPhysicsDemo
     src_refactored/Demos/CudaPhysicsDemo.cpp
@@ -652,26 +656,27 @@ target_link_libraries(LightingIntegrationDemo PRIVATE
 )
 
 target_compile_definitions(LightingIntegrationDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
-
-target_link_libraries(TestRunner PRIVATE
-    glm::glm
-)
-
+endif() # BUILD_DEMOS
 
 # --- CUDA Properties ---
 
-set_target_properties(CudaPhysicsDemo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+if(TARGET CudaPhysicsDemo)
+    set_target_properties(CudaPhysicsDemo PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+endif()
 
-set_target_properties(CudaRenderingDemo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+if(TARGET CudaRenderingDemo)
+    set_target_properties(CudaRenderingDemo PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+endif()
 
 # Enable verbose output for debugging
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Enhanced Game target with all original features in ECS
+if(BUILD_ENHANCEDGAME)
 add_executable(EnhancedGame
     src_refactored/EnhancedGameMain.cpp
     src_refactored/Gameplay/PlayerMovementSystem.cpp
@@ -740,6 +745,7 @@ add_custom_command(TARGET EnhancedGame POST_BUILD
         $<TARGET_FILE_DIR:EnhancedGame>/assets
     COMMENT "Copying assets to EnhancedGame build directory"
 )
+endif() # BUILD_ENHANCEDGAME
 
 # Full 3D game with all features
 add_executable(Full3DGame
@@ -867,17 +873,21 @@ if(ENABLE_PHYSX AND WIN32)
                 $<TARGET_FILE_DIR:Full3DGame>
             COMMENT "Copying PhysX DLL: ${DLL_FILE}"
         )
-        add_custom_command(TARGET EnhancedGame POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${DLL_FILE}
-                $<TARGET_FILE_DIR:EnhancedGame>
-            COMMENT "Copying PhysX DLL: ${DLL_FILE}"
-        )
-        add_custom_command(TARGET CudaPhysicsDemo POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${DLL_FILE}
-                $<TARGET_FILE_DIR:CudaPhysicsDemo>
-            COMMENT "Copying PhysX DLL: ${DLL_FILE}"
-        )
+        if(TARGET EnhancedGame)
+            add_custom_command(TARGET EnhancedGame POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${DLL_FILE}
+                    $<TARGET_FILE_DIR:EnhancedGame>
+                COMMENT "Copying PhysX DLL: ${DLL_FILE}"
+            )
+        endif()
+        if(TARGET CudaPhysicsDemo)
+            add_custom_command(TARGET CudaPhysicsDemo POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${DLL_FILE}
+                    $<TARGET_FILE_DIR:CudaPhysicsDemo>
+                COMMENT "Copying PhysX DLL: ${DLL_FILE}"
+            )
+        endif()
     endforeach()
 endif()
