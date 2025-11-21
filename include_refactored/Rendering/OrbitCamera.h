@@ -60,10 +60,16 @@ public:
     void SetTarget(const glm::vec3& target) { m_targetPosition = target; }
     const glm::vec3& GetTarget() const { return m_targetPosition; }
     
+    // Distance control
+    void SetDistance(float distance, bool instant = false);
+    
     // Spherical coordinates access
     float GetYaw() const { return m_yaw; }
     float GetPitch() const { return m_pitch; }
     float GetDistance() const { return m_currentDistance; }
+    
+    // Direction vectors (already inherited from Camera base class)
+    // GetForward() and GetRight() are available from Camera
     
     // Collision detection (to be implemented with physics system)
     void SetCollisionCheckCallback(std::function<bool(const glm::vec3&, const glm::vec3&, float)> callback);

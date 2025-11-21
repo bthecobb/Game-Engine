@@ -6,6 +6,7 @@
 #include "Rendering/Mesh.h"
 #include "Gameplay/PlayerMovementSystem.h"
 #include "Gameplay/PlayerComponents.h"
+#include "Rendering/Backends/GLRenderBackend.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -79,6 +80,13 @@ bool RenderSystem::Initialize() {
         return false;
     }
 
+    // Initialize backend (OpenGL adapter for now)
+    m_backend = std::make_shared<GLRenderBackend>();
+    if (!m_backend->Initialize()) {
+        std::cerr << "[RenderSystem] Failed to initialize GLRenderBackend" << std::endl;
+        return false;
+    }
+
     // Create shadow map framebuffer
     m_shadowMapFBO = std::make_shared<Framebuffer>();
     if (!m_shadowMapFBO->Initialize(2048, 2048)) {
@@ -106,9 +114,11 @@ bool RenderSystem::Initialize() {
     
     // Initialize skybox system
     m_skybox = std::make_unique<Skybox>();
-    // Load a default procedural sky (for now, we'll need an HDR file later)
-    // Optional: Load HDR if available, otherwise skybox will not render until LoadHDR is called
-    // m_skybox->LoadHDR(ASSET_DIR "/hdri/default_sky.hdr", 512);
+    // Attempt to load a default HDR so skybox renders out-of-the-box.
+    // If the file is missing, skybox remains disabled until LoadSkyboxHDR is called.
+    if (!m_skybox->LoadHDR(ASSET_DIR "/hdri/qwantani_noon_puresky_4k.hdr", 512)) {
+        std::cout << "[RenderSystem] Skybox HDR not found or failed to load; continuing without skybox" << std::endl;
+    }
     
     std::cout << "[RenderSystem] Deferred rendering pipeline initialized successfully. Managing " << mEntities.size() << " entities." << std::endl;
     return true;
@@ -151,6 +161,27 @@ void RenderSystem::Render() {
     // Validate and log detailed camera state every frame
     ValidateAndLogCameraState();
 
+    // Safety: If camera matrices contain non-finite values, skip rendering this frame
+    auto isFiniteMat4 = [](const glm::mat4& m){
+        for (int i=0;i<4;++i) for (int j=0;j<4;++j) {
+            if (!std::isfinite(m[i][j])) return false;
+        }
+        return true;
+    };
+    const glm::mat4 viewM = m_mainCamera->GetViewMatrix();
+    const glm::mat4 projM = m_mainCamera->GetProjectionMatrix();
+    if (!isFiniteMat4(viewM) || !isFiniteMat4(projM)) {
+        std::cerr << "[RenderSystem] WARNING: Non-finite camera matrix detected; drawing clear color only this frame" << std::endl;
+        int width=1920, height=1080; GLFWwindow* win = glfwGetCurrentContext(); if (win) glfwGetFramebufferSize(win, &width, &height);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDrawBuffer(GL_BACK);
+        glViewport(0, 0, width, height);
+        glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        DumpGLState("SkippedDueToNonFiniteCamera");
+        return;
+    }
+
     // Get actual window dimensions
     int width, height;
     GLFWwindow* window = glfwGetCurrentContext();
@@ -165,11 +196,15 @@ void RenderSystem::Render() {
 
     // === STEP 1: Clear default framebuffer once at the beginning ===
     // This prevents flicker by ensuring the back buffer is always properly initialized
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDrawBuffer(GL_BACK);
-    glViewport(0, 0, width, height);
-    glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (m_backend) {
+        m_backend->BeginFrame(m_clearColor, width, height);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDrawBuffer(GL_BACK);
+        glViewport(0, 0, width, height);
+        glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
     
     std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"BackBufferCleared\",\"clearColor\":[" 
               << m_clearColor.r << "," << m_clearColor.g << "," << m_clearColor.b << "," << m_clearColor.a << "] }" << std::endl;
@@ -196,21 +231,16 @@ void RenderSystem::Render() {
     // This is crucial for forward-rendered objects to depth test correctly
     if (m_gBuffer) {
         std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"Starting\" }" << std::endl;
-        
-        // Bind G-buffer as read framebuffer and default as draw framebuffer
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_gBuffer->GetFBO());
-        // For depth-only blit, some drivers require the read buffer to be NONE
-        glReadBuffer(GL_NONE);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        // Ensure we target the back buffer for the draw framebuffer
-        glDrawBuffer(GL_BACK);
-        
-        // Blit depth buffer from G-buffer to default framebuffer
-        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-        
-        // Restore default framebuffer for subsequent draws
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
+        if (m_backend) {
+            m_backend->BlitDepth(m_gBuffer.get(), width, height);
+        } else {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, m_gBuffer->GetFBO());
+            glReadBuffer(GL_NONE);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glDrawBuffer(GL_BACK);
+            glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
         LogGLError("AfterDepthBlit");
         std::cout << "{ \"frame\":" << m_frameID << ",\"step\":\"DepthBlit\",\"status\":\"Complete\" }" << std::endl;
     } else {
@@ -267,8 +297,15 @@ void RenderSystem::ShadowPass() {
                 if (tooFar || outside) { culled++; continue; }
             }
 
-            // Set model matrix for shadow pass
-            glm::mat4 modelMatrix = transform.getMatrix();
+            // Set model matrix for shadow pass (apply mesh origin offset in local space)
+            glm::mat4 rot = glm::mat4(1.0f);
+            rot = glm::rotate(rot, glm::radians(transform.rotation.x), glm::vec3(1, 0, 0));
+            rot = glm::rotate(rot, glm::radians(transform.rotation.y), glm::vec3(0, 1, 0));
+            rot = glm::rotate(rot, glm::radians(transform.rotation.z), glm::vec3(0, 0, 1));
+            glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), transform.position)
+                                  * rot
+                                  * glm::translate(glm::mat4(1.0f), meshComponent.originOffset)
+                                  * glm::scale(glm::mat4(1.0f), transform.scale);
             m_shadowShader->SetMat4("model", modelMatrix);
             
             // Priority: generator VAO -> simple cube -> model (draw double-sided for generator/cube)
@@ -321,18 +358,28 @@ void RenderSystem::GeometryPass() {
         entityCount = 0;
     }
     
-    m_gBuffer->Bind();
+    if (m_backend) m_backend->BindFramebuffer(m_gBuffer.get()); else m_gBuffer->Bind();
     glViewport(0, 0, windowWidth, windowHeight);  // Use actual window dimensions
     
     // Ensure we're writing to all color attachments (AFTER binding framebuffer)
-    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
-    glDrawBuffers(5, drawBuffers);
+    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5 };
+    glDrawBuffers(6, drawBuffers);
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     m_geometryPassShader->Use();
-    m_geometryPassShader->SetMat4("projection", m_mainCamera->GetProjectionMatrix());
-    m_geometryPassShader->SetMat4("view", m_mainCamera->GetViewMatrix());
+    // Cache current camera matrices and set both current and previous
+    const glm::mat4 currProj = m_mainCamera->GetProjectionMatrix();
+    const glm::mat4 currView = m_mainCamera->GetViewMatrix();
+    m_geometryPassShader->SetMat4("projection", currProj);
+    m_geometryPassShader->SetMat4("view", currView);
+    if (!m_prevInitialized) {
+        m_prevView = currView;
+        m_prevProjection = currProj;
+        m_prevInitialized = true;
+    }
+    m_geometryPassShader->SetMat4("prevProjection", m_prevProjection);
+    m_geometryPassShader->SetMat4("prevView", m_prevView);
     // Drive geometry debug override from global debug mode (mode 5 => emissive color view)
     m_geometryPassShader->SetInt("debugForceEmissive", (m_debugMode == 5) ? 1 : 0);
 
@@ -354,8 +401,21 @@ void RenderSystem::GeometryPass() {
                 if (tooFar || outside) { culled++; continue; }
             }
 
-            glm::mat4 modelMatrix = transform.getMatrix();
+            // Build model matrix with per-mesh origin offset (render-only)
+            glm::mat4 rot = glm::mat4(1.0f);
+            rot = glm::rotate(rot, glm::radians(transform.rotation.x), glm::vec3(1, 0, 0));
+            rot = glm::rotate(rot, glm::radians(transform.rotation.y), glm::vec3(0, 1, 0));
+            rot = glm::rotate(rot, glm::radians(transform.rotation.z), glm::vec3(0, 0, 1));
+            glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), transform.position)
+                                  * rot
+                                  * glm::translate(glm::mat4(1.0f), meshComponent.originOffset)
+                                  * glm::scale(glm::mat4(1.0f), transform.scale);
             m_geometryPassShader->SetMat4("model", modelMatrix);
+            
+            // Previous model for this entity (default to current on first frame)
+            auto itPrev = m_prevModel.find(entity);
+            const glm::mat4 prevModel = (itPrev != m_prevModel.end()) ? itPrev->second : modelMatrix;
+            m_geometryPassShader->SetMat4("prevModel", prevModel);
             
             // Set additional required uniforms
             glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
@@ -427,15 +487,22 @@ void RenderSystem::GeometryPass() {
                 entityCount++; m_drawCallCount++; m_triangleCount += 100;
             }
 
+            // Store current model as previous for next frame
+            m_prevModel[entity] = modelMatrix;
+
             // Restore default culling
             glEnable(GL_CULL_FACE);
         }
     }
 
+    // After drawing all geometry, update previous camera matrices for next frame
+    m_prevView = currView;
+    m_prevProjection = currProj;
+
     std::cout << "{ \"frame\":" << m_frameID << ",\"GeometryPassCulling\":{\"culled\":" << culled << "} }" << std::endl;
     LogPassEnd("GeometryPass", m_drawCallCount, m_triangleCount);
     // Unbind G-buffer by binding default framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (m_backend) m_backend->UnbindFramebuffer(); else glBindFramebuffer(GL_FRAMEBUFFER, 0);
     // Reset draw buffer to default back-buffer
     glDrawBuffer(GL_BACK);
 }
@@ -469,33 +536,41 @@ void RenderSystem::LightingPass() {
     // Bind G-buffer textures
     glActiveTexture(GL_TEXTURE0);
     uint32_t positionTex = m_gBuffer->GetColorAttachment(0);
-    glBindTexture(GL_TEXTURE_2D, positionTex);
     LogTextureBinding("LightingPass", 0, positionTex, "Position");
-    m_lightingPassShader->SetInt("gPosition", 0);
     
     glActiveTexture(GL_TEXTURE1);
     uint32_t normalTex = m_gBuffer->GetColorAttachment(1);
-    glBindTexture(GL_TEXTURE_2D, normalTex);
     LogTextureBinding("LightingPass", 1, normalTex, "Normal");
-    m_lightingPassShader->SetInt("gNormal", 1);
     
     glActiveTexture(GL_TEXTURE2);
     uint32_t albedoTex = m_gBuffer->GetColorAttachment(2);
-    glBindTexture(GL_TEXTURE_2D, albedoTex);
     LogTextureBinding("LightingPass", 2, albedoTex, "Albedo");
-    m_lightingPassShader->SetInt("gAlbedoSpec", 2);
     
     glActiveTexture(GL_TEXTURE3);
     uint32_t metallicTex = m_gBuffer->GetColorAttachment(3);
-    glBindTexture(GL_TEXTURE_2D, metallicTex);
     LogTextureBinding("LightingPass", 3, metallicTex, "MetallicRoughnessAOEmissive");
-    m_lightingPassShader->SetInt("gMetallicRoughnessAOEmissive", 3);
     
     glActiveTexture(GL_TEXTURE4);
     uint32_t emissiveTex = m_gBuffer->GetColorAttachment(4);
-    glBindTexture(GL_TEXTURE_2D, emissiveTex);
     LogTextureBinding("LightingPass", 4, emissiveTex, "Emissive");
-    m_lightingPassShader->SetInt("gEmissive", 4);
+
+    // Safety: if any critical G-buffer texture is missing (ID==0), skip lighting and just clear
+    if (positionTex == 0 || normalTex == 0 || albedoTex == 0) {
+        std::cerr << "[LightingPass] Missing G-buffer attachments; clearing frame" << std::endl;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDrawBuffer(GL_BACK);
+        glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        LogGLError("LightingPass_MissingGBuffer");
+        return;
+    }
+
+    // Bind now that we've validated
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, positionTex); m_lightingPassShader->SetInt("gPosition", 0);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, normalTex); m_lightingPassShader->SetInt("gNormal", 1);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, albedoTex); m_lightingPassShader->SetInt("gAlbedoSpec", 2);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, metallicTex); m_lightingPassShader->SetInt("gMetallicRoughnessAOEmissive", 3);
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, emissiveTex); m_lightingPassShader->SetInt("gEmissive", 4);
     
     // Bind shadow map (if available)
     glActiveTexture(GL_TEXTURE5);
@@ -509,6 +584,13 @@ void RenderSystem::LightingPass() {
         LogTextureBinding("LightingPass", 5, 0, "ShadowMap_Default");
     }
     m_lightingPassShader->SetInt("shadowMap", 5);
+
+    // Bind motion vectors (attachment 5)
+    glActiveTexture(GL_TEXTURE6);
+    uint32_t motionTex = m_gBuffer->GetColorAttachment(5);
+    LogTextureBinding("LightingPass", 6, motionTex, "Motion");
+    glBindTexture(GL_TEXTURE_2D, motionTex);
+    m_lightingPassShader->SetInt("gMotion", 6);
     
     // Set light and camera uniforms
     // Use actual camera position
@@ -661,7 +743,7 @@ void RenderSystem::RenderSimpleCube() {
 
 void RenderSystem::CycleDebugMode() {
     int previousMode = m_debugMode;
-    m_debugMode = (m_debugMode + 1) % 7;  // 0..6: normal, position, normal, albedo, M/R/AO, emissiveColor, emissivePower
+    m_debugMode = (m_debugMode + 1) % 8;  // 0..7: normal, position, normal, albedo, M/R/AO, emissiveColor, emissivePower, motion vectors
     const char* debugModeNames[] = {
         "Normal Lighting",
         "Position Buffer",
@@ -669,7 +751,8 @@ void RenderSystem::CycleDebugMode() {
         "Albedo Buffer",
         "Metallic/Roughness/AO Buffer",
         "Emissive Color",
-        "Emissive Power"
+        "Emissive Power",
+        "Motion Vectors"
     };
     
     std::cout << "{ \"debugModeChange\":{ \"frameID\":" << m_frameID << ",\"previousMode\":" << previousMode 

@@ -9,7 +9,7 @@ namespace Rendering {
 
 OrbitCamera::OrbitCamera(ProjectionType type) : Camera(type),
     m_currentMode(CameraMode::ORBIT_FOLLOW),
-    m_yaw(-90.0f),  // Start looking along negative Z axis
+    m_yaw(0.0f),   // Start looking along +Z axis (camera behind target by default)
     m_pitch(25.0f),  // Start with a slight downward angle for better initial view
     m_targetDistance(15.0f), // Use explicit default value
     m_currentDistance(15.0f), // Match target distance
@@ -64,6 +64,14 @@ void OrbitCamera::ApplyMouseDelta(float xDelta, float yDelta) {
 void OrbitCamera::ApplyZoom(float zoomDelta) {
     m_targetDistance -= zoomDelta * m_orbitSettings.zoomSpeed;
     m_targetDistance = glm::clamp(m_targetDistance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
+}
+
+void OrbitCamera::SetDistance(float distance, bool instant) {
+    float clamped = glm::clamp(distance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
+    m_targetDistance = clamped;
+    if (instant) {
+        m_currentDistance = clamped;
+    }
 }
 
 void OrbitCamera::SetCameraMode(CameraMode mode) {
@@ -131,7 +139,9 @@ void OrbitCamera::UpdateOrbitFollow(float deltaTime, const glm::vec3& targetPosi
     // Target position already updated in Update() method
     
     // Smoothly update current distance towards target distance
-    m_currentDistance = glm::mix(m_currentDistance, m_targetDistance, deltaTime * m_orbitSettings.smoothSpeed);
+    m_currentDistance = glm::mix(m_currentDistance, m_targetDistance, glm::clamp(deltaTime, 0.0f, 0.1f) * m_orbitSettings.smoothSpeed);
+    // Clamp distance to avoid degenerate view
+    m_currentDistance = glm::clamp(m_currentDistance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
     
     // Calculate desired position based on current angles and distance
     m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
@@ -221,14 +231,6 @@ void OrbitCamera::ClampAngles() {
     // Normalize yaw to [-180, 180] to prevent angle accumulation
     while (m_yaw > 180.0f) m_yaw -= 360.0f;
     while (m_yaw < -180.0f) m_yaw += 360.0f;
-    
-    // Debug logging every 300 frames (reduced frequency)
-    static int debugFrameCount = 0;
-    debugFrameCount++;
-    if (debugFrameCount % 300 == 0) {
-        std::cout << "[DEBUG] Camera angles - Yaw: " << m_yaw << ", Pitch: " << m_pitch 
-                  << ", Distance: " << m_currentDistance << std::endl;
-    }
 }
 
 void OrbitCamera::UpdateCameraVectorsFromPosition() {
@@ -236,11 +238,20 @@ void OrbitCamera::UpdateCameraVectorsFromPosition() {
     SetPosition(m_currentPosition);
     
     // Calculate camera vectors from current position to target
-    glm::vec3 direction = glm::normalize(m_targetPosition - m_currentPosition);
+    glm::vec3 diff = m_targetPosition - m_currentPosition;
+    float diffLen2 = glm::dot(diff, diff);
+    glm::vec3 direction = (diffLen2 > 1e-8f) ? (diff / glm::sqrt(diffLen2)) : glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
     
     // Re-orthonormalize to prevent drift
-    glm::vec3 right = glm::normalize(glm::cross(direction, worldUp));
+    glm::vec3 right = glm::cross(direction, worldUp);
+    if (glm::dot(right, right) < 1e-8f) {
+        // direction parallel to up; choose an arbitrary perpendicular right
+        right = glm::normalize(glm::cross(direction, glm::vec3(0.0f, 0.0f, 1.0f)));
+        if (glm::dot(right, right) < 1e-8f) right = glm::vec3(1.0f, 0.0f, 0.0f);
+    } else {
+        right = glm::normalize(right);
+    }
     glm::vec3 up = glm::normalize(glm::cross(right, direction));
     
     // Store the vectors
@@ -250,18 +261,6 @@ void OrbitCamera::UpdateCameraVectorsFromPosition() {
     
     // Update view matrix using lookAt
     LookAt(m_targetPosition, up);
-    
-    // Debug camera position every 300 frames (reduced frequency)
-    static int debugPosCount = 0;
-    debugPosCount++;
-    if (debugPosCount % 300 == 0) {
-        std::cout << "[DEBUG] Camera pos: (" << m_currentPosition.x << ", " 
-                  << m_currentPosition.y << ", " << m_currentPosition.z << ")\n";
-        std::cout << "[DEBUG] Target pos: (" << m_targetPosition.x << ", " 
-                  << m_targetPosition.y << ", " << m_targetPosition.z << ")\n";
-        std::cout << "[DEBUG] Forward: (" << m_forward.x << ", " 
-                  << m_forward.y << ", " << m_forward.z << ")" << std::endl;
-    }
 }
 
 glm::vec3 OrbitCamera::SphericalToCartesian(float yaw, float pitch, float distance) const {

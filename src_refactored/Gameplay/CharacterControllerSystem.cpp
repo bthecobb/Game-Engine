@@ -129,7 +129,8 @@ void CharacterControllerSystem::CheckGrounding(Core::Entity entity,
     
     // Simple ground check - in a real implementation, use PhysX raycast
     bool wasGrounded = controller.isGrounded;
-    float groundY = 0.0f; // Assuming ground at Y=0
+    // Ground height matches top surface of ground cube at y = -0.5
+    float groundY = -0.5f;
     float feetY = transform.position.y - CHARACTER_HEIGHT * 0.5f;
     
     controller.isGrounded = (feetY <= groundY + GROUND_CHECK_DISTANCE) && (rigidbody.velocity.y <= 0.1f);

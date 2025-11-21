@@ -16,6 +16,7 @@
 #include "Rendering/RenderComponents.h"
 #include "Rendering/Camera.h"
 #include "Rendering/OrbitCamera.h"
+#include "Rendering/ThirdPersonCameraRig.h"
 #include "Rendering/Debug.h"
 #include "Debug/OpenGLDebugRenderer.h"
 #include "Rendering/RenderDebugSystem.h"
@@ -305,7 +306,7 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
 
         // Components
         coordinator.AddComponent(building, Rendering::TransformComponent{
-            glm::vec3(x, height/2.0f, z),
+            glm::vec3(x, -0.5f + height/2.0f, z),
             glm::vec3(0.0f),
             glm::vec3(1.0f)
         });
@@ -313,6 +314,10 @@ void CreateGameEnvironment(Core::Coordinator& coordinator) {
         meshComp.modelPath = ""; // use VAO path
         meshComp.vaoId = mesh.vao; meshComp.vbo = mesh.vbo; meshComp.ebo = mesh.ebo;
         meshComp.indexCount = static_cast<uint32_t>(mesh.indices.size());
+        // Align visual mesh base to ground regardless of mesh local origin
+        float meshHeight = mesh.boundsMax.y - mesh.boundsMin.y;
+        float halfHeight = meshHeight * 0.5f;
+        meshComp.originOffset.y = -(halfHeight + mesh.boundsMin.y);
         coordinator.AddComponent(building, meshComp);
         
         Rendering::MaterialComponent mat{};
@@ -620,6 +625,8 @@ Core::Signature enemyAISignature;
     physicsSystem->Initialize();
     wallRunSystem->Initialize();
     renderSystem->Initialize();
+    // Start with skybox disabled to isolate startup artifacts; user can toggle with 'B'
+    renderSystem->SetSkyboxEnabled(false);
     particleSystem->Initialize();
     
     // Load HDR skybox
@@ -634,21 +641,23 @@ Core::Signature enemyAISignature;
     std::cout << "Creating 3D OrbitCamera..." << std::endl;
     auto camera = std::make_unique<Rendering::OrbitCamera>(Rendering::ProjectionType::PERSPECTIVE);
     
-    // Configure orbit camera settings (Zelda/Kirby-style)
+    // Quick-tune OrbitCamera for closer OTS feel (rig will manage height/offset)
     Rendering::OrbitCamera::OrbitSettings orbitSettings;
-    orbitSettings.distance = 8.0f;            // closer to character
-    orbitSettings.heightOffset = 3.0f;        // slightly higher
+    orbitSettings.distance = 4.5f;
+    orbitSettings.heightOffset = 0.0f;        // handled by rig
     orbitSettings.mouseSensitivity = 0.03f;   // less twitchy
     orbitSettings.smoothSpeed = 12.0f;        // faster smoothing
-    orbitSettings.minDistance = 5.0f;
-    orbitSettings.maxDistance = 20.0f;
+    orbitSettings.minDistance = 3.0f;
+    orbitSettings.maxDistance = 12.0f;
     camera->SetOrbitSettings(orbitSettings);
     
     camera->SetPerspective(60.0f, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 200.0f);
-    camera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
+    // Start in FREE_LOOK to isolate TPS rig issues; user can press 1 to enable OTS
+    camera->SetCameraMode(Rendering::OrbitCamera::CameraMode::FREE_LOOK);
     
     // Initialize camera with a default target position for proper initial setup
     camera->SetTarget(glm::vec3(0.0f, 2.0f, 0.0f)); // Set to player's expected position
+    camera->SetDistance(4.5f, true);
     camera->Update(0.016f, glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f)); // Force initial update
     camera->UpdateMatrices();
     mainCamera = camera.get();
@@ -659,7 +668,33 @@ Core::Signature enemyAISignature;
     characterControllerSystem->SetCamera(camera.get());
     // Set the camera in the player movement system for camera-relative movement
     playerMovementSystem->SetCamera(camera.get());
-    std::cout << "3D OrbitCamera configured!" << std::endl;
+
+    // Stage 1: create third-person camera rig
+    static Rendering::ThirdPersonCameraRig s_tpsRig;
+    Rendering::ThirdPersonCameraRig::Settings rigSettings;
+    rigSettings.distance = 4.5f;
+    rigSettings.height = 1.6f;
+    rigSettings.shoulderOffsetX = 0.35f; // smaller default shoulder for better centering
+    rigSettings.softZoneWidth = 0.6f;   // unused by default
+    rigSettings.softZoneForward = 0.8f; // unused by default
+    rigSettings.softZoneHeight = 0.4f;  // unused by default
+    rigSettings.enableLateralSoftZone = false;
+    rigSettings.enableVerticalSoftZone = false;
+    rigSettings.followSmooth = 18.0f; // tighter follow with 2nd-order damping
+    rigSettings.smoothSpeed = 12.0f;
+    // New: control yaw smoothing + gentle center bias when idle
+    rigSettings.controlYawSmooth = 10.0f;   // Hz, slightly gentler control yaw to reduce tug
+    rigSettings.centerBiasGain = 1.2f;      // 1/s
+    rigSettings.centerBiasMax = 1.0f;       // allow full centering when idle
+    rigSettings.enableDynamicShoulder = true;
+    rigSettings.shoulderSmooth = 12.0f;     // smoother lateral offset transitions
+    rigSettings.targetSmooth = 20.0f;       // slightly tighter target smoothing
+    rigSettings.idleSpeedThreshold = 0.05f; // ~stopped
+    rigSettings.yawNoiseDegThreshold = 0.05f; // deg/frame
+    s_tpsRig.SetCamera(camera.get());
+    s_tpsRig.Configure(rigSettings);
+
+    std::cout << "3D OrbitCamera + TPS Rig configured!" << std::endl;
     
     // Create the player entity with all systems
     Core::Entity player = coordinator.CreateEntity();
@@ -758,9 +793,9 @@ std::cout << "Player created with full component set!" << std::endl;
     std::cout << "WASD - Move player" << std::endl;
     std::cout << "Mouse - Rotate camera (when TAB is pressed)" << std::endl;
     std::cout << "Mouse Wheel - Zoom in/out" << std::endl;
-    std::cout << "1 - Orbit Follow Camera (default)" << std::endl;
-    std::cout << "2 - Free Look Camera" << std::endl;
-    std::cout << "3 - Combat Focus Camera" << std::endl;
+    std::cout << "1 - Over-the-Shoulder (OTS)" << std::endl;
+    std::cout << "2 - God Mode (Free Look) [DEFAULT]" << std::endl;
+    std::cout << "3 - Combat Focus" << std::endl;
     std::cout << "Space - Jump (Double jump in air!)" << std::endl;
     std::cout << "Shift - Sprint" << std::endl;
     std::cout << "E - Wall Run (hold when near walls)" << std::endl;
@@ -947,49 +982,20 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
         playerInputComp.mouseButtons[0] = mouseButtons[GLFW_MOUSE_BUTTON_LEFT];
         playerInputComp.mouseButtons[1] = mouseButtons[GLFW_MOUSE_BUTTON_RIGHT];
         
-        // Update OrbitCamera to follow player
-        auto& playerTransform = coordinator.GetComponent<Rendering::TransformComponent>(player);
-        
-        // Get player velocity for predictive camera movement
-        auto& playerRigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(player);
-        glm::vec3 playerVelocity = playerRigidbody.velocity;
-        
         // Handle camera mode switching
         if (keysPressed[GLFW_KEY_1]) {
-            std::cout << "Switching to Camera Mode 1: ORBIT_FOLLOW" << std::endl;
+            std::cout << "Switching to Camera Mode 1: OVER-THE-SHOULDER" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::ORBIT_FOLLOW);
             keysPressed[GLFW_KEY_1] = false; // Reset press state
         } else if (keysPressed[GLFW_KEY_2]) {
-            std::cout << "Switching to Camera Mode 2: FREE_LOOK" << std::endl;
+            std::cout << "Switching to Camera Mode 2: GOD MODE (FREE LOOK)" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::FREE_LOOK);
             keysPressed[GLFW_KEY_2] = false; // Reset press state
         } else if (keysPressed[GLFW_KEY_3]) {
-            std::cout << "Switching to Camera Mode 3: COMBAT_FOCUS" << std::endl;
+            std::cout << "Switching to Camera Mode 3: COMBAT FOCUS" << std::endl;
             mainCamera->SetCameraMode(Rendering::OrbitCamera::CameraMode::COMBAT_FOCUS);
             keysPressed[GLFW_KEY_3] = false; // Reset press state
         }
-        
-// === INTERPOLATED CAMERA UPDATE FOR SMOOTH RENDERING ===
-        // Interpolate between previous and current physics states for smooth visuals
-        float alpha = accumulator / FIXED_TIMESTEP;  // How far between physics updates are we?
-        glm::vec3 interpolatedPos = glm::mix(playerPrevPos, playerCurrentPos, alpha);
-        
-        // Use interpolated position for camera target
-        glm::vec3 cameraTarget = interpolatedPos;
-        
-        // Debug camera target selection (only log every 300 frames to reduce spam)
-        static int cameraDebugCount = 0;
-        cameraDebugCount++;
-        if (cameraDebugCount % 300 == 0) {
-            bool playerIsKinematic = coordinator.GetComponent<Physics::RigidbodyComponent>(player).isKinematic;
-            std::cout << "[CameraUpdate] Target: (" << cameraTarget.x << ", " << cameraTarget.y << ", " << cameraTarget.z << ") "
-                      << "Mode: " << (playerIsKinematic ? "KINEMATIC" : "DYNAMIC") 
-                      << " Velocity: (" << playerVelocity.x << ", " << playerVelocity.y << ", " << playerVelocity.z << ")" << std::endl;
-        }
-        
-        // Single, clean camera update - no conflicting calls
-        // Note: Do NOT call SetTarget() here as Update() already handles target position
-        mainCamera->Update(deltaTime, cameraTarget, playerVelocity);
         
         // Update all systems
         // playerMovementSystem->Update(deltaTime);  // Disabled - using CharacterControllerSystem instead
@@ -1025,6 +1031,25 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
                   << ", Frame deltaTime: " << deltaTime*1000.0f << "ms" << std::endl;
     }
     
+    // Late camera update via TPS rig using interpolated physics state for smooth visuals
+    {
+        float alpha = accumulator / FIXED_TIMESTEP; // How far between physics updates are we?
+        glm::vec3 interpolatedPos = glm::mix(playerPrevPos, playerCurrentPos, alpha);
+        glm::vec3 playerVelocityLate = coordinator.GetComponent<Physics::RigidbodyComponent>(player).velocity;
+
+        // Use TPS rig unless in God Mode (FREE_LOOK)
+        if (mainCamera->GetCameraMode() == Rendering::OrbitCamera::CameraMode::FREE_LOOK) {
+            // In God Mode, update camera directly around the player anchor without soft zone
+            mainCamera->Update(deltaTime, interpolatedPos, playerVelocityLate);
+        } else {
+            s_tpsRig.Update(deltaTime, interpolatedPos, playerVelocityLate);
+        }
+
+        // Also render the player at the interpolated position to eliminate relative jitter
+        auto& interpPlayerTrans = coordinator.GetComponent<Rendering::TransformComponent>(player);
+        interpPlayerTrans.position = interpolatedPos;
+    }
+
     // wallRunSystem->Update(deltaTime);  // Disabled - CharacterControllerSystem handles wall-running
         particleSystem->Update(deltaTime);
         

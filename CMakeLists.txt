@@ -13,6 +13,7 @@ option(ENABLE_RENDER_TESTS "Build rendering tests (requires API alignment)" OFF)
 # Focused build options
 option(BUILD_DEMOS "Build demo executables (CudaPhysicsDemo, CudaRenderingDemo, LightingIntegrationDemo)" OFF)
 option(BUILD_ENHANCEDGAME "Build EnhancedGame executable" OFF)
+option(ENABLE_DX12_BACKEND "Build DX12 backend scaffold (Windows only)" OFF)
 
 # First configure C++ project
 project(AAA_Game_Engine LANGUAGES CXX)
@@ -293,6 +294,62 @@ if(ENABLE_PHYSX)
     endif()
 endif()
 
+# === NVIDIA Streamline SDK Integration (for DLSS, Reflex, RTXGI) ===
+option(ENABLE_STREAMLINE "Enable NVIDIA Streamline SDK (DLSS, Reflex, RTXGI)" ON)
+
+if(WIN32 AND ENABLE_DX12_BACKEND AND ENABLE_STREAMLINE)
+    set(STREAMLINE_SDK_DIR "${CMAKE_SOURCE_DIR}/vendor/streamline-sdk")
+    set(STREAMLINE_INCLUDE_DIR "${STREAMLINE_SDK_DIR}/include")
+    set(STREAMLINE_LIB_DIR "${STREAMLINE_SDK_DIR}/lib/x64")
+    set(STREAMLINE_BIN_DIR "${STREAMLINE_SDK_DIR}/bin/x64")
+    
+    # Check if Streamline SDK exists
+    if(EXISTS "${STREAMLINE_INCLUDE_DIR}/sl.h")
+        message(STATUS "NVIDIA Streamline SDK found at: ${STREAMLINE_SDK_DIR}")
+        
+        set(STREAMLINE_LIBRARIES
+            "${STREAMLINE_LIB_DIR}/sl.interposer.lib"  # Streamline core library
+        )
+        
+        # Verify Streamline libraries exist
+        foreach(lib ${STREAMLINE_LIBRARIES})
+            if(NOT EXISTS ${lib})
+                message(WARNING "Streamline library not found: ${lib}")
+                set(ENABLE_STREAMLINE OFF)
+            endif()
+        endforeach()
+        
+        if(ENABLE_STREAMLINE)
+            message(STATUS "Streamline libraries:")
+            foreach(lib ${STREAMLINE_LIBRARIES})
+                message(STATUS "  - ${lib}")
+            endforeach()
+            
+            # List required DLLs
+            set(STREAMLINE_DLLS
+                "${STREAMLINE_BIN_DIR}/sl.interposer.dll"
+                "${STREAMLINE_BIN_DIR}/sl.common.dll"
+                "${STREAMLINE_BIN_DIR}/sl.dlss.dll"
+                "${STREAMLINE_BIN_DIR}/sl.reflex.dll"
+            )
+            
+            message(STATUS "Streamline DLLs to copy:")
+            foreach(dll ${STREAMLINE_DLLS})
+                if(EXISTS ${dll})
+                    message(STATUS "  - ${dll}")
+                else()
+                    message(WARNING "  - Missing: ${dll}")
+                endif()
+            endforeach()
+        endif()
+    else()
+        message(WARNING "Streamline SDK not found at ${STREAMLINE_SDK_DIR}; disabling Streamline")
+        set(ENABLE_STREAMLINE OFF)
+    endif()
+else()
+    set(ENABLE_STREAMLINE OFF)
+endif()
+
 # Configure Assimp
 find_package(assimp QUIET)
 if(NOT assimp_FOUND)
@@ -444,6 +501,8 @@ set(TEST_SOURCES
 
 # Add CPU-only skybox utility tests
 list(APPEND TEST_SOURCES tests/SkyboxUtilsTests.cpp)
+# Third-person camera rig tests
+list(APPEND TEST_SOURCES tests/ThirdPersonCameraRigTests.cpp)
 
 # Enemy AI tests (logic only)
 list(APPEND TEST_SOURCES 
@@ -455,6 +514,8 @@ list(APPEND TEST_SOURCES
 list(APPEND TEST_SOURCES
     tests/ProceduralCharacterTests.cpp
     src_refactored/Rendering/ProceduralCharacter.cpp
+    src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/ShaderProgram.cpp
 )
 
 # Add OpenGL-dependent skybox tests (conditionally)
@@ -503,12 +564,37 @@ if(ENABLE_PHYSX)
     )
 endif()
 
+# DX12 Backend tests (conditionally added)
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    message(STATUS "[DX12] Adding DX12 unit tests to TEST_SOURCES")
+    list(APPEND TEST_SOURCES
+        tests/DX12ShaderManagerTests.cpp
+        tests/DX12PipelineStateTests.cpp
+        tests/RayTracingSystemTests.cpp
+        tests/DX12RenderPipelineTests.cpp
+        tests/D3D12MeshTests.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+    )
+    message(STATUS "[DX12] Added 13 DX12 sources to test suite (including mesh system)")
+endif()
+
 # Note: PlayerMovementTests requires gmock and Full3DGameIntegrationTests needs refactoring
 # These are temporarily disabled until dependencies are resolved
 # list(APPEND TEST_SOURCES tests/PlayerMovementTests.cpp)
 # list(APPEND TEST_SOURCES tests/Full3DGameIntegrationTests.cpp)
 
 add_executable(TestRunner ${TEST_SOURCES})
+# Ensure ThirdPersonCameraRigTests is included even if list append misses due to cache
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/ThirdPersonCameraRigTests.cpp")
+    target_sources(TestRunner PRIVATE tests/ThirdPersonCameraRigTests.cpp)
+endif()
 
 # Add GTest
 include(FetchContent)
@@ -537,10 +623,10 @@ target_link_libraries(TestRunner PRIVATE
     glm::glm
     GTest::gtest
     GTest::gtest_main
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:${OPENGL_LIBRARIES}>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:glfw>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:glad>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:assimp>
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    assimp
 )
 
 if(ENABLE_CUDA)
@@ -560,6 +646,51 @@ endif()
 if(ENABLE_PHYSX)
     target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
     target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
+endif()
+
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    target_link_libraries(TestRunner PRIVATE
+        d3d12
+        dxgi
+        dxcompiler
+        glfw
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    target_compile_definitions(TestRunner PRIVATE 
+        ENABLE_DX12_BACKEND
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    # Copy DXC DLLs for tests
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:TestRunner>
+            COMMENT "Copying dxcompiler.dll for tests"
+        )
+        add_custom_command(TARGET TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:TestRunner>
+            COMMENT "Copying dxil.dll for tests"
+        )
+    endif()
+    
+    # Copy Streamline DLLs for TestRunner
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET TestRunner POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:TestRunner>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # Set output directory for test binaries
@@ -595,6 +726,85 @@ target_compile_definitions(TestRunner PRIVATE
 set_target_properties(TestRunner PROPERTIES
     MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
 )
+
+# === DX12 Standalone Unit Tests ===
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    add_executable(DX12UnitTests
+        tests/DX12ShaderManagerTests.cpp
+        tests/DX12PipelineStateTests.cpp
+        tests/RayTracingSystemTests.cpp
+        tests/DX12RenderPipelineTests.cpp
+        tests/D3D12MeshTests.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+    )
+
+    target_include_directories(DX12UnitTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+
+    target_link_libraries(DX12UnitTests PRIVATE
+        glm::glm
+        GTest::gtest
+        GTest::gtest_main
+        d3d12
+        dxgi
+        dxcompiler
+        glfw
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+
+    target_compile_definitions(DX12UnitTests PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+
+    set_target_properties(DX12UnitTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+
+    # Copy DXC DLLs for DX12UnitTests runtime
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET DX12UnitTests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:DX12UnitTests>
+            COMMENT "Copying dxcompiler.dll for DX12UnitTests"
+        )
+        add_custom_command(TARGET DX12UnitTests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:DX12UnitTests>
+            COMMENT "Copying dxil.dll for DX12UnitTests"
+        )
+    endif()
+    
+    # Copy Streamline DLLs for DX12UnitTests runtime
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET DX12UnitTests POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:DX12UnitTests>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+
+    message(STATUS "DX12UnitTests executable will be built")
+endif()
 
 # Copy PhysX DLLs to TestRunner output directory
 if(ENABLE_PHYSX AND WIN32)
@@ -776,6 +986,8 @@ add_executable(Full3DGame
     src_refactored/Rendering/ProceduralCharacter.cpp
     src_refactored/Rendering/Skybox.cpp
     src_refactored/Rendering/SkyboxUtils.cpp
+    # Rendering Backends
+    src_refactored/Rendering/Backends/GLRenderBackend.cpp
     # CUDA Building Generation (conditional - use CUDA or CPU fallback)
     $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingGenerator.cpp>
     $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingKernels.cu>
@@ -826,6 +1038,16 @@ target_link_libraries(Full3DGame PRIVATE
     glm::glm
     assimp
 )
+
+# Optional: compile DX12 backend scaffold (no effect unless enabled)
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    message(STATUS "DX12 backend scaffold enabled")
+    target_sources(Full3DGame PRIVATE
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+    )
+    target_link_libraries(Full3DGame PRIVATE d3d12 dxgi)
+    target_compile_definitions(Full3DGame PRIVATE ENABLE_DX12_BACKEND)
+endif()
 
 # Add linker flag to ignore PhysX static lib runtime conflicts
 if(MSVC)
@@ -890,4 +1112,254 @@ if(ENABLE_PHYSX AND WIN32)
             )
         endif()
     endforeach()
+endif()
+
+# === DX12 Backend Test Executable ===
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    add_executable(DX12BackendTest
+        src_refactored/Demos/DX12BackendTest.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+    )
+    
+    target_include_directories(DX12BackendTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12BackendTest PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12BackendTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    # Set output directory
+    set_target_properties(DX12BackendTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12BackendTest executable will be built")
+    
+    # DX12 Resource Creation Test
+    add_executable(DX12ResourceTest
+        src_refactored/Demos/DX12ResourceTest.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+    )
+    
+    target_include_directories(DX12ResourceTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12ResourceTest PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12ResourceTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    set_target_properties(DX12ResourceTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12ResourceTest executable will be built")
+    
+    # DX12 Shader Compilation Test
+    add_executable(DX12ShaderTest
+        src_refactored/Demos/DX12ShaderTest.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+    )
+    
+    target_include_directories(DX12ShaderTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+    )
+    
+    target_link_libraries(DX12ShaderTest PRIVATE
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+    )
+    
+    target_compile_definitions(DX12ShaderTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+    )
+    
+    set_target_properties(DX12ShaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12ShaderTest executable will be built")
+    
+    # Copy DXC DLLs to output directory for shader compilation
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET DX12ShaderTest POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:DX12ShaderTest>
+            COMMENT "Copying dxcompiler.dll for shader compilation"
+        )
+        add_custom_command(TARGET DX12ShaderTest POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:DX12ShaderTest>
+            COMMENT "Copying dxil.dll for DXIL validation"
+        )
+    endif()
+    
+    # DX12 Pipeline Demo - Full AAA Rendering Demo
+    add_executable(DX12PipelineDemo
+        src_refactored/Demos/DX12PipelineDemo.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Camera.cpp
+    )
+    
+    target_include_directories(DX12PipelineDemo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12PipelineDemo PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12PipelineDemo PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    set_target_properties(DX12PipelineDemo PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    # Copy Streamline DLLs for demo
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET DX12PipelineDemo POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:DX12PipelineDemo>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    message(STATUS "DX12PipelineDemo executable will be built")
+    
+    # Full3DGame DX12 - Game with D3D12 Renderer
+    add_executable(Full3DGame_DX12
+        src_refactored/Demos/Full3DGame_DX12.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Camera.cpp
+        src_refactored/Rendering/OrbitCamera.cpp
+        src/Core/EntityManager.cpp
+        src/Core/ComponentManager.cpp
+        src/Physics/PhysXPhysicsSystem.cpp
+    )
+    
+    target_include_directories(Full3DGame_DX12 PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        ${CMAKE_SOURCE_DIR}/include
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(Full3DGame_DX12 PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+        $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
+    )
+    
+    target_compile_definitions(Full3DGame_DX12 PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+        ASSET_DIR="${ASSET_DIR}"
+    )
+    
+    set_target_properties(Full3DGame_DX12 PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    # Copy Streamline DLLs for game
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET Full3DGame_DX12 POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:Full3DGame_DX12>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    # Copy PhysX DLLs for game
+    if(ENABLE_PHYSX)
+        set(PHYSX_DLL_DIR "${PHYSX_ROOT}/bin/win.x86_64.vc142.md/release")
+        file(GLOB PHYSX_DLLS "${PHYSX_DLL_DIR}/*.dll")
+        foreach(dll ${PHYSX_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET Full3DGame_DX12 POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:Full3DGame_DX12>
+                    COMMENT "Copying PhysX DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    message(STATUS "Full3DGame_DX12 executable will be built")
 endif()

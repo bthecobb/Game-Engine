@@ -22,6 +22,8 @@ struct MeshComponent {
     bool castShadows = true;
     bool receiveShadows = true;
     bool isVisible = true;
+    // Local-space origin offset for rendering only (does not affect physics)
+    glm::vec3 originOffset{0.0f, 0.0f, 0.0f};
 };
 
 // Physically-Based Rendering (PBR) material component

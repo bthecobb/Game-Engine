@@ -31,12 +31,13 @@ bool Framebuffer::Initialize(uint32_t width, uint32_t height) {
     std::cout << "[Framebuffer] Generated FBO ID: " << m_fbo << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     
-    // Create G-buffer textures for deferred rendering
-    m_colorTextures.resize(5);
-    glGenTextures(5, m_colorTextures.data());
-    std::cout << "[Framebuffer] Generated G-buffer texture IDs: Position=" << m_colorTextures[0] 
-              << ", Normal=" << m_colorTextures[1] << ", Albedo=" << m_colorTextures[2] 
-              << ", MetallicRoughness=" << m_colorTextures[3] << ", Emissive=" << m_colorTextures[4] << std::endl;
+    // Create G-buffer textures for deferred rendering (add Motion vectors at index 5)
+    m_colorTextures.resize(6);
+    glGenTextures(static_cast<GLsizei>(m_colorTextures.size()), m_colorTextures.data());
+    std::cout << "[Framebuffer] Generated G-buffer texture IDs: Position=" << m_colorTextures[0]
+              << ", Normal=" << m_colorTextures[1] << ", Albedo=" << m_colorTextures[2]
+              << ", MetallicRoughness" << m_colorTextures[3] << ", Emissive=" << m_colorTextures[4]
+              << ", Motion=" << m_colorTextures[5] << std::endl;
     
     // Position texture (RGB32F)
     glBindTexture(GL_TEXTURE_2D, m_colorTextures[0]);
@@ -92,6 +93,17 @@ bool Framebuffer::Initialize(uint32_t width, uint32_t height) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, m_colorTextures[4], 0);
+
+    // Motion vectors (RG16F): screen-space velocity (vx, vy)
+    glBindTexture(GL_TEXTURE_2D, m_colorTextures[5]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, width, height, 0, GL_RG, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, m_colorTextures[5], 0);
     
     // Depth texture
     glGenTextures(1, &m_depthTexture);
@@ -107,9 +119,13 @@ bool Framebuffer::Initialize(uint32_t width, uint32_t height) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthTexture, 0);
     
-    // Set draw buffers
-    unsigned int attachments[5] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
-    glDrawBuffers(5, attachments);
+    // Set draw buffers dynamically based on attachments present
+    std::vector<GLenum> attachments;
+    attachments.reserve(m_colorTextures.size());
+        for (size_t i = 0; i < m_colorTextures.size(); ++i) {
+            attachments.push_back(static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + i));
+        }
+        glDrawBuffers(static_cast<GLsizei>(attachments.size()), attachments.data());
     
     // Check framebuffer completeness
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -141,8 +157,12 @@ void Framebuffer::Bind() {
     
     // Re-specify draw buffers when binding (some drivers require this)
     if (!m_colorTextures.empty()) {
-        GLenum attachments[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4 };
-        glDrawBuffers(static_cast<GLsizei>(m_colorTextures.size()), attachments);
+        std::vector<GLenum> attachments;
+        attachments.reserve(m_colorTextures.size());
+        for (size_t i = 0; i < m_colorTextures.size(); ++i) {
+            attachments.push_back(static_cast<GLenum>(GL_COLOR_ATTACHMENT0 + i));
+        }
+        glDrawBuffers(static_cast<GLsizei>(attachments.size()), attachments.data());
     }
 }
 
