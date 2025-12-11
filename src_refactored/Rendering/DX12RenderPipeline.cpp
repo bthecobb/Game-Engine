@@ -371,9 +371,13 @@ void DX12RenderPipeline::GeometryPass() {
     
     ID3D12GraphicsCommandList* cmdList = m_backend->GetCommandList();
     
-    // Bind root signature and PSO
+    // Bind root signature and PSO (wireframe or solid based on debug mode)
     cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
-    cmdList->SetPipelineState(m_geometryPassPSO.Get());
+    if (m_debugMode == DebugMode::WIREFRAME && m_wireframePSO) {
+        cmdList->SetPipelineState(m_wireframePSO.Get());
+    } else {
+        cmdList->SetPipelineState(m_geometryPassPSO.Get());
+    }
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
     // Set viewport and scissor to DISPLAY resolution (since we're rendering directly to swap chain)
@@ -1043,6 +1047,17 @@ bool DX12RenderPipeline::CreateGeometryPassPSO() {
     }
     
     std::cout << "[Pipeline] Geometry pass PSO created" << std::endl;
+    
+    // Create wireframe PSO (same as geometry pass but with wireframe fill mode)
+    psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+    hr = m_backend->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_wireframePSO));
+    if (FAILED(hr)) {
+        std::cerr << "[Pipeline] Failed to create wireframe PSO (non-critical)" << std::endl;
+        // Non-critical - continue without wireframe support
+    } else {
+        std::cout << "[Pipeline] Wireframe PSO created" << std::endl;
+    }
+    
     return true;
 }
 

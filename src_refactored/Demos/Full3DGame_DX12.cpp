@@ -64,6 +64,26 @@ bool mouseCaptured = true;  // Start with mouse captured for immediate control
 bool keys[1024] = {false};
 bool mouseButtons[8] = {false};
 
+// Debug visualization modes
+enum class DebugMode {
+    NONE = 0,
+    WIREFRAME,
+    GBUFFER_POSITION,
+    GBUFFER_NORMAL,
+    GBUFFER_ALBEDO,
+    DEPTH,
+    MODE_COUNT
+};
+DebugMode currentDebugMode = DebugMode::NONE;
+bool showFPS = true;  // Show FPS by default
+bool showDebugInfo = false;
+
+// Frame timing
+float frameTime = 0.0f;
+float fps = 0.0f;
+int frameCount = 0;
+float fpsAccumulator = 0.0f;
+
 // Scroll callback for zoom
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     if (mainCamera) {
@@ -88,6 +108,58 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         } else {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
+    }
+    
+    // F4 - Cycle debug visualization modes
+    if (key == GLFW_KEY_F4 && action == GLFW_PRESS) {
+        int mode = static_cast<int>(currentDebugMode);
+        mode = (mode + 1) % static_cast<int>(DebugMode::MODE_COUNT);
+        currentDebugMode = static_cast<DebugMode>(mode);
+        
+        const char* modeNames[] = {"None", "Wireframe", "G-Buffer Position", "G-Buffer Normal", "G-Buffer Albedo", "Depth"};
+        std::cout << "[Debug] Visualization mode: " << modeNames[mode] << std::endl;
+        
+        // Update window title to show current debug mode
+        char title[128];
+        snprintf(title, sizeof(title), "CudaGame DX12 - Debug: %s", modeNames[mode]);
+        glfwSetWindowTitle(window, title);
+        
+        // Update render pipeline debug mode
+        if (renderPipeline) {
+            renderPipeline->SetDebugMode(static_cast<DX12RenderPipeline::DebugMode>(mode));
+        }
+    }
+    
+    // F5 - Quick toggle wireframe
+    if (key == GLFW_KEY_F5 && action == GLFW_PRESS) {
+        if (currentDebugMode == DebugMode::WIREFRAME) {
+            currentDebugMode = DebugMode::NONE;
+            glfwSetWindowTitle(window, "CudaGame DX12 - Debug: None");
+        } else {
+            currentDebugMode = DebugMode::WIREFRAME;
+            glfwSetWindowTitle(window, "CudaGame DX12 - Debug: Wireframe");
+        }
+        if (renderPipeline) {
+            renderPipeline->SetDebugMode(static_cast<DX12RenderPipeline::DebugMode>(currentDebugMode));
+        }
+        std::cout << "[Debug] Wireframe: " << (currentDebugMode == DebugMode::WIREFRAME ? "ON" : "OFF") << std::endl;
+    }
+    
+    // F6 - Toggle FPS display
+    if (key == GLFW_KEY_F6 && action == GLFW_PRESS) {
+        showFPS = !showFPS;
+        std::cout << "[Debug] FPS display: " << (showFPS ? "ON" : "OFF") << std::endl;
+    }
+    
+    // F7 - Toggle debug info
+    if (key == GLFW_KEY_F7 && action == GLFW_PRESS) {
+        showDebugInfo = !showDebugInfo;
+        std::cout << "[Debug] Debug info: " << (showDebugInfo ? "ON" : "OFF") << std::endl;
+    }
+    
+    // ESC - Exit game
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, true);
     }
 }
 

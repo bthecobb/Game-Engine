@@ -51,6 +51,18 @@ public:
     void SetDLSSQualityMode(DLSSQualityMode mode);
     void SetRayTracingEnabled(bool enabled) { m_rayTracingEnabled = enabled; }
     
+    // Debug visualization modes
+    enum class DebugMode {
+        NONE = 0,
+        WIREFRAME,
+        GBUFFER_POSITION,
+        GBUFFER_NORMAL,
+        GBUFFER_ALBEDO,
+        DEPTH
+    };
+    void SetDebugMode(DebugMode mode) { m_debugMode = mode; }
+    DebugMode GetDebugMode() const { return m_debugMode; }
+    
     // Getters
     uint32_t GetRenderWidth() const { return m_renderWidth; }
     uint32_t GetRenderHeight() const { return m_renderHeight; }
@@ -177,6 +189,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gbufferPassPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_geometryPassPSO;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_wireframePSO;  // Debug wireframe mode
     
     // === Constant Buffers ===
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perFrameCB;
@@ -190,6 +203,7 @@ private:
     bool m_initialized = false;
     bool m_dlssEnabled = true;
     bool m_rayTracingEnabled = true;
+    DebugMode m_debugMode = DebugMode::NONE;
     
     // === Frame State ===
     uint64_t m_frameIndex = 0;
