@@ -124,6 +124,9 @@ bool DX12RenderPipeline::Initialize(const InitParams& params) {
         return false;
     }
     
+    // Skybox PSO (optional - continue without if shaders unavailable)
+    CreateSkyboxPSO();
+    
     // Step 7: Create constant buffers
     if (!CreateConstantBuffers()) {
         std::cerr << "[Pipeline] Failed to create constant buffers" << std::endl;
@@ -211,8 +214,13 @@ void DX12RenderPipeline::BeginFrame(Camera* camera) {
         m_prevViewProj = viewProj;
     }
     
-    // Begin backend frame (clears swap chain render target)
-    glm::vec4 clearColor = glm::vec4(0.0f, 1.0f, 1.0f, 1.0f);  // BRIGHT CYAN for debugging
+    // Begin backend frame with sky-colored clear
+    // Use a procedural sky gradient (zenith blue to horizon light blue)
+    // For now, use a static pleasant sky blue as the background
+    float skyR = 0.4f;  // 102/255
+    float skyG = 0.6f;  // 178/255  
+    float skyB = 0.9f;  // 230/255 - nice sky blue
+    glm::vec4 clearColor = glm::vec4(skyR, skyG, skyB, 1.0f);
     m_backend->BeginFrame(clearColor, m_displayWidth, m_displayHeight);
 }
 
@@ -234,6 +242,7 @@ void DX12RenderPipeline::RenderFrame() {
     ShadowPass();
     GBufferPass();
     GeometryPass();
+    SkyboxPass();     // Render procedural sky after geometry (uses depth to show behind objects)
     LightingPass();
     
     if (m_rayTracingEnabled) {
@@ -509,6 +518,48 @@ void DX12RenderPipeline::LightingPass() {
     // - Write to litColor buffer
     
     m_stats.lightingPassMs = 2.0f;  // Placeholder
+}
+
+void DX12RenderPipeline::SkyboxPass() {
+    if (!m_skyboxEnabled || !m_skyboxPSO) {
+        return;
+    }
+    
+    ID3D12GraphicsCommandList* cmdList = m_backend->GetCommandList();
+    
+    // Set skybox PSO
+    cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+    cmdList->SetPipelineState(m_skyboxPSO.Get());
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    // Set viewport and scissor
+    D3D12_VIEWPORT viewport = {};
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = (FLOAT)m_displayWidth;
+    viewport.Height = (FLOAT)m_displayHeight;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    cmdList->RSSetViewports(1, &viewport);
+    
+    D3D12_RECT scissor = {};
+    scissor.left = 0;
+    scissor.top = 0;
+    scissor.right = (LONG)m_displayWidth;
+    scissor.bottom = (LONG)m_displayHeight;
+    cmdList->RSSetScissorRects(1, &scissor);
+    
+    // Bind per-frame constants (camera matrices needed for view direction)
+    D3D12_GPU_VIRTUAL_ADDRESS perFrameAddress = m_perFrameCB->GetGPUVirtualAddress();
+    cmdList->SetGraphicsRootConstantBufferView(0, perFrameAddress);
+    
+    // Bind swap chain render target (skybox renders behind everything)
+    D3D12_CPU_DESCRIPTOR_HANDLE swapChainRTV = m_backend->GetCurrentRenderTargetView();
+    D3D12_CPU_DESCRIPTOR_HANDLE mainDSV = m_backend->GetDepthStencilView();
+    cmdList->OMSetRenderTargets(1, &swapChainRTV, FALSE, &mainDSV);
+    
+    // Draw fullscreen triangle (3 vertices, no vertex buffer)
+    cmdList->DrawInstanced(3, 1, 0, 0);
 }
 
 void DX12RenderPipeline::RayTracingPass() {
@@ -933,6 +984,26 @@ bool DX12RenderPipeline::CompileShaders() {
         return false;
     }
     
+    // Compile skybox shaders (optional - continue without if they fail)
+    m_skyboxVS = ShaderCompiler::CompileFromFile(
+        shaderPath + L"Skybox_VS.hlsl",
+        "main",
+        ShaderCompiler::ShaderType::Vertex,
+        true
+    );
+    m_skyboxPS = ShaderCompiler::CompileFromFile(
+        shaderPath + L"Skybox_PS.hlsl",
+        "main",
+        ShaderCompiler::ShaderType::Pixel,
+        true
+    );
+    if (m_skyboxVS && m_skyboxPS) {
+        std::cout << "[Pipeline] Skybox shaders compiled successfully" << std::endl;
+    } else {
+        std::cerr << "[Pipeline] Skybox shaders not available (non-critical)" << std::endl;
+        m_skyboxEnabled = false;
+    }
+    
     std::cout << "[Pipeline] All shaders compiled successfully" << std::endl;
     return true;
 }
@@ -1061,6 +1132,47 @@ bool DX12RenderPipeline::CreateGeometryPassPSO() {
     return true;
 }
 
+bool DX12RenderPipeline::CreateSkyboxPSO() {
+    if (!m_skyboxVS || !m_skyboxPS) {
+        std::cout << "[Pipeline] Skybox shaders not available, skipping PSO creation" << std::endl;
+        m_skyboxEnabled = false;
+        return false;
+    }
+    
+    std::cout << "[Pipeline] Creating Skybox PSO..." << std::endl;
+    
+    // Skybox uses a fullscreen triangle - no input layout needed
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_rootSignature.Get();
+    psoDesc.VS = {m_skyboxVS->GetBufferPointer(), m_skyboxVS->GetBufferSize()};
+    psoDesc.PS = {m_skyboxPS->GetBufferPointer(), m_skyboxPS->GetBufferSize()};
+    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;  // Skybox is always at max depth
+    // Disable depth writing but test against existing geometry
+    psoDesc.DepthStencilState.DepthEnable = TRUE;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;  // Don't write depth
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;  // Only draw where nothing else was drawn
+    psoDesc.InputLayout = {nullptr, 0};  // No vertex input - fullscreen triangle is generated in VS
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoDesc.SampleDesc.Count = 1;
+    
+    HRESULT hr = m_backend->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_skyboxPSO));
+    if (FAILED(hr)) {
+        std::cerr << "[Pipeline] Failed to create Skybox PSO: 0x" << std::hex << hr << std::dec << std::endl;
+        m_skyboxEnabled = false;
+        return false;
+    }
+    
+    std::cout << "[Pipeline] Skybox PSO created successfully" << std::endl;
+    return true;
+}
 bool DX12RenderPipeline::CreateGBufferPassPSO() {
     std::cout << "[Pipeline] Creating G-Buffer geometry pass PSO..." << std::endl;
 

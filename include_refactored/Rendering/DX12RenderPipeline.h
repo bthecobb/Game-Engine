@@ -134,6 +134,7 @@ private:
     // === Render Passes (AAA pipeline) ===
     void GBufferPass();       // Populate G-Buffer MRTs at render resolution
     void GeometryPass();      // Forward pass to swapchain (temporary debug path)
+    void SkyboxPass();        // Procedural atmospheric sky
     void ShadowPass();        // Generate shadow maps
     void LightingPass();      // Deferred lighting from G-Buffer
     void RayTracingPass();    // RT reflections, shadows, AO
@@ -152,6 +153,7 @@ private:
     bool CreateRootSignature();
     bool CreateGBufferPassPSO();
     bool CreateGeometryPassPSO();
+    bool CreateSkyboxPSO();
     
     // === Constant Buffer Management ===
     bool CreateConstantBuffers();
@@ -190,6 +192,12 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gbufferPassPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_geometryPassPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_wireframePSO;  // Debug wireframe mode
+    
+    // Skybox rendering
+    Microsoft::WRL::ComPtr<ID3DBlob> m_skyboxVS;
+    Microsoft::WRL::ComPtr<ID3DBlob> m_skyboxPS;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_skyboxPSO;
+    bool m_skyboxEnabled = true;
     
     // === Constant Buffers ===
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perFrameCB;

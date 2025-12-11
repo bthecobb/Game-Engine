@@ -142,4 +142,4 @@ all_files_list.txt
 build-vs/
 
 # Legacy or local-only shaders root (new renderer uses assets/shaders/)
-shaders/
+/shaders/
