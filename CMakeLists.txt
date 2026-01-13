@@ -1285,6 +1285,29 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     
     message(STATUS "DX12PipelineDemo executable will be built")
     
+    # CUDA Frustum Culling Library (AAA GPU optimization)
+    # Separate library to isolate CUDA compilation from DX12/PhysX includes
+    if(ENABLE_CUDA AND CUDAToolkit_FOUND)
+        add_library(CudaCulling STATIC
+            src_refactored/Rendering/CudaFrustumCulling.cu
+            src_refactored/Rendering/CudaFrustumCulling.cpp
+        )
+        target_include_directories(CudaCulling PRIVATE
+            ${CMAKE_SOURCE_DIR}/include_refactored
+            ${CUDAToolkit_INCLUDE_DIRS}
+        )
+        target_link_libraries(CudaCulling PRIVATE
+            CUDA::cudart
+            glm::glm
+        )
+        set_target_properties(CudaCulling PROPERTIES
+            CUDA_SEPARABLE_COMPILATION ON
+            CUDA_ARCHITECTURES "75;86"
+            MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+        )
+        message(STATUS "CudaCulling library will be built")
+    endif()
+    
     # Full3DGame DX12 - Game with D3D12 Renderer
     add_executable(Full3DGame_DX12
         src_refactored/Demos/Full3DGame_DX12.cpp
@@ -1321,6 +1344,7 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         ${CMAKE_SOURCE_DIR}/include_refactored
         ${CMAKE_SOURCE_DIR}/include
         $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+        $<$<BOOL:${ENABLE_CUDA}>:${CUDAToolkit_INCLUDE_DIRS}>
     )
     
     target_link_libraries(Full3DGame_DX12 PRIVATE
@@ -1331,6 +1355,8 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         dxcompiler
         $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
         $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
+        $<$<AND:$<BOOL:${ENABLE_CUDA}>,$<TARGET_EXISTS:CudaCulling>>:CudaCulling>
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart>
     )
     
     target_compile_definitions(Full3DGame_DX12 PRIVATE

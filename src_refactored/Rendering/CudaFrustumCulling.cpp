@@ -2,8 +2,10 @@
 // Wraps the CUDA kernel with a clean C++ interface
 
 #include "Rendering/CudaFrustumCulling.h"
+#include <cuda_runtime.h>
 #include <iostream>
 #include <cstring>
+#include <cmath>
 
 // Forward declarations for CUDA functions (defined in .cu file)
 extern "C" {
