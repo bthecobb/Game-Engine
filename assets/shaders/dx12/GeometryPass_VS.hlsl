@@ -7,6 +7,7 @@ struct VSInput
     float3 normal : NORMAL;
     float3 tangent : TANGENT;
     float2 texcoord : TEXCOORD;
+    float4 color : COLOR0;  // rgb = vertex color, a = emissive intensity
 };
 
 struct PSInput
@@ -19,6 +20,7 @@ struct PSInput
     float2 texcoord : TEXCOORD;
     float4 currClipPos : CURR_CLIP_POS;  // Current frame clip space
     float4 prevClipPos : PREV_CLIP_POS;  // Previous frame clip space (for motion vectors)
+    float4 vertexColor : COLOR0;         // Passed from vertex shader
 };
 
 cbuffer PerFrameConstants : register(b0)
@@ -68,6 +70,9 @@ PSInput main(VSInput input)
     
     // Pass through texcoords
     output.texcoord = input.texcoord;
+    
+    // Pass through vertex color (for procedural buildings with window lights)
+    output.vertexColor = input.color;
     
     return output;
 }

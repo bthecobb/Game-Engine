@@ -14,15 +14,33 @@ namespace Rendering {
 class DX12RenderBackend;
 
 // Vertex format for geometry pass (matches HLSL)
+// AAA Standard: position, normal, tangent, texcoord, color
 struct Vertex {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec3 tangent;
     glm::vec2 texcoord;
+    glm::vec4 color;     // rgb = vertex color multiplier, a = emissive intensity
     
-    Vertex() = default;
+    Vertex() : color(1.0f, 1.0f, 1.0f, 0.0f) {}  // Default: white, no emissive
     Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec3& tan, const glm::vec2& uv)
-        : position(pos), normal(norm), tangent(tan), texcoord(uv) {}
+        : position(pos), normal(norm), tangent(tan), texcoord(uv), color(1.0f, 1.0f, 1.0f, 0.0f) {}
+    Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec3& tan, const glm::vec2& uv, const glm::vec4& col)
+        : position(pos), normal(norm), tangent(tan), texcoord(uv), color(col) {}
+};
+
+// Extended vertex for procedural buildings with emissive windows
+struct BuildingVertex {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 texcoord;
+    glm::vec3 color;      // Vertex color for variety
+    glm::vec3 emissive;   // Emissive glow for lit windows
+    
+    BuildingVertex() = default;
+    BuildingVertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec2& uv,
+                   const glm::vec3& col, const glm::vec3& emit)
+        : position(pos), normal(norm), texcoord(uv), color(col), emissive(emit) {}
 };
 
 // Material properties for rendering

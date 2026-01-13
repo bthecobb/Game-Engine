@@ -1298,9 +1298,23 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         src_refactored/Rendering/PipelineStateObject.cpp
         src_refactored/Rendering/Camera.cpp
         src_refactored/Rendering/OrbitCamera.cpp
-        src/Core/EntityManager.cpp
-        src/Core/ComponentManager.cpp
-        src/Physics/PhysXPhysicsSystem.cpp
+        # Gameplay systems (re-added with proper component registrations)
+        src_refactored/Gameplay/CharacterControllerSystem.cpp
+        src_refactored/Gameplay/EnemyAISystem.cpp
+        src_refactored/Gameplay/LevelSystem.cpp
+        src_refactored/Gameplay/TargetingSystem.cpp
+        src_refactored/Gameplay/PlayerMovementSystem.cpp
+        src_refactored/Physics/WallRunningSystem.cpp
+        # Core ECS - use refactored versions with ECS-PhysX sync
+        src_refactored/Core/EntityManager.cpp
+        src_refactored/Core/ComponentManager.cpp
+        src_refactored/Core/ThreadPool.cpp
+        # World streaming system
+        src_refactored/World/WorldChunkManager.cpp
+        # Physics - use refactored version with ECS-PhysX sync
+        src_refactored/Physics/PhysXPhysicsSystem.cpp
+        # Procedural building generation
+        src_refactored/Rendering/CudaBuildingGenerator_DX12.cpp
     )
     
     target_include_directories(Full3DGame_DX12 PRIVATE

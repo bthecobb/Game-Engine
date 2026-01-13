@@ -15,6 +15,7 @@ struct PSInput
     float2 texcoord : TEXCOORD;
     float4 currClipPos : CURR_CLIP_POS;
     float4 prevClipPos : PREV_CLIP_POS;
+    float4 vertexColor : COLOR0;  // rgb = color modulator, a = emissive intensity
 };
 
 struct PSOutput
@@ -62,6 +63,9 @@ PSOutput main(PSInput input)
     // Uncomment when textures are bound:
     // albedo *= albedoTex.Sample(linearSampler, input.texcoord).rgb;
     
+    // Multiply by vertex color (for procedural building variety)
+    albedo *= input.vertexColor.rgb;
+    
     // Sample roughness
     float roughnessValue = roughness;
     // roughnessValue *= roughnessTex.Sample(linearSampler, input.texcoord).r;
@@ -80,8 +84,10 @@ PSOutput main(PSInput input)
     // float3x3 TBN = float3x3(normalize(input.tangent), normalize(input.bitangent), worldNormal);
     // worldNormal = normalize(mul(normalMap, TBN));
     
-    // Sample emissive
+    // Sample emissive - combine material emissive with vertex emissive (for window lights)
     float3 emissive = emissiveColor * emissiveStrength;
+    // Add per-vertex emissive from window lights (vertexColor.a controls intensity)
+    emissive += albedoColor.rgb * input.vertexColor.rgb * input.vertexColor.a * 10.0;
     // emissive *= emissiveTex.Sample(linearSampler, input.texcoord).rgb;
     
     // Calculate motion vectors for DLSS/TAA

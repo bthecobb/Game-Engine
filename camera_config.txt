@@ -1,0 +1,4 @@
+# Camera Settings - Copy these values to code
+g_cameraSmoothSpeed = 0.5f;
+g_cameraSensitivity = 0.05f;
+g_cameraLerp = true;
