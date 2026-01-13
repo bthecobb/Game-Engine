@@ -1292,13 +1292,14 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
             src_refactored/Rendering/CudaFrustumCulling.cu
             src_refactored/Rendering/CudaFrustumCulling.cpp
         )
+        # Use direct include paths to avoid transitive dependency pollution
         target_include_directories(CudaCulling PRIVATE
             ${CMAKE_SOURCE_DIR}/include_refactored
+            ${CMAKE_SOURCE_DIR}/glm
             ${CUDAToolkit_INCLUDE_DIRS}
         )
         target_link_libraries(CudaCulling PRIVATE
             CUDA::cudart
-            glm::glm
         )
         set_target_properties(CudaCulling PROPERTIES
             CUDA_SEPARABLE_COMPILATION ON
@@ -1338,6 +1339,8 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         src_refactored/Physics/PhysXPhysicsSystem.cpp
         # Procedural building generation
         src_refactored/Rendering/CudaBuildingGenerator_DX12.cpp
+        # Mesh shader infrastructure (DX12 Ultimate)
+        src_refactored/Rendering/MeshletGenerator.cpp
     )
     
     target_include_directories(Full3DGame_DX12 PRIVATE
