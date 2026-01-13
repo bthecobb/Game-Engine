@@ -19,6 +19,7 @@
 #include "Rendering/DX12RenderPipeline.h"
 #include "Rendering/D3D12Mesh.h"
 #include "Rendering/CudaBuildingGenerator.h"
+#include "World/WorldChunkManager.h"
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -63,6 +64,10 @@ std::unordered_map<Core::Entity, std::unique_ptr<D3D12Mesh>> entityMeshes;
 std::unique_ptr<CudaBuildingGenerator> buildingGenerator;
 std::vector<BuildingMesh> generatedBuildingMeshes;  // Keep meshes alive
 std::unordered_map<Core::Entity, size_t> buildingEntityToMeshIndex;  // Map building entities to mesh index
+
+// World chunk streaming manager
+std::unique_ptr<World::WorldChunkManager> chunkManager;
+uint64_t frameNumber = 0;
 
 // Explicit list of gameplay entities that should be rendered in the DX12 demo
 // (ground, player, and enemies created in CreateGameWorld / SpawnEnemy)
@@ -635,6 +640,82 @@ Core::Entity SpawnEnemy(const glm::vec3& position, const glm::vec3& color) {
     return enemy;
 }
 
+// ====== CHUNK-BASED BUILDING GENERATION ======
+// Generates buildings for a specific chunk using deterministic seeding
+void GenerateBuildingsForChunk(World::WorldChunk& chunk) {
+    using namespace World;
+    
+    // Deterministic random generator based on chunk seed
+    std::mt19937 gen(chunk.seed);
+    
+    // Buildings per chunk based on LOD
+    int buildingsToGenerate = 0;
+    switch (chunk.lodLevel) {
+        case ChunkLOD::HIGH:   buildingsToGenerate = 15; break;
+        case ChunkLOD::MEDIUM: buildingsToGenerate = 8;  break;
+        case ChunkLOD::LOW:    buildingsToGenerate = 3;  break;
+    }
+    
+    // Position distribution within chunk bounds
+    std::uniform_real_distribution<float> xDist(chunk.bounds.min.x + 20.0f, chunk.bounds.max.x - 20.0f);
+    std::uniform_real_distribution<float> zDist(chunk.bounds.min.z + 20.0f, chunk.bounds.max.z - 20.0f);
+    std::uniform_real_distribution<float> heightDist(15.0f, 70.0f);
+    std::uniform_real_distribution<float> widthDist(8.0f, 16.0f);
+    
+    for (int i = 0; i < buildingsToGenerate; ++i) {
+        float x = xDist(gen);
+        float z = zDist(gen);
+        float height = heightDist(gen);
+        float width = widthDist(gen);
+        float depth = widthDist(gen);
+        
+        // Configure building style
+        BuildingStyle style;
+        style.baseWidth = width;
+        style.baseDepth = depth;
+        style.height = height;
+        style.seed = chunk.seed + static_cast<uint32_t>(i * 12345);
+        style.baseColor = glm::vec3(0.45f + (i % 10) * 0.03f, 0.5f + (i % 7) * 0.02f, 0.55f + (i % 5) * 0.03f);
+        style.accentColor = glm::vec3(0.2f, 0.25f, 0.3f);
+        
+        // Generate building mesh
+        if (buildingGenerator) {
+            Rendering::BuildingMesh mesh = buildingGenerator->GenerateBuilding(style);
+            size_t meshIndex = generatedBuildingMeshes.size();
+            generatedBuildingMeshes.push_back(mesh);
+            
+            // Create building entity
+            Core::Entity building = coordinator.CreateEntity();
+            renderEntities.push_back(building);
+            chunk.entities.push_back(building);
+            chunk.meshIndices.push_back(meshIndex);
+            
+            buildingEntityToMeshIndex[building] = meshIndex;
+            
+            coordinator.AddComponent(building, Rendering::TransformComponent{
+                glm::vec3(x, -0.5f, z),
+                glm::vec3(0.0f),
+                glm::vec3(1.0f)
+            });
+            
+            coordinator.AddComponent(building, Rendering::MaterialComponent{
+                glm::vec3(1.0f), 0.3f, 0.6f, 1.0f
+            });
+            
+            Gameplay::WallComponent wallComp;
+            wallComp.canWallRun = true;
+            coordinator.AddComponent(building, wallComp);
+            
+            Physics::ColliderComponent buildingCollider{};
+            buildingCollider.shape = Physics::ColliderShape::BOX;
+            buildingCollider.halfExtents = glm::vec3(width / 2.0f, height / 2.0f, depth / 2.0f);
+            coordinator.AddComponent(building, buildingCollider);
+        }
+    }
+    
+    chunk.buildingCounts[static_cast<int>(chunk.lodLevel)] = buildingsToGenerate;
+}
+
 void CreateGameWorld() {
     std::cout << "Creating 3D game world (EXPANDED 10000x10000)..." << std::endl;
     
@@ -1187,6 +1268,27 @@ int main() {
     
     CreateGameWorld();
     
+    // Initialize WorldChunkManager for chunk-based streaming
+    // NOTE: Building generation disabled in callbacks to avoid overwhelming DX12
+    // Buildings are pre-generated in CreateGameWorld for stability
+    chunkManager = std::make_unique<World::WorldChunkManager>();
+    chunkManager->Initialize(
+        // Generate callback (runs on worker thread)
+        [](World::WorldChunk& chunk) {
+            // Worker thread: just log (building generation disabled for stability)
+        },
+        // Loaded callback (runs on main thread when chunk is ready)
+        [](World::WorldChunk& chunk) {
+            // Disabled: was generating buildings here but caused DX12 Present failures
+            // std::cout << "[ChunkLoad] Chunk ready: (" << chunk.coord.x << ", " << chunk.coord.y << ")" << std::endl;
+        },
+        // Unloaded callback (runs on main thread before chunk is freed)  
+        [](World::WorldChunk& chunk) {
+            // Disabled: chunk unload handling
+        }
+    );
+    std::cout << "WorldChunkManager initialized (streaming infrastructure ready, generation disabled)" << std::endl;
+    
     // Bind player entity to systems that need it
     if (enemyAISystem) {
         enemyAISystem->SetPlayerEntity(playerEntity);
@@ -1259,6 +1361,14 @@ int main() {
         if (wallRunningSystem) {
             wallRunningSystem->Update(deltaTime);
         }
+        
+        // Update chunk streaming based on player position
+        if (chunkManager && playerEntity != 0) {
+            auto& playerTransform = coordinator.GetComponent<Rendering::TransformComponent>(playerEntity);
+            chunkManager->Update(playerTransform.position, frameNumber);
+            chunkManager->ProcessCompletedChunks();
+        }
+        ++frameNumber;
 
         // Camera mode toggles (match GL renderer behavior: 1=ORBIT_FOLLOW, 2=FREE_LOOK, 3=COMBAT_FOCUS, 4=THIRD_PERSON)
         if (mainCamera) {
