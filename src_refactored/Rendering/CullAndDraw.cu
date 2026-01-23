@@ -28,6 +28,14 @@ struct IndirectCommand {
     unsigned int      padding;
 };
 
+struct Matrix4x4 {
+    float m[4][4];
+};
+
+struct FrustumPlane {
+    float x, y, z, w;
+};
+
 // Internal Kernel Representation (Must match C++ layout)
 struct ObjectCullingDataGPU {
     float3 sphereCenter;
@@ -42,14 +50,6 @@ struct ObjectCullingDataGPU {
     unsigned long long materialCbv;
     Matrix4x4 worldMatrix; // Added
     unsigned int      indexCount;
-};
-
-struct Matrix4x4 {
-    float m[4][4];
-};
-
-struct FrustumPlane {
-    float x, y, z, w;
 };
 
 __constant__ FrustumPlane c_frustumPlanes[6];

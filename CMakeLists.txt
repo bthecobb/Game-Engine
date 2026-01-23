@@ -116,6 +116,9 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 
 # CUDA specific flags - only set if CUDA language is enabled
 if(CMAKE_CUDA_COMPILER)
+    # Fix for "cl.exe not found" - Explicitly set host compiler
+    set(CMAKE_CUDA_HOST_COMPILER "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.38.33130/bin/HostX64/x64/cl.exe")
+    
     # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
     set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
     set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
@@ -1290,29 +1293,38 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     
     # CUDA Frustum Culling Library (AAA GPU optimization)
     # Separate library to isolate CUDA compilation from DX12/PhysX includes
-    # CUDA Frustum Culling Library (AAA GPU optimization)
-    # Separate library to isolate CUDA compilation from DX12/PhysX includes
-    # if(ENABLE_CUDA AND CUDAToolkit_FOUND)
-    #     add_library(CudaCulling STATIC
-    #         src_refactored/Rendering/CudaFrustumCulling.cu
-    #         src_refactored/Rendering/CudaFrustumCulling.cpp
-    #     )
-    #     # Use direct include paths to avoid transitive dependency pollution
-    #     target_include_directories(CudaCulling PRIVATE
-    #         ${CMAKE_SOURCE_DIR}/include_refactored
-    #         ${CMAKE_SOURCE_DIR}/glm
-    #         ${CUDAToolkit_INCLUDE_DIRS}
-    #     )
-    #     target_link_libraries(CudaCulling PRIVATE
-    #         CUDA::cudart
-    #     )
-    #     set_target_properties(CudaCulling PROPERTIES
-    #         CUDA_SEPARABLE_COMPILATION ON
-    #         CUDA_ARCHITECTURES "75;86"
-    #         MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
-    #     )
-    #     message(STATUS "CudaCulling library will be built")
-    # endif()
+    # KERNEL COMPILATION WORKAROUND
+    # MSBuild/NVCC integration is broken on this env ("single input file" error).
+    # We compile the kernel MANUALLY using a custom command and link the object.
+    
+    if(ENABLE_CUDA)
+        set(CUDA_OBJ_FILE "${CMAKE_BINARY_DIR}/Release/CullAndDraw.obj")
+        set(NVCC_PATH "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc.exe")
+        set(HOST_COMPILER_PATH "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.38.33130/bin/HostX64/x64")
+        
+        # Build the command using proven arguments
+        add_custom_command(
+            OUTPUT ${CUDA_OBJ_FILE}
+            COMMAND "${NVCC_PATH}"
+            ARGS 
+            -ccbin "${HOST_COMPILER_PATH}"
+            -c "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CullAndDraw.cu"
+            -o "${CUDA_OBJ_FILE}"
+            -I"${CMAKE_SOURCE_DIR}/include_refactored"
+            -I"${CMAKE_SOURCE_DIR}/include"
+            -I"${CMAKE_SOURCE_DIR}/glm"
+            -DGLM_ENABLE_EXPERIMENTAL
+            -O3 -std=c++17
+            --machine 64
+            --generate-code=arch=compute_86,code=[compute_86,sm_86]
+            -Xcompiler "/MD" 
+            MAIN_DEPENDENCY "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CullAndDraw.cu"
+            COMMENT "Manually compiling CullAndDraw.cu to bypass MSBuild error"
+        )
+        
+        # Add a custom target to ensure it builds
+        add_custom_target(CompileCudaKernel DEPENDS ${CUDA_OBJ_FILE})
+    endif()
     
     # Full3DGame DX12 - Game with D3D12 Renderer
     add_executable(Full3DGame_DX12
@@ -1348,9 +1360,14 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         src_refactored/Rendering/MeshletGenerator.cpp
         # Phase 3: Modular Cuda Core
         src_refactored/Core/CudaCore.cpp
-        # src_refactored/Rendering/CullAndDraw.cu  # Disabled due to NVCC issue
-        src_refactored/Rendering/CullAndDrawStub.cpp
+        src_refactored/Core/CudaCore.cpp
+        # src_refactored/Rendering/CullAndDraw.cu (Moved to Manual Build)
+        ${CUDA_OBJ_FILE}
     )
+    
+    if(ENABLE_CUDA)
+        add_dependencies(Full3DGame_DX12 CompileCudaKernel)
+    endif()
     
     target_include_directories(Full3DGame_DX12 PRIVATE
         ${CMAKE_SOURCE_DIR}/include_refactored
@@ -1367,7 +1384,9 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         dxcompiler
         $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
         $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
-        $<$<AND:$<BOOL:${ENABLE_CUDA}>,$<TARGET_EXISTS:CudaCulling>>:CudaCulling>
+        $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
+        # $<$<BOOL:${ENABLE_CUDA}>:CudaCulling> # Disabled
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart CUDA::cuda_driver>
         $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart CUDA::cuda_driver>
     )
     
