@@ -416,6 +416,17 @@ void UpdateInputComponent(Core::Entity playerEntity) {
     glm::vec2 newPos(static_cast<float>(xpos), static_cast<float>(ypos));
     input.mouseDelta = newPos - input.mousePos;
     input.mousePos = newPos;
+
+    // Debug input (spammy but needed)
+    static int inputLogCounter = 0;
+    if (++inputLogCounter % 60 == 0) {
+        if (input.keys[GLFW_KEY_W] || input.keys[GLFW_KEY_S] || input.keys[GLFW_KEY_A] || input.keys[GLFW_KEY_D]) {
+            std::cout << "[Input] WASD pressed. Mouse Delta: (" << input.mouseDelta.x << ", " << input.mouseDelta.y << ")" << std::endl;
+        }
+        if (glm::length(input.mouseDelta) > 1.0f) {
+            std::cout << "[Input] Mouse moved. Delta: (" << input.mouseDelta.x << ", " << input.mouseDelta.y << ")" << std::endl;
+        }
+    }
 }
 
 // Handle player movement with enhanced features (dash, sprint, etc.)
@@ -992,6 +1003,8 @@ std::unique_ptr<D3D12Mesh> CreateD3D12MeshFromBuilding(
     
     auto mesh = std::make_unique<D3D12Mesh>();
     if (mesh->Create(backend, vertices, buildingMesh.indices, "ProceduralBuilding")) {
+        // Generate meshlets for Mesh Shader pipeline
+        mesh->GenerateMeshlets(backend, vertices, buildingMesh.indices);
         return mesh;
     }
     return nullptr;
@@ -1049,6 +1062,9 @@ void SyncEntitiesToRenderer() {
             entityMeshes[entity]->GetMaterial().roughness = material.roughness;
             entityMeshes[entity]->GetMaterial().ambientOcclusion = material.ao;
             
+            // Sync transform to GPU (Mesh Shader path)
+            entityMeshes[entity]->UpdateGPUInstanceData();
+            
             // Add to render pipeline
             renderPipeline->AddMesh(entityMeshes[entity].get());
         }
@@ -1057,22 +1073,37 @@ void SyncEntitiesToRenderer() {
 
 
 int main() {
+    // Force unbuffered output for debugging
+    std::cout.setf(std::ios::unitbuf);
+    std::cerr.setf(std::ios::unitbuf);
+    
     std::cout << "=== CudaGame - D3D12 Full 3D Demo ===" << std::endl;
     std::cout << "Features: PhysX Physics, D3D12 Rendering, ECS Architecture" << std::endl;
     std::cout << std::endl;
+    std::cout << "[INIT] Starting initialization..." << std::flush;
+    
+    // File-based checkpoint logging for crash tracing
+    std::ofstream checkpoint("checkpoint.log", std::ios::trunc);
+    checkpoint << "=== INITIALIZATION CHECKPOINT LOG ===" << std::endl;
+    checkpoint.flush();
+    
+    #define CHECKPOINT(msg) do { checkpoint << "[CP] " << msg << std::endl; checkpoint.flush(); } while(0)
 
     // Initialize window
     if (!InitializeWindow()) {
         return -1;
     }
+    CHECKPOINT("Window initialized");
     
     // Initialize ECS
     coordinator.Initialize();
+    CHECKPOINT("ECS coordinator initialized");
     
     // Register rendering components
     coordinator.RegisterComponent<Rendering::TransformComponent>();
     coordinator.RegisterComponent<Rendering::MaterialComponent>();
     coordinator.RegisterComponent<Rendering::MeshComponent>();  // Added - required by LevelSystem
+    CHECKPOINT("Rendering components registered");
     
     // Register gameplay components
     coordinator.RegisterComponent<Gameplay::PlayerMovementComponent>();
@@ -1080,12 +1111,14 @@ int main() {
     coordinator.RegisterComponent<Gameplay::PlayerInputComponent>();
     coordinator.RegisterComponent<Gameplay::PlayerRhythmComponent>();
     coordinator.RegisterComponent<Gameplay::GrapplingHookComponent>();
+    CHECKPOINT("Player components registered");
     
     // Register enemy components
     coordinator.RegisterComponent<Gameplay::EnemyAIComponent>();
     coordinator.RegisterComponent<Gameplay::EnemyCombatComponent>();
     coordinator.RegisterComponent<Gameplay::EnemyMovementComponent>();
     coordinator.RegisterComponent<Gameplay::TargetingComponent>();
+    CHECKPOINT("Enemy components registered");
     
     // Register level components (required by LevelSystem - missing before caused crash!)
     coordinator.RegisterComponent<Gameplay::DimensionalVisibilityComponent>();
@@ -1094,11 +1127,13 @@ int main() {
     coordinator.RegisterComponent<Gameplay::WallComponent>();
     coordinator.RegisterComponent<Gameplay::CollectibleComponent>();
     coordinator.RegisterComponent<Gameplay::InteractableComponent>();
+    CHECKPOINT("Level components registered");
     
     // Register physics components (required for CharacterControllerSystem and PhysXPhysicsSystem)
     coordinator.RegisterComponent<Physics::RigidbodyComponent>();
     coordinator.RegisterComponent<Physics::ColliderComponent>();
     coordinator.RegisterComponent<Physics::CharacterControllerComponent>();
+    CHECKPOINT("Physics components registered");
     
     std::cout << "ECS initialized with all gameplay components (matching OpenGL)" << std::endl;
     
@@ -1146,21 +1181,31 @@ int main() {
     coordinator.SetSystemSignature<Gameplay::EnemyAISystem>(enemyAISignature);
     enemyAISystem->Initialize();
     std::cout << "EnemyAISystem initialized" << std::endl;
+    CHECKPOINT("EnemyAISystem done");
     
     // Register LevelSystem (manages collectibles, level logic)
+    CHECKPOINT("About to register LevelSystem");
     levelSystem = coordinator.RegisterSystem<Gameplay::LevelSystem>();
+    CHECKPOINT("LevelSystem registered");
     Core::Signature levelSignature; // Empty signature - LevelSystem doesn't require specific components
     coordinator.SetSystemSignature<Gameplay::LevelSystem>(levelSignature);
+    CHECKPOINT("LevelSystem signature set");
     levelSystem->Initialize();
     std::cout << "LevelSystem initialized" << std::endl;
+    CHECKPOINT("LevelSystem initialized");
     
     // Register TargetingSystem (for combat lock-on)
+    CHECKPOINT("About to register TargetingSystem");
     targetingSystem = coordinator.RegisterSystem<Gameplay::TargetingSystem>();
+    CHECKPOINT("TargetingSystem registered");
     Core::Signature targetingSignature;
     targetingSignature.set(coordinator.GetComponentType<Gameplay::TargetingComponent>());
+    CHECKPOINT("TargetingComponent type retrieved");
     coordinator.SetSystemSignature<Gameplay::TargetingSystem>(targetingSignature);
+    CHECKPOINT("TargetingSystem signature set");
     targetingSystem->Initialize();
     std::cout << "TargetingSystem initialized" << std::endl;
+    CHECKPOINT("TargetingSystem initialized");
     
     // Register PlayerMovementSystem (extended player movement including wall-run input)
     playerMovementSystem = coordinator.RegisterSystem<Gameplay::PlayerMovementSystem>();
@@ -1304,7 +1349,8 @@ int main() {
     // (Debug-only initial entity dump removed to keep DX12 output clean.)
 
     // Main game loop
-    std::cout << "Entering main loop (Press ESC to exit, TAB for mouse capture)..." << std::endl;
+    std::cout << "\n[CHECKPOINT] All initialization complete. Entering main loop..." << std::endl;
+    std::cout << "Press ESC to exit, TAB for mouse capture..." << std::endl;
     
     // Fixed timestep physics (matches OpenGL version)
     const float FIXED_TIMESTEP = 1.0f / 60.0f;
@@ -1334,6 +1380,16 @@ int main() {
         if (deltaTime > 0.1f) deltaTime = 0.1f;
         
         time += deltaTime;
+        
+        static std::ofstream debugLoopFile("debug_loop.txt");
+        if (debugLoopFile.is_open() && frameCount % 60 == 0) {
+            auto stats = renderPipeline->GetFrameStats();
+            debugLoopFile << "Frame: " << frameCount << " | Time: " << time << " | deltaTime: " << deltaTime 
+                          << " | MouseCaptured: " << mouseCaptured
+                          << " | Meshes: " << renderPipeline->GetMeshCount()
+                          << " | DrawCalls: " << stats.drawCalls
+                          << " | Tris: " << stats.triangles << std::endl;
+        }
         
         
         // Update input component from GLFW

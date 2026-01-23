@@ -116,7 +116,7 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 
 # CUDA specific flags - only set if CUDA language is enabled
 if(CMAKE_CUDA_COMPILER)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
     set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
     set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
     
@@ -1024,11 +1024,14 @@ if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     )
     
     # Set CUDA source properties
-    set_source_files_properties(
-        src_refactored/Rendering/CudaBuildingKernels.cu
-        PROPERTIES
-        LANGUAGE CUDA
-    )
+    
+    # Set CUDA source properties (Implicit for .cu files)
+    # set_source_files_properties(
+    #     src_refactored/Rendering/CudaBuildingKernels.cu
+    #     src_refactored/Rendering/CullAndDraw.cu
+    #     PROPERTIES
+    #     LANGUAGE CUDA
+    # )
 endif()
 
 target_link_libraries(Full3DGame PRIVATE
@@ -1287,27 +1290,29 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     
     # CUDA Frustum Culling Library (AAA GPU optimization)
     # Separate library to isolate CUDA compilation from DX12/PhysX includes
-    if(ENABLE_CUDA AND CUDAToolkit_FOUND)
-        add_library(CudaCulling STATIC
-            src_refactored/Rendering/CudaFrustumCulling.cu
-            src_refactored/Rendering/CudaFrustumCulling.cpp
-        )
-        # Use direct include paths to avoid transitive dependency pollution
-        target_include_directories(CudaCulling PRIVATE
-            ${CMAKE_SOURCE_DIR}/include_refactored
-            ${CMAKE_SOURCE_DIR}/glm
-            ${CUDAToolkit_INCLUDE_DIRS}
-        )
-        target_link_libraries(CudaCulling PRIVATE
-            CUDA::cudart
-        )
-        set_target_properties(CudaCulling PROPERTIES
-            CUDA_SEPARABLE_COMPILATION ON
-            CUDA_ARCHITECTURES "75;86"
-            MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
-        )
-        message(STATUS "CudaCulling library will be built")
-    endif()
+    # CUDA Frustum Culling Library (AAA GPU optimization)
+    # Separate library to isolate CUDA compilation from DX12/PhysX includes
+    # if(ENABLE_CUDA AND CUDAToolkit_FOUND)
+    #     add_library(CudaCulling STATIC
+    #         src_refactored/Rendering/CudaFrustumCulling.cu
+    #         src_refactored/Rendering/CudaFrustumCulling.cpp
+    #     )
+    #     # Use direct include paths to avoid transitive dependency pollution
+    #     target_include_directories(CudaCulling PRIVATE
+    #         ${CMAKE_SOURCE_DIR}/include_refactored
+    #         ${CMAKE_SOURCE_DIR}/glm
+    #         ${CUDAToolkit_INCLUDE_DIRS}
+    #     )
+    #     target_link_libraries(CudaCulling PRIVATE
+    #         CUDA::cudart
+    #     )
+    #     set_target_properties(CudaCulling PROPERTIES
+    #         CUDA_SEPARABLE_COMPILATION ON
+    #         CUDA_ARCHITECTURES "75;86"
+    #         MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    #     )
+    #     message(STATUS "CudaCulling library will be built")
+    # endif()
     
     # Full3DGame DX12 - Game with D3D12 Renderer
     add_executable(Full3DGame_DX12
@@ -1341,6 +1346,10 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         src_refactored/Rendering/CudaBuildingGenerator_DX12.cpp
         # Mesh shader infrastructure (DX12 Ultimate)
         src_refactored/Rendering/MeshletGenerator.cpp
+        # Phase 3: Modular Cuda Core
+        src_refactored/Core/CudaCore.cpp
+        # src_refactored/Rendering/CullAndDraw.cu  # Disabled due to NVCC issue
+        src_refactored/Rendering/CullAndDrawStub.cpp
     )
     
     target_include_directories(Full3DGame_DX12 PRIVATE
@@ -1359,7 +1368,7 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
         $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
         $<$<AND:$<BOOL:${ENABLE_CUDA}>,$<TARGET_EXISTS:CudaCulling>>:CudaCulling>
-        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart>
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart CUDA::cuda_driver>
     )
     
     target_compile_definitions(Full3DGame_DX12 PRIVATE

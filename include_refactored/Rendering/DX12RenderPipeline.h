@@ -12,6 +12,14 @@
 #include "Rendering/D3D12Mesh.h"
 #include "Rendering/D3D12Constants.h"
 #include <wrl/client.h>
+#include "Rendering/CullAndDraw.h"
+
+namespace CudaGame {
+    namespace Core {
+        class CudaCore;
+    }
+}
+struct cudaGraphicsResource; // Forward decl for CUDA handle
 
 namespace CudaGame {
 namespace Rendering {
@@ -139,8 +147,10 @@ private:
     void LightingPass();      // Deferred lighting from G-Buffer
     void RayTracingPass();    // RT reflections, shadows, AO
     void DLSSPass();          // Upscale render res → display res
+    
     void PostProcessPass();   // Bloom, tone mapping, etc.
     void UIPass();            // Render UI at display res
+    void RenderMeshesWithMeshShader(ID3D12GraphicsCommandList* cmdList); // DX12 Ultimate path
 
     // === Resource Management ===
     bool CreateGBuffer();
@@ -154,6 +164,8 @@ private:
     bool CreateGBufferPassPSO();
     bool CreateGeometryPassPSO();
     bool CreateSkyboxPSO();
+    bool CreateMeshShaderPSO();           // DX12 Ultimate mesh shader PSO
+    bool CheckMeshShaderSupport();        // Query D3D12 for mesh shader support
     
     // === Constant Buffer Management ===
     bool CreateConstantBuffers();
@@ -199,6 +211,15 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_skyboxPSO;
     bool m_skyboxEnabled = true;
     
+    // Mesh Shader Pipeline (DX12 Ultimate - AAA tier)
+    Microsoft::WRL::ComPtr<ID3DBlob> m_amplificationShader;   // Per-meshlet culling
+    Microsoft::WRL::ComPtr<ID3DBlob> m_meshShader;            // Vertex generation
+    Microsoft::WRL::ComPtr<ID3DBlob> m_meshPixelShader;       // PBR shading
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_meshShaderPSO;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_meshShaderRootSig;
+    bool m_meshShadersEnabled = false;  // Enable when ready
+    bool m_meshShadersSupported = false; // Set during init
+    
     // === Constant Buffers ===
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perFrameCB;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perObjectCB;
@@ -207,6 +228,36 @@ private:
     PerObjectConstants* m_perObjectData = nullptr;
     MaterialConstants* m_materialData = nullptr;
     
+    // === Indirect Execution (CudaCore Invention 1) ===
+    enum class RenderPath {
+        VertexShader_Fallback,      // Legacy/Safe loop
+        Indirect_GPU_Driven         // High-performance ExecuteIndirect
+    };
+
+    struct IndirectCommand {
+        D3D12_GPU_VIRTUAL_ADDRESS cbv;         // Per-object constant buffer (8 bytes)
+        D3D12_GPU_VIRTUAL_ADDRESS materialCbv; // Material constant buffer (8 bytes)
+        D3D12_VERTEX_BUFFER_VIEW vbv;          // Vertex Buffer View (16 bytes)
+        D3D12_INDEX_BUFFER_VIEW ibv;           // Index Buffer View (16 bytes)
+        D3D12_DRAW_INDEXED_ARGUMENTS drawArguments; // Draw command (20 bytes)
+        uint32_t padding;                      // Align: 8+8+16+16+20 = 68. +4 = 72 bytes.
+    };
+
+    // === Kernel Execution Methods ===
+    void ExecuteRenderKernel(ID3D12GraphicsCommandList* cmdList);
+    void ExecuteVertexShaderPacket(ID3D12GraphicsCommandList* cmdList);
+    void ExecuteIndirectPacket(ID3D12GraphicsCommandList* cmdList);
+    
+    // === Indirect Resources ===
+    bool CreateCommandSignature();
+    void UploadIndirectCommands(); // CPU Generation (Phase 2)
+    
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectCommandBuffer;
+    uint32_t m_indirectCommandMaxCount = 0;
+
+    RenderPath m_activePath = RenderPath::VertexShader_Fallback;
+
     // === Feature Flags ===
     bool m_initialized = false;
     bool m_dlssEnabled = true;
@@ -219,6 +270,17 @@ private:
     
     // === Performance Tracking ===
     FrameStats m_stats;
+
+    // === CUDA Interop (Phase 3) ===
+    std::unique_ptr<CudaGame::Core::CudaCore> m_cudaCore;
+    struct cudaGraphicsResource* m_cudaIndirectBufferResource = nullptr;
+    struct cudaGraphicsResource* m_cudaObjectCullingResource = nullptr;
+    struct cudaGraphicsResource* m_cudaPerObjectResource = nullptr;
+    struct cudaGraphicsResource* m_cudaDrawCounterResource = nullptr;
+    
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCullingDataBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_drawCounterBuffer;
+    void UploadObjectCullingData();
 };
 
 } // namespace Rendering

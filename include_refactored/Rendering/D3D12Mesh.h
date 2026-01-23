@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <glm/glm.hpp>
+#include "Rendering/Meshlet.h"
 
 namespace CudaGame {
 namespace Rendering {
@@ -91,12 +92,55 @@ public:
     Material& GetMaterial() { return m_material; }
     const Material& GetMaterial() const { return m_material; }
     
+    // Mesh Shader Support
+    struct MeshletBuffers {
+        ID3D12Resource* meshlets = nullptr;
+        ID3D12Resource* vertexIndices = nullptr;
+        ID3D12Resource* primitives = nullptr;
+        ID3D12Resource* bounds = nullptr;
+        // Attribute buffers (SoA for mesh shader)
+        ID3D12Resource* positions = nullptr;
+        ID3D12Resource* normals = nullptr;
+        ID3D12Resource* uvs = nullptr;
+        ID3D12Resource* colors = nullptr;
+        ID3D12Resource* instances = nullptr;
+        
+        uint32_t meshletCount = 0;
+        
+        void Release() {
+            if (meshlets) { meshlets->Release(); meshlets = nullptr; }
+            if (vertexIndices) { vertexIndices->Release(); vertexIndices = nullptr; }
+            if (primitives) { primitives->Release(); primitives = nullptr; }
+            if (bounds) { bounds->Release(); bounds = nullptr; }
+            if (positions) { positions->Release(); positions = nullptr; }
+            if (normals) { normals->Release(); normals = nullptr; }
+            if (uvs) { uvs->Release(); uvs = nullptr; }
+            if (colors) { colors->Release(); colors = nullptr; }
+            if (instances) { instances->Release(); instances = nullptr; }
+        }
+    };
+    
+    // Generate and upload meshlets for this mesh
+    bool GenerateMeshlets(DX12RenderBackend* backend, 
+                         const std::vector<Vertex>& vertices,
+                         const std::vector<uint32_t>& indices);
+                         
+    const MeshletBuffers& GetMeshletBuffers() const { return m_meshlets; }
+    
     // Transform
     glm::mat4 transform = glm::mat4(1.0f);
+    
+    // Bounds (AABB)
+    glm::vec3 boundsMin = glm::vec3(0.0f);
+    glm::vec3 boundsMax = glm::vec3(0.0f);
+
+    // Update GPU instance buffer with current transform
+    void UpdateGPUInstanceData();
     
 private:
     GPUBuffer m_vertexBuffer;
     GPUBuffer m_indexBuffer;
+    MeshletBuffers m_meshlets;
     Material m_material;
     std::string m_name;
 };

@@ -1,12 +1,16 @@
 // MeshShader.hlsl - DX12 Ultimate Mesh Shader for AAA rendering
 // Generates triangles from meshlets, outputs to pixel shader
 
-// Meshlet structure (matches C++ Meshlet struct)
+// Meshlet structure (matches C++ Meshlet struct layout)
 struct Meshlet {
     uint vertexOffset;
     uint vertexCount;
     uint primitiveOffset;
     uint primitiveCount;
+    
+    // Bounding info (interleaved in C++ struct)
+    float4 sphere;
+    float4 cone; 
 };
 
 // Meshlet bounds for culling
@@ -48,7 +52,7 @@ StructuredBuffer<float3> Normals : register(t1);
 StructuredBuffer<float2> UVs : register(t2);
 StructuredBuffer<float4> Colors : register(t3);
 StructuredBuffer<uint> VertexIndices : register(t4);
-StructuredBuffer<uint> PrimitiveIndices : register(t5);
+StructuredBuffer<uint> PrimitiveIndices : register(t5); // Actually contains packed 8-bit indices!
 StructuredBuffer<Meshlet> Meshlets : register(t6);
 StructuredBuffer<InstanceData> Instances : register(t7);
 
@@ -62,55 +66,68 @@ struct MeshPayload {
     uint instanceId;
 };
 
+// Helper: Unpack 8-bit index from 32-bit word buffer
+uint UnpackPrimitiveIndex(uint byteOffset) {
+    uint wordOffset = byteOffset / 4;
+    uint shift = (byteOffset % 4) * 8;
+    uint word = PrimitiveIndices[wordOffset];
+    return (word >> shift) & 0xFF;
+}
+
 // Mesh shader entry point
-[NumThreads(128, 1, 1)]
+[NumThreads(32, 1, 1)] // Adjusted to 32 to match AS wave size, loop handles >32
 [OutputTopology("triangle")]
 void main(
     uint gtid : SV_GroupThreadID,
     uint gid : SV_GroupID,
-    in payload MeshPayload meshPayload,
-    out vertices VertexOutput verts[MAX_VERTICES],
-    out indices uint3 tris[MAX_PRIMITIVES]
+    in payload MeshPayload payload,
+    out indices uint3 tris[MAX_PRIMITIVES],
+    out vertices VertexOutput verts[MAX_VERTICES]
 ) {
     // Get meshlet index from payload
-    uint meshletIndex = meshPayload.meshletIndices[gid % 32];
-    Meshlet meshlet = Meshlets[meshletIndex];
-    InstanceData instance = Instances[meshPayload.instanceId];
+    uint meshletIndex = payload.meshletIndices[gid];
     
-    // Set mesh output counts
-    SetMeshOutputCounts(meshlet.vertexCount, meshlet.primitiveCount);
+    // Get instance data (for world transform)
+    InstanceData instance = Instances[payload.instanceId];
     
-    // Each thread processes one vertex
-    if (gtid < meshlet.vertexCount) {
-        uint vertexIndex = VertexIndices[meshlet.vertexOffset + gtid];
+    // Load meshlet
+    Meshlet m = Meshlets[meshletIndex];
+    
+    // Set output counts
+    SetMeshOutputCounts(m.vertexCount, m.primitiveCount);
+    
+    // Load vertices (loop to handle >32 count if needed, or rely on 128 threads if I revert numthreads)
+    // Actually, let's keep it robust for 64 vertices with 32 threads using a loop
+    for (uint i = gtid; i < m.vertexCount; i += 32) {
+        uint vertexIndex = VertexIndices[m.vertexOffset + i];
         
+        // Load vertex attributes
         float3 localPos = Positions[vertexIndex];
-        float3 localNormal = Normals[vertexIndex];
+        float3 normal = Normals[vertexIndex];
+        float2 uv = UVs[vertexIndex];
+        float4 color = Colors[vertexIndex];
         
         // Transform to world space
-        float4 worldPos = mul(instance.worldMatrix, float4(localPos, 1.0));
-        float3 worldNormal = normalize(mul((float3x3)instance.normalMatrix, localNormal));
+        float4 worldPos = mul(instance.worldMatrix, float4(localPos, 1.0f));
         
-        // Output vertex
-        VertexOutput v;
-        v.position = mul(viewProjection, worldPos);
-        v.worldPos = worldPos.xyz;
-        v.normal = worldNormal;
-        v.uv = UVs[vertexIndex];
-        v.color = Colors[vertexIndex];
-        v.meshletIndex = meshletIndex;
-        
-        verts[gtid] = v;
+        // Output
+        verts[i].position = mul(viewProjection, worldPos);
+        verts[i].worldPos = worldPos.xyz;
+        verts[i].normal = mul((float3x3)instance.normalMatrix, normal);
+        verts[i].uv = uv;
+        verts[i].color = color;
+        verts[i].meshletIndex = meshletIndex;
     }
     
-    // Each thread also processes primitives (indices)
-    if (gtid < meshlet.primitiveCount) {
-        // Primitive indices are packed as 3 bytes per triangle
-        uint primOffset = meshlet.primitiveOffset + gtid * 3;
-        uint i0 = PrimitiveIndices[primOffset + 0];
-        uint i1 = PrimitiveIndices[primOffset + 1];
-        uint i2 = PrimitiveIndices[primOffset + 2];
+    // Load primitives
+    for (uint i = gtid; i < m.primitiveCount; i += 32) {
+        uint primOffset = m.primitiveOffset + i * 3;
         
-        tris[gtid] = uint3(i0, i1, i2);
+        // Unpack 3 indices (8-bit each)
+        uint i0 = UnpackPrimitiveIndex(primOffset + 0);
+        uint i1 = UnpackPrimitiveIndex(primOffset + 1);
+        uint i2 = UnpackPrimitiveIndex(primOffset + 2);
+        
+        tris[i] = uint3(i0, i1, i2);
     }
 }

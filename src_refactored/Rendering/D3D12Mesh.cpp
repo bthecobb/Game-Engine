@@ -9,6 +9,7 @@ namespace CudaGame {
 namespace Rendering {
 
 D3D12Mesh::~D3D12Mesh() {
+    m_meshlets.Release();
     // GPUBuffer destructors will release resources
 }
 
@@ -19,6 +20,16 @@ bool D3D12Mesh::Create(DX12RenderBackend* backend,
     m_name = name;
     
     ID3D12Device* device = backend->GetDevice();
+    
+    // Compute Bounds
+    if (!vertices.empty()) {
+        boundsMin = vertices[0].position;
+        boundsMax = vertices[0].position;
+        for (const auto& v : vertices) {
+            boundsMin = glm::min(boundsMin, v.position);
+            boundsMax = glm::max(boundsMax, v.position);
+        }
+    }
     
     // Create vertex buffer
     {
@@ -151,6 +162,140 @@ bool D3D12Mesh::Create(DX12RenderBackend* backend,
     return true;
 }
 
+bool D3D12Mesh::GenerateMeshlets(DX12RenderBackend* backend, 
+                                const std::vector<Vertex>& vertices,
+                                const std::vector<uint32_t>& indices) {
+    if (vertices.empty() || indices.empty()) return false;
+    
+    std::cout << "[Mesh] Generating meshlets for " << m_name << "..." << std::endl;
+    std::cout << "[Mesh] sizeof(Meshlet) = " << sizeof(Meshlet) << " bytes" << std::endl;
+    
+    // 1. Prepare data for generator
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> uvs;
+    std::vector<glm::vec4> colors;
+    
+    positions.reserve(vertices.size());
+    normals.reserve(vertices.size());
+    uvs.reserve(vertices.size());
+    colors.reserve(vertices.size());
+    
+    for (const auto& v : vertices) {
+        positions.push_back(v.position);
+        normals.push_back(v.normal);
+        uvs.push_back(v.texcoord);
+        colors.push_back(v.color);
+    }
+    
+    // 2. Generate meshlets
+    MeshletMesh meshInfo = MeshletGenerator::Generate(positions, normals, indices);
+    m_meshlets.meshletCount = (uint32_t)meshInfo.meshlets.size();
+    
+    std::cout << "[Mesh] Generated " << m_meshlets.meshletCount << " meshlets for " << m_name << std::endl;
+    
+    ID3D12Device* device = backend->GetDevice();
+    
+    // Helper to create and upload buffer
+    auto CreateUploadBuffer = [&](const void* data, size_t size, const std::wstring& name) -> ID3D12Resource* {
+        if (size == 0) return nullptr;
+        
+        ID3D12Resource* buffer = nullptr;
+        D3D12_HEAP_PROPERTIES uploadHeapProps = {};
+        uploadHeapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+        uploadHeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+        uploadHeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+        uploadHeapProps.CreationNodeMask = 1;
+        uploadHeapProps.VisibleNodeMask = 1;
+        
+        D3D12_RESOURCE_DESC bufferDesc = {};
+        bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufferDesc.Alignment = 0;
+        bufferDesc.Width = size;
+        bufferDesc.Height = 1;
+        bufferDesc.DepthOrArraySize = 1;
+        bufferDesc.MipLevels = 1;
+        bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+        bufferDesc.SampleDesc.Count = 1;
+        bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        
+        HRESULT hr = device->CreateCommittedResource(
+            &uploadHeapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buffer)
+        );
+        
+        if (FAILED(hr)) {
+            std::cerr << "[Mesh] Failed to create meshlet buffer: " << std::string(name.begin(), name.end()) << std::endl;
+            return nullptr;
+        }
+        
+        buffer->SetName(name.c_str());
+        
+        void* mapped = nullptr;
+        D3D12_RANGE readRange = {0, 0};
+        if (SUCCEEDED(buffer->Map(0, &readRange, &mapped))) {
+            memcpy(mapped, data, size);
+            buffer->Unmap(0, nullptr);
+        }
+        
+        return buffer;
+    };
+    
+    std::wstring wname = std::wstring(m_name.begin(), m_name.end());
+    
+    // 3. Create buffers
+    // Meshlets
+    m_meshlets.meshlets = CreateUploadBuffer(meshInfo.meshlets.data(), 
+        meshInfo.meshlets.size() * sizeof(Meshlet), L"Meshlets_" + wname);
+        
+    // Unique Vertex Indices (indices into the attribute arrays)
+    m_meshlets.vertexIndices = CreateUploadBuffer(meshInfo.vertexIndices.data(), 
+        meshInfo.vertexIndices.size() * sizeof(uint32_t), L"MeshletVertices_" + wname);
+        
+    // Primitive Indices (packed)
+    m_meshlets.primitives = CreateUploadBuffer(meshInfo.primitiveIndices.data(), 
+        meshInfo.primitiveIndices.size() * sizeof(uint8_t), L"MeshletPrims_" + wname);
+    
+    // Meshlet Bounds
+    std::vector<MeshletBounds> bounds;
+    bounds.reserve(meshInfo.meshlets.size());
+    for (const auto& m : meshInfo.meshlets) {
+        MeshletBounds b;
+        b.sphere = glm::vec4(m.boundingSphereCenter, m.boundingSphereRadius);
+        b.cone = glm::vec4(m.coneAxis, cos(m.coneAngle));
+        bounds.push_back(b);
+    }
+    m_meshlets.bounds = CreateUploadBuffer(bounds.data(), 
+        bounds.size() * sizeof(MeshletBounds), L"MeshletBounds_" + wname);
+        
+    // Attribute Buffers
+    m_meshlets.positions = CreateUploadBuffer(positions.data(), positions.size() * sizeof(glm::vec3), L"Positions_" + wname);
+    m_meshlets.normals = CreateUploadBuffer(normals.data(), normals.size() * sizeof(glm::vec3), L"Normals_" + wname);
+    m_meshlets.uvs = CreateUploadBuffer(uvs.data(), uvs.size() * sizeof(glm::vec2), L"UVs_" + wname);
+    m_meshlets.colors = CreateUploadBuffer(colors.data(), colors.size() * sizeof(glm::vec4), L"Colors_" + wname);
+    
+    // Instance Data Buffer (Single instance, updateable)
+    struct InstanceData {
+        glm::mat4 world;
+        glm::mat4 normal;
+        uint32_t meshletOffset;
+        uint32_t meshletCount;
+        uint32_t pad[2];
+    };
+    
+    InstanceData inst;
+    inst.world = transform;
+    inst.normal = glm::transpose(glm::inverse(transform));
+    inst.meshletOffset = 0;
+    inst.meshletCount = m_meshlets.meshletCount;
+    inst.pad[0] = 0; inst.pad[1] = 0;
+    
+    m_meshlets.instances = CreateUploadBuffer(&inst, sizeof(InstanceData), L"Instance_" + wname);
+    
+    return true;
+}
+
 // ========== Procedural Mesh Generators ==========
 
 std::unique_ptr<D3D12Mesh> MeshGenerator::CreateCube(DX12RenderBackend* backend) {
@@ -209,6 +354,9 @@ std::unique_ptr<D3D12Mesh> MeshGenerator::CreateCube(DX12RenderBackend* backend)
         return nullptr;
     }
     
+    // Generate meshlets for mesh shader pipeline
+    mesh->GenerateMeshlets(backend, vertices, indices);
+    
     return mesh;
 }
 
@@ -266,6 +414,8 @@ std::unique_ptr<D3D12Mesh> MeshGenerator::CreateSphere(DX12RenderBackend* backen
         return nullptr;
     }
     
+    mesh->GenerateMeshlets(backend, vertices, indices);
+    
     return mesh;
 }
 
@@ -286,7 +436,37 @@ std::unique_ptr<D3D12Mesh> MeshGenerator::CreatePlane(DX12RenderBackend* backend
         return nullptr;
     }
     
+    mesh->GenerateMeshlets(backend, vertices, indices);
+    
     return mesh;
+}
+
+void D3D12Mesh::UpdateGPUInstanceData() {
+    if (!m_meshlets.instances) return;
+    
+    // Instance Data Buffer (Single instance)
+    struct InstanceData {
+        glm::mat4 world;
+        glm::mat4 normal;
+        uint32_t meshletOffset;
+        uint32_t meshletCount;
+        uint32_t pad[2];
+    };
+    
+    InstanceData inst;
+    inst.world = transform;
+    inst.normal = glm::transpose(glm::inverse(transform));
+    inst.meshletOffset = 0;
+    inst.meshletCount = m_meshlets.meshletCount;
+    inst.pad[0] = 0; inst.pad[1] = 0;
+    
+    // Map and Copy (assuming upload heap)
+    void* mapped = nullptr;
+    D3D12_RANGE readRange = {0, 0};
+    if (SUCCEEDED(m_meshlets.instances->Map(0, &readRange, &mapped))) {
+        memcpy(mapped, &inst, sizeof(InstanceData));
+        m_meshlets.instances->Unmap(0, nullptr);
+    }
 }
 
 } // namespace Rendering

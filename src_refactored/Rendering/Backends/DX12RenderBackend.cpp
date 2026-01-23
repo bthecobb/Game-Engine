@@ -24,13 +24,14 @@ bool DX12RenderBackend::Initialize() {
     HRESULT hr;
     
     // Enable debug layer in debug builds
-#ifdef _DEBUG
+    // Enable debug layer (during dev, even in Release to catch PSO errors)
+    // #ifdef _DEBUG
     ComPtr<ID3D12Debug> debugController;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
         debugController->EnableDebugLayer();
         std::cout << "[DX12] Debug layer enabled" << std::endl;
     }
-#endif
+    // #endif
 
     // Create DXGI factory
     UINT factoryFlags = 0;
@@ -375,9 +376,11 @@ void DX12RenderBackend::BeginFrame(const glm::vec4& clearColor, int width, int h
     m_cmdList->Reset(frame.commandAllocator.Get(), nullptr);
     
     // Transition render target to render target state
+    // Transition render target to render target state
     TransitionResource(frame.renderTarget.Get(), 
                       D3D12_RESOURCE_STATE_PRESENT, 
                       D3D12_RESOURCE_STATE_RENDER_TARGET);
+    // std::cout << "SKIP BARRIER (BeginFrame)" << std::endl;
     
     // Set render targets
     m_cmdList->OMSetRenderTargets(1, &frame.rtvHandle, FALSE, &m_dsvHandle);
@@ -413,9 +416,11 @@ void DX12RenderBackend::Present() {
     FrameResources& frame = m_frameResources[m_currentFrameIndex];
     
     // Transition render target back to present state
+    // Transition render target back to present state
     TransitionResource(frame.renderTarget.Get(), 
                       D3D12_RESOURCE_STATE_RENDER_TARGET, 
                       D3D12_RESOURCE_STATE_PRESENT);
+    // std::cout << "SKIP BARRIER (Present)" << std::endl;
     
     // REFLEX MARKER: End render submit (commands recorded, about to execute)
     if (m_reflex && m_reflex->IsSupported()) {
@@ -435,7 +440,11 @@ void DX12RenderBackend::Present() {
     // Present (vsync off with tearing for low latency)
     HRESULT hr = m_swapchain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
     if (FAILED(hr)) {
-        std::cerr << "[DX12] Present failed" << std::endl;
+        std::cerr << "[DX12] Present failed with HRESULT: " << std::hex << hr << std::dec << std::endl;
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
+            HRESULT reason = m_device->GetDeviceRemovedReason();
+            std::cerr << "[DX12] Device Removed Reason: " << std::hex << reason << std::dec << std::endl;
+        }
     }
     
     // REFLEX MARKER: Present completed

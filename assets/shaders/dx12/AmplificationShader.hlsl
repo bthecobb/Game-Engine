@@ -32,8 +32,9 @@ cbuffer CameraBuffer : register(b0) {
 };
 
 // Buffers
-StructuredBuffer<MeshletBounds> MeshletBoundsBuffer : register(t0);
-StructuredBuffer<InstanceData> Instances : register(t1);
+// Buffers
+StructuredBuffer<MeshletBounds> MeshletBoundsBuffer : register(t8); // Remapped to t8 to avoid conflict with MS attributes (t0-t5)
+StructuredBuffer<InstanceData> Instances : register(t7);            // Shared with MS (t7)
 
 // Root constants
 cbuffer RootConstants : register(b1) {
@@ -97,21 +98,20 @@ void main(
         MeshletBounds bounds = MeshletBoundsBuffer[globalMeshletIndex];
         
         // Transform sphere to world space
-        float4 worldSphere;
-        worldSphere.xyz = mul(instance.worldMatrix, float4(bounds.sphere.xyz, 1.0)).xyz;
-        worldSphere.w = bounds.sphere.w;  // Assume uniform scale
+        // float4 sphere = bounds.sphere;
+        // float3 center = mul(instance.worldMatrix, float4(sphere.xyz, 1.0)).xyz;
+        // float radius = sphere.w * max(max(length(instance.worldMatrix[0].xyz), length(instance.worldMatrix[1].xyz)), length(instance.worldMatrix[2].xyz));
         
-        // Frustum cull
-        if (!FrustumCullSphere(worldSphere)) {
-            // Backface cone cull
-            float3 cameraDir = normalize(worldSphere.xyz - cameraPosition);
-            float3 worldAxis = normalize(mul((float3x3)instance.normalMatrix, bounds.cone.xyz));
-            float4 worldCone = float4(worldAxis, bounds.cone.w);
-            
-            if (!ConeCull(worldCone, cameraDir)) {
+        // Culling
+        // bool cull = FrustumCullSphere(float4(center, radius));
+        // if (!cull) {
+        //     float4 cone = bounds.cone;
+        //     float3 coneAxis = normalize(mul((float3x3)instance.worldMatrix, cone.xyz));
+        //     if (!ConeCull(float4(coneAxis, cone.w), normalize(center - cameraPosition))) {
                 visible = true;
-            }
-        }
+        //     }
+        // }
+
     }
     
     // Count visible meshlets using wave intrinsics

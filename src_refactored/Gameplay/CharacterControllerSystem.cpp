@@ -5,6 +5,7 @@
 #include "Gameplay/LevelComponents.h"  // For WallComponent
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
+#include <fstream>
 
 // GLFW key constants (to avoid linking GLFW when not needed)
 #define GLFW_KEY_W 87
@@ -46,6 +47,17 @@ void CharacterControllerSystem::SetCamera(Rendering::OrbitCamera* camera) {
 
 void CharacterControllerSystem::Update(float deltaTime) {
     auto& coordinator = Core::Coordinator::GetInstance();
+    
+    // DEBUG: Log entity count and status every 60 frames TO FILE (avoids shader compiler interleaving)
+    static int debugCounter = 0;
+    static std::ofstream ccsLog("ccs_debug.txt", std::ios::trunc);
+    if (++debugCounter % 60 == 0 && ccsLog.is_open()) {
+        ccsLog << "[CCS DEBUG] Frame " << debugCounter 
+               << " | Entities: " << mEntities.size() 
+               << " | Camera: " << (m_camera ? "SET" : "NULL")
+               << " | PhysX: " << (m_physicsSystem ? "SET" : "NULL") << std::endl;
+        ccsLog.flush();
+    }
     
     for (auto const& entity : mEntities) {
         // Get all required components
@@ -161,6 +173,12 @@ glm::vec3 CharacterControllerSystem::GetCameraRelativeMovement(const PlayerInput
     if (input.keys[GLFW_KEY_S]) inputDir.y -= 1.0f;
     if (input.keys[GLFW_KEY_A]) inputDir.x -= 1.0f;
     if (input.keys[GLFW_KEY_D]) inputDir.x += 1.0f;
+    
+    // DEBUG: Log input detection every 60 frames
+    static int inputDebugCounter = 0;
+    if (++inputDebugCounter % 60 == 0 && glm::length(inputDir) > 0.01f) {
+        std::cout << "[CCS INPUT] inputDir: (" << inputDir.x << ", " << inputDir.y << ")" << std::endl;
+    }
     
     // Normalize diagonal movement
     if (glm::length(inputDir) > 1.0f) {
