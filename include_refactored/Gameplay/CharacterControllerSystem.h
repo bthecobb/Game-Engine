@@ -18,13 +18,7 @@ namespace Rendering {
     class OrbitCamera;
 }
 
-namespace Animation {
-    struct AnimationComponent;
-}
-
 namespace Gameplay {
-
-struct AnimationControllerComponent;
 
 /**
  * Advanced Character Controller System
@@ -111,18 +105,6 @@ private:
     
     // Event methods
     void OnLanding(Physics::CharacterControllerComponent& controller);
-    
-    // Animation integration
-    void UpdateAnimationState(const Physics::CharacterControllerComponent& controller,
-                             const Physics::RigidbodyComponent& rb,
-                             const PlayerMovementComponent& movement,
-                             Animation::AnimationComponent& anim);
-                             
-    // Decoupled Animation integration
-    void UpdateAnimationController(const Physics::CharacterControllerComponent& controller,
-                                  const Physics::RigidbodyComponent& rb,
-                                  const PlayerMovementComponent& movement,
-                                  AnimationControllerComponent& animCtrl);
 };
 
 } // namespace Gameplay

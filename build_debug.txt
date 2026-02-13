@@ -1,6 +1,0 @@
-MSBuild version 17.11.2+c078802d4 for .NET Framework
-
-  zlibstatic.vcxproj -> C:\Users\Brandon\CudaGame\build-vs\_deps\assimp-build\contrib\zlib\Release\zlibstatic.lib
-  assimp.vcxproj -> C:\Users\Brandon\CudaGame\build-vs\_deps\assimp-build\lib\Release\assimp-vc143-mt.lib
-  glfw.vcxproj -> C:\Users\Brandon\CudaGame\build-vs\_deps\glfw-build\src\Release\glfw3.lib
-LINK : fatal error LNK1104: cannot open file 'C:\Users\Brandon\CudaGame\build-vs\Release\Release\Full3DGame_DX12.exe' [C:\Users\Brandon\CudaGame\build-vs\Full3DGame_DX12.vcxproj]

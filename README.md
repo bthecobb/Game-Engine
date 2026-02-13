@@ -1,5 +1,5 @@
-# CudaGame – AAA-Quality Game Engine (DX12 + CUDA)
-## Entity Component System | GPU Physics | Mesh Shaders | DLSS
+# CudaGame – AAA-Quality Game Engine
+## Entity Component System | GPU Physics | Advanced Rendering
 
 [![CI/CD Pipeline](https://github.com/bthecobb/CudaGame/workflows/CudaGame%20C++%20CI/CD%20Pipeline/badge.svg)](https://github.com/bthecobb/CudaGame/actions)
 [![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)]()
@@ -7,7 +7,7 @@
 [![Platform](https://img.shields.io/badge/platforms-Windows-lightgrey)]()
 [![Pass Rate](https://img.shields.io/badge/pass%20rate-100%25-brightgreen)]()
 
-A production-quality C++17 game engine demonstrating **AAA game development practices**, featuring Entity-Component-System architecture, NVIDIA PhysX integration, GPU-accelerated particle systems via CUDA, and a **modern DirectX 12 rendering pipeline** with Mesh Shaders and DLSS.
+A production-quality C++17 game engine demonstrating **AAA game development practices**, featuring Entity-Component-System architecture, NVIDIA PhysX integration, GPU-accelerated particle systems via CUDA, and a deferred rendering pipeline with advanced lighting and shadows.
 
 > **Portfolio Highlight**: This project showcases professional game engine development, comprehensive test automation, systematic debugging methodologies, and production-ready code quality standards used in AAA studios.
 
@@ -143,20 +143,9 @@ ctest -C Release --output-on-failure
 - Optimized thread block sizes for maximum GPU utilization
 - Pseudo-random number generation on GPU for particle initialization
 
-### DirectX 12 Rendering Logic
-- **Bindless Rendering**: Massive texture arrays for efficient material access
-- **Mesh Shaders**: High-performance geometry processing pipeline
-- **Indirect Drawing**: GPU-driven culling and rendering of millions of instances
-- **DLSS Integration**: NVIDIA Deep Learning Super Sampling for performance
-
-### Dynamic World Generation
-- **Infinite City**: 10,000x10000 procedural city layout
-- **Clustered Spawning**: Logic-driven building placement with varied density
-- **Performant**: Instances managed via indirect buffers for minimal CPU overhead
-
 ### Shaders
-- **Mesh Shaders (HLSL)**: Handles geometry culling and generation
-- **Pixel Shaders (HLSL)**: Physically based rendering and lighting
+- **Vertex Shader**: Handles particle positioning and size
+- **Fragment Shader**: Creates circular particles with smooth alpha falloff
 
 ## Building the Project
 
