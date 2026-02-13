@@ -64,6 +64,7 @@ ctest -C Release --output-on-failure
 
 ### Professional Development Process
 ✅ **Comprehensive Test Suite** (27+ automated tests)
+[**View Full Test Dashboard**](docs/TEST_DASHBOARD.md)
 - ECS Core: Entity lifecycle, component management, system execution
 - Physics: Collision detection, rigid body dynamics, character control
 - Rendering: Framebuffer management, shader compilation, camera systems
