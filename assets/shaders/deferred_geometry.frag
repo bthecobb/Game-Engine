@@ -5,7 +5,6 @@ layout (location = 1) out vec3 gNormal;        // World normal
 layout (location = 2) out vec4 gAlbedoSpec;    // Albedo + specular
 layout (location = 3) out vec4 gMetallicRoughnessAOEmissive; // Metallic + Roughness + AO + Emissive Power
 layout (location = 4) out vec3 gEmissive;      // Emissive color (glowing elements)
-layout (location = 5) out vec2 gMotion;        // Screen-space motion (vx, vy) in NDC delta
 
 in vec3 FragPos;
 in vec3 Normal;
@@ -15,8 +14,6 @@ in vec3 Emissive;
 in vec3 Tangent;
 in vec3 Bitangent;
 in vec4 FragPosLightSpace;
-in vec4 CurrClipPos;
-in vec4 PrevClipPos;
 
 // PBR Material uniforms
 uniform sampler2D albedoMap;
@@ -111,9 +108,4 @@ void main()
     
     // Store specular component for Blinn-Phong fallback
     gAlbedoSpec.a = 1.0;
-
-    // Compute screen-space motion vector (NDC delta). Positive means motion to the right/up.
-    vec2 currNDC = CurrClipPos.xy / max(CurrClipPos.w, 1e-6);
-    vec2 prevNDC = PrevClipPos.xy / max(PrevClipPos.w, 1e-6);
-    gMotion = currNDC - prevNDC;
 }

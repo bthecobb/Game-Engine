@@ -8,11 +8,9 @@
 #include "Rendering/ShaderProgram.h"
 #include "Rendering/Framebuffer.h"
 #include "Rendering/Skybox.h"
-#include "Rendering/RenderBackend.h"
 #include <memory>
 #include <glm/glm.hpp>
 #include <cstdint>
-#include <unordered_map>
 
 namespace CudaGame {
 namespace Rendering {
@@ -98,9 +96,6 @@ private:
     glm::vec4 m_clearColor = {0.53f, 0.81f, 0.92f, 1.0f}; // Sky blue background
     std::shared_ptr<LightingSystem> m_lightingSystem;
     
-    // Render backend (abstracts API-specific operations)
-    std::shared_ptr<IRenderBackend> m_backend;
-    
     // PBR Deferred Rendering Pipeline
     std::shared_ptr<Framebuffer> m_gBuffer;
     std::shared_ptr<ShaderProgram> m_geometryPassShader;
@@ -159,17 +154,11 @@ private:
     uint64_t m_frameID = 0;
     int m_drawCallCount = 0;
     int m_triangleCount = 0;
-    
+
     // Culling settings
     bool m_enableFrustumCulling = true;
     bool m_enableDistanceCulling = true;
     float m_cullMaxDistance = 800.0f; // world units
-
-    // Previous-frame transforms for motion vectors
-    glm::mat4 m_prevView = glm::mat4(1.0f);
-    glm::mat4 m_prevProjection = glm::mat4(1.0f);
-    std::unordered_map<Core::Entity, glm::mat4> m_prevModel;
-    bool m_prevInitialized = false;
 
     // Helpers
     bool IsSphereVisible(const glm::vec3& center, float radius) const;

@@ -50,44 +50,5 @@ public:
     std::unordered_map<std::string, int> boneNameToIndex;
 };
 
-// Animation states for AAA-quality character animation
-enum class AnimationState {
-    IDLE,
-    IDLE_BORED,
-    WALKING,
-    RUNNING,
-    SPRINTING,
-    JUMPING,
-    AIRBORNE,
-    FALLING,
-    LANDING,
-    DIVING,
-    WALL_RUNNING,
-    SLIDING,
-    COMBAT_IDLE,
-    ATTACKING,
-    PARRYING,
-    GRABBING,
-    STUNNED,
-    DEATH,
-    // Weapon-specific animations
-    SWORD_IDLE,
-    SWORD_ATTACK_1,
-    SWORD_ATTACK_2,
-    SWORD_COMBO_FINISHER,
-    STAFF_CAST,
-    STAFF_SPIN,
-    HAMMER_CHARGE,
-    HAMMER_SLAM
-};
-
-// Animation blend modes for smooth transitions
-enum class BlendMode {
-    REPLACE,     // Replace current animation
-    ADDITIVE,    // Add to current animation
-    MULTIPLY,    // Multiply with current animation
-    OVERLAY      // Overlay on top of current animation
-};
-
 } // namespace Animation
 } // namespace CudaGame
