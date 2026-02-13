@@ -1,5 +1,0 @@
-﻿MSBuild version 17.11.2+c078802d4 for .NET Framework
-
-  glfw.vcxproj -> C:\Users\Brandon\CudaGame\build\_deps\glfw-build\src\Release\glfw3.lib
-  Full3DGame_DX12.vcxproj -> C:\Users\Brandon\CudaGame\build\Release\Release\Full3DGame_DX12.exe
-  Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.interposer.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.common.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.dlss.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.reflex.dll

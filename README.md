@@ -3,7 +3,7 @@
 
 [![CI/CD Pipeline](https://github.com/bthecobb/CudaGame/workflows/CudaGame%20C++%20CI/CD%20Pipeline/badge.svg)](https://github.com/bthecobb/CudaGame/actions)
 [![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-24%20automated-blue)]()
+[![Tests](https://img.shields.io/badge/tests-27%2B%20automated-blue)]()
 [![Platform](https://img.shields.io/badge/platforms-Windows-lightgrey)]()
 [![Pass Rate](https://img.shields.io/badge/pass%20rate-100%25-brightgreen)]()
 
@@ -63,10 +63,12 @@ ctest -C Release --output-on-failure
 - **CUDA Acceleration**: GPU-accelerated particle systems with 10,000+ particles at 60 FPS
 
 ### Professional Development Process
-✅ **Comprehensive Test Suite** (24 automated tests)
+✅ **Comprehensive Test Suite** (27+ automated tests)
 - ECS Core: Entity lifecycle, component management, system execution
 - Physics: Collision detection, rigid body dynamics, character control
 - Rendering: Framebuffer management, shader compilation, camera systems
+- Animation: Skeleton hierarchy, skinning, blend trees, IK
+- Procedural: Building generation, city layout, noise functions
 - Integration: Full gameplay scenarios with multiple systems
 
 ✅ **Systematic Debugging** (7 major bugs fixed)
@@ -153,6 +155,12 @@ ctest -C Release --output-on-failure
 - **Infinite City**: 10,000x10000 procedural city layout
 - **Clustered Spawning**: Logic-driven building placement with varied density
 - **Performant**: Instances managed via indirect buffers for minimal CPU overhead
+
+### Animation System
+- **Skeletal Animation**: GPU skinning with compute shaders
+- **Blend Trees**: Complex animation state blending (Idle/Walk/Run)
+- **Inverse Kinematics (IK)**: Foot placement and environmental interaction
+- **State Machine**: Logic-driven transitions for character behavior
 
 ### Shaders
 - **Mesh Shaders (HLSL)**: Handles geometry culling and generation
@@ -247,6 +255,9 @@ Test project C:/Users/Brandon/CudaGame/build-vs
 | **Rendering** | 4 tests | 100% | ✅ All passing |
 | **Camera Systems** | 7 tests | 100% | ✅ All passing |
 | **Character Controller** | 8 tests | 100% | ✅ All passing |
+| **Animation System** | 4 tests | 100% | ✅ All passing |
+| **Procedural Gen** | 2 tests | 100% | ✅ All passing |
+| **Ray Tracing** | 1 test | 100% | ✅ All passing |
 
 **All Test Issues Resolved!**
 - ✅ OrbitCamera: Distance, zoom, mouse input, projection matrix all verified
