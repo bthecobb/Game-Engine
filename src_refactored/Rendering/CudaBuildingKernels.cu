@@ -3,16 +3,19 @@
 #include <cstdint>
 #include <cmath>
 
-// Simple vector types for CUDA
-struct float3 {
-    float x, y, z;
-    __device__ __host__ float3(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {}
-};
+// Simple vector types for CUDA (using built-in types from vector_types.h)
 
-struct float2 {
-    float x, y;
-    __device__ __host__ float2(float _x = 0, float _y = 0) : x(_x), y(_y) {}
-};
+__device__ __host__ inline float3 operator*(const float3& a, float b) {
+    return make_float3(a.x * b, a.y * b, a.z * b);
+}
+
+__device__ __host__ inline float3 operator*(float b, const float3& a) {
+    return make_float3(a.x * b, a.y * b, a.z * b);
+}
+
+__device__ __host__ inline float3 operator+(const float3& a, const float3& b) {
+    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
 
 // Building vertex structure
 struct BuildingVertex {
@@ -57,13 +60,13 @@ __device__ inline float hash(uint32_t x) {
 __device__ inline float3 normalize(float3 v) {
     float len = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
     if (len > 0.0f) {
-        return float3(v.x / len, v.y / len, v.z / len);
+        return make_float3(v.x / len, v.y / len, v.z / len);
     }
-    return float3(0, 1, 0);
+    return make_float3(0, 1, 0);
 }
 
 __device__ inline float3 cross(float3 a, float3 b) {
-    return float3(
+    return make_float3(
         a.y * b.z - a.z * b.y,
         a.z * b.x - a.x * b.z,
         a.x * b.y - a.y * b.x
@@ -95,51 +98,51 @@ __global__ void GenerateBuildingGeometryKernel(
     float3 faceVerts[4];
     float3 faceNormal;
     float2 faceUVs[4] = {
-        float2(0, 0), float2(1, 0), float2(1, 1), float2(0, 1)
+        make_float2(0, 0), make_float2(1, 0), make_float2(1, 1), make_float2(0, 1)
     };
     
     switch(tid) {
         case 0: // Front face (+Z)
-            faceVerts[0] = float3(-hw, 0, hd);
-            faceVerts[1] = float3(hw, 0, hd);
-            faceVerts[2] = float3(hw, h, hd);
-            faceVerts[3] = float3(-hw, h, hd);
-            faceNormal = float3(0, 0, 1);
+            faceVerts[0] = make_float3(-hw, 0, hd);
+            faceVerts[1] = make_float3(hw, 0, hd);
+            faceVerts[2] = make_float3(hw, h, hd);
+            faceVerts[3] = make_float3(-hw, h, hd);
+            faceNormal = make_float3(0, 0, 1);
             break;
         case 1: // Back face (-Z)
-            faceVerts[0] = float3(hw, 0, -hd);
-            faceVerts[1] = float3(-hw, 0, -hd);
-            faceVerts[2] = float3(-hw, h, -hd);
-            faceVerts[3] = float3(hw, h, -hd);
-            faceNormal = float3(0, 0, -1);
+            faceVerts[0] = make_float3(hw, 0, -hd);
+            faceVerts[1] = make_float3(-hw, 0, -hd);
+            faceVerts[2] = make_float3(-hw, h, -hd);
+            faceVerts[3] = make_float3(hw, h, -hd);
+            faceNormal = make_float3(0, 0, -1);
             break;
         case 2: // Right face (+X)
-            faceVerts[0] = float3(hw, 0, hd);
-            faceVerts[1] = float3(hw, 0, -hd);
-            faceVerts[2] = float3(hw, h, -hd);
-            faceVerts[3] = float3(hw, h, hd);
-            faceNormal = float3(1, 0, 0);
+            faceVerts[0] = make_float3(hw, 0, hd);
+            faceVerts[1] = make_float3(hw, 0, -hd);
+            faceVerts[2] = make_float3(hw, h, -hd);
+            faceVerts[3] = make_float3(hw, h, hd);
+            faceNormal = make_float3(1, 0, 0);
             break;
         case 3: // Left face (-X)
-            faceVerts[0] = float3(-hw, 0, -hd);
-            faceVerts[1] = float3(-hw, 0, hd);
-            faceVerts[2] = float3(-hw, h, hd);
-            faceVerts[3] = float3(-hw, h, -hd);
-            faceNormal = float3(-1, 0, 0);
+            faceVerts[0] = make_float3(-hw, 0, -hd);
+            faceVerts[1] = make_float3(-hw, 0, hd);
+            faceVerts[2] = make_float3(-hw, h, hd);
+            faceVerts[3] = make_float3(-hw, h, -hd);
+            faceNormal = make_float3(-1, 0, 0);
             break;
         case 4: // Top face (+Y)
-            faceVerts[0] = float3(-hw, h, -hd);
-            faceVerts[1] = float3(hw, h, -hd);
-            faceVerts[2] = float3(hw, h, hd);
-            faceVerts[3] = float3(-hw, h, hd);
-            faceNormal = float3(0, 1, 0);
+            faceVerts[0] = make_float3(-hw, h, -hd);
+            faceVerts[1] = make_float3(hw, h, -hd);
+            faceVerts[2] = make_float3(hw, h, hd);
+            faceVerts[3] = make_float3(-hw, h, hd);
+            faceNormal = make_float3(0, 1, 0);
             break;
         case 5: // Bottom face (-Y)
-            faceVerts[0] = float3(-hw, 0, hd);
-            faceVerts[1] = float3(hw, 0, hd);
-            faceVerts[2] = float3(hw, 0, -hd);
-            faceVerts[3] = float3(-hw, 0, -hd);
-            faceNormal = float3(0, -1, 0);
+            faceVerts[0] = make_float3(-hw, 0, hd);
+            faceVerts[1] = make_float3(hw, 0, hd);
+            faceVerts[2] = make_float3(hw, 0, -hd);
+            faceVerts[3] = make_float3(-hw, 0, -hd);
+            faceNormal = make_float3(0, -1, 0);
             break;
     }
     
@@ -147,14 +150,14 @@ __global__ void GenerateBuildingGeometryKernel(
     float colorVar = hash(style.seed + tid);
     
     // Base color with variation
-    float3 vertColor = float3(
+    float3 vertColor = make_float3(
         style.baseColor.x + (colorVar - 0.5f) * 0.1f,
         style.baseColor.y + (colorVar - 0.5f) * 0.1f,
         style.baseColor.z + (colorVar - 0.5f) * 0.1f
     );
     
     // Darken accent color for trim effect
-    float3 trimColor = float3(
+    float3 trimColor = make_float3(
         style.accentColor.x * 0.7f,
         style.accentColor.y * 0.7f,
         style.accentColor.z * 0.7f
@@ -186,7 +189,7 @@ __global__ void GenerateBuildingGeometryKernel(
         vertices[baseVert + i].color = finalColor;
         
         // Generate procedural window lights (only on vertical walls)
-        float3 emissiveColor = float3(0, 0, 0);  // Default: no glow
+        float3 emissiveColor = make_float3(0, 0, 0);  // Default: no glow
         
         if (tid >= 0 && tid <= 3) {  // Only walls, not top/bottom
             // Use UV coordinates to create window grid
@@ -219,19 +222,19 @@ __global__ void GenerateBuildingGeometryKernel(
                 // 70% of windows are lit
                 if (isLit > 0.3f) {
                     // EXTREMELY bright warm yellow-orange glow for apartment lighting
-                    emissiveColor = float3(1.0f, 0.9f, 0.7f) * 15.0f;
+                    emissiveColor = make_float3(1.0f, 0.9f, 0.7f) * 15.0f;
                     
                     // Some windows have different colored lights
                     float colorVariation = hash(windowHash + 12345);
                     if (colorVariation > 0.92f) {
                         // Cool blue light (TV glow)
-                        emissiveColor = float3(0.5f, 0.7f, 1.0f) * 12.0f;
+                        emissiveColor = make_float3(0.5f, 0.7f, 1.0f) * 12.0f;
                     } else if (colorVariation > 0.88f) {
                         // Neon pink/magenta (decorative)
-                        emissiveColor = float3(1.0f, 0.4f, 0.9f) * 16.0f;
+                        emissiveColor = make_float3(1.0f, 0.4f, 0.9f) * 16.0f;
                     } else if (colorVariation > 0.84f) {
                         // Green accent light
-                        emissiveColor = float3(0.6f, 1.0f, 0.6f) * 14.0f;
+                        emissiveColor = make_float3(0.6f, 1.0f, 0.6f) * 14.0f;
                     }
                 }
             }
@@ -417,20 +420,20 @@ __global__ void GenerateEmissiveTextureKernel(
             float colorVariation = hash(windowHash + 12345);
             
             // Base warm yellow-orange glow (most common)
-            float3 emissiveColor = float3(1.0f, 0.9f, 0.7f);
+            float3 emissiveColor = make_float3(1.0f, 0.9f, 0.7f);
             float emissiveIntensity = 1.0f;  // Full intensity
             
             if (colorVariation > 0.92f) {
                 // Cool blue light (TV glow)
-                emissiveColor = float3(0.5f, 0.7f, 1.0f);
+                emissiveColor = make_float3(0.5f, 0.7f, 1.0f);
                 emissiveIntensity = 0.85f;
             } else if (colorVariation > 0.88f) {
                 // Neon pink/magenta (decorative)
-                emissiveColor = float3(1.0f, 0.4f, 0.9f);
+                emissiveColor = make_float3(1.0f, 0.4f, 0.9f);
                 emissiveIntensity = 0.95f;
             } else if (colorVariation > 0.84f) {
                 // Green accent light
-                emissiveColor = float3(0.6f, 1.0f, 0.6f);
+                emissiveColor = make_float3(0.6f, 1.0f, 0.6f);
                 emissiveIntensity = 0.8f;
             }
             

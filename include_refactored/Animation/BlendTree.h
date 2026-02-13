@@ -94,6 +94,27 @@ private:
     std::string m_blendInputYName;
 };
 
+// Mask defining per-bone weights (0.0 = Base, 1.0 = Overlay)
+struct BoneMask {
+    std::vector<float> weights;
+};
+
+// A node that layers an overlay animation on top of a base animation using a mask
+class LayeredBlendNode : public BlendNode {
+public:
+    LayeredBlendNode(std::shared_ptr<BlendNode> base, std::shared_ptr<BlendNode> overlay, 
+                     std::shared_ptr<BoneMask> mask, const std::string& alphaInputName = "")
+        : m_baseNode(base), m_overlayNode(overlay), m_mask(mask), m_alphaInputName(alphaInputName) {}
+        
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+
+private:
+    std::shared_ptr<BlendNode> m_baseNode;
+    std::shared_ptr<BlendNode> m_overlayNode;
+    std::shared_ptr<BoneMask> m_mask;
+    std::string m_alphaInputName; // Optional master alpha for the layer
+};
+
 // The root of the animation blend tree for an entity
 class BlendTree {
 public:

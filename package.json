@@ -1,0 +1,29 @@
+{
+  "name": "cudagame",
+  "version": "1.0.0",
+  "description": "[![CI/CD Pipeline](https://github.com/bthecobb/CudaGame/workflows/CudaGame%20C++%20CI/CD%20Pipeline/badge.svg)](https://github.com/bthecobb/CudaGame/actions)\r [![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)]()\r [![Tests](https://img.shields.io/badge/tests-24%20automated-blue)]()\r [![Platform](https://img.shields.io/badge/platforms-Windows-lightgrey)]()\r [![Pass Rate](https://img.shields.io/badge/pass%20rate-100%25-brightgreen)]()",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bthecobb/Game-Engine.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bthecobb/Game-Engine/issues"
+  },
+  "homepage": "https://github.com/bthecobb/Game-Engine#readme",
+  "dependencies": {
+    "@playwright/mcp": "^0.0.62"
+  }
+}

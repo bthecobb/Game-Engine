@@ -1,0 +1,172 @@
+﻿CMake is re-running because C:/Users/Brandon/CudaGame/build/CMakeFiles/generate.stamp is out-of-date.
+  the file 'C:/Users/Brandon/CudaGame/CMakeLists.txt'
+  is newer than 'C:/Users/Brandon/CudaGame/build/CMakeFiles/generate.stamp.depend'
+  result='-1'
+-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.22631.
+-- Configuring for MSVC compiler
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- Using Win32 for window creation
+cmake : CMake Deprecation Warning at 
+build/_deps/glad-src/CMakeLists.txt:1 
+(cmake_minimum_required):
+At line:1 char:148
++ ... | Out-Null; cmake --build build 
+--target Full3DGame_DX12 --config Rel ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( 
+   CMake Deprecati...imum_required)::String)  
+   [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandEr 
+   ror
+ 
+  Compatibility with CMake < 3.5 will be 
+removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or 
+use a ...<max> suffix to tell
+  CMake that the project does not need 
+compatibility with older versions.
+
+
+CMake Deprecation Warning at 
+glm/cmake/glm/glmConfig.cmake:1 
+(cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be 
+removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or 
+use a ...<max> suffix to tell
+  CMake that the project does not need 
+compatibility with older versions.
+Call Stack (most recent call first):
+  CMakeLists.txt:165 (find_package)
+
+
+CMake Deprecation Warning at 
+glm/cmake/glm/glmConfig.cmake:2 
+(cmake_policy):
+  Compatibility with CMake < 3.5 will be 
+removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or 
+use a ...<max> suffix to tell
+  CMake that the project does not need 
+compatibility with older versions.
+Call Stack (most recent call first):
+  CMakeLists.txt:165 (find_package)
+
+
+-- PhysX root: C:/Users/Brandon/CudaGame/vendor/PhysX-107.0-physx-5.6.0/physx
+-- Auto-detected PhysX DLL dir: C:/Users/Brandon/CudaGame/vendor/PhysX-107.0-physx-5.6.0/physx/bin/win.x86_64.vc142.md/release
+-- NVIDIA Streamline SDK found at: C:/Users/Brandon/CudaGame/vendor/streamline-sdk
+-- Streamline libraries:
+--   - C:/Users/Brandon/CudaGame/vendor/streamline-sdk/lib/x64/sl.interposer.lib
+-- Streamline DLLs to copy:
+--   - C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.interposer.dll
+--   - C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.common.dll
+--   - C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.dlss.dll
+--   - C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.reflex.dll
+-- Shared libraries disabled
+-- Looking for ZLIB...
+-- Could NOT find PkgConfig (missing: PKG_CONFIG_EXECUTABLE) 
+-- Could not locate ZLIB
+-- compiling zlib from sources
+-- Enabled importer formats: AMF 3DS AC ASE ASSBIN B3D BVH COLLADA DXF CSM HMP IRRMESH IQM IRR LWO LWS M3D MD2 MD3 MD5 MDC MDL NFF NDO OFF OBJ OGRE OPENGEX PLY MS3D COB BLEND IFC XGL FBX Q3D Q3BSP RAW SIB SMD STL TERRAGEN 3D X X3D GLTF 3MF MMD
+-- Disabled importer formats:
+-- Enabled exporter formats: OBJ OPENGEX PLY 3DS ASSBIN ASSXML M3D COLLADA FBX STL X X3D GLTF 3MF PBRT ASSJSON STEP
+-- Disabled exporter formats:
+-- Treating all warnings as errors (for assimp library only)
+-- [DX12] Adding DX12 unit tests to TEST_SOURCES
+-- [DX12] Added 13 DX12 sources to test suite (including mesh system)
+-- DX12UnitTests executable will be built
+-- DX12 backend scaffold enabled
+-- DX12BackendTest executable will be built
+-- DX12ResourceTest executable will be built
+-- DX12ShaderTest executable will be built
+-- DX12PipelineDemo executable will be built
+-- Full3DGame_DX12 executable will be built
+-- Configuring done (7.5s)
+-- Generating done (4.3s)
+-- Build files have been written to: C:/Users/Brandon/CudaGame/build
+MSBuild version 17.11.2+c078802d4 for .NET Framework
+
+  glfw.vcxproj -> C:\Users\Brandon\CudaGame\build\_deps\glfw-build\src\Release\glfw3.lib
+  Microsoft (R) C/C++ Optimizing Compiler Version 19.38.33140 for x64
+  Copyright (C) Microsoft Corporation.  All rights reserved.
+  cl /c /IC:\Users\Brandon\CudaGame\include_refactored /I"C:\Users\Brandon\CudaGame\build\_deps\assimp-src\include" /I"C:\Users\Brandon\CudaGame\vendor\PhysX-107.0-physx-5.6.0\physx\include" /IC:\Users\Brandon\CudaGame\include /I"C:\Users\Brandon\CudaGame\vendor\streamline-sdk\include" /I"C:\Users\Brandon\CudaGame\build\_deps\glfw-src\include" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\include" /W4 /WX- /diagnostics:column /O2 /D _MBCS /D WIN32 /D _WINDOWS /D NOMINMAX /D _CRT_SECURE_NO_WARNINGS /D STREAMLINE_SDK_AVAILABLE /D "ASSET_DIR=\"C:/Users/Brandon/CudaGame/assets\"" /D NDEBUG /D _ITERATOR_DEBUG_LEVEL=0 /D GLM_ENABLE_EXPERIMENTAL /D "CMAKE_INTDIR=\"Release\"" /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Fo"Full3DGame_DX12.dir\Release\\" /Fd"Full3DGame_DX12.dir\Release\vc143.pdb" /external:W0 /Gd /TP /errorReport:queue  /external:I "C:/Users/Brandon/CudaGame/glm" C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp C:\Users\Brandon\CudaGame\src_refactored\Gameplay\EnemyAISystem.cpp C:\Users\Brandon\CudaGame\src_refactored\Gameplay\LevelSystem.cpp C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp
+  Full3DGame_DX12.cpp
+C:\Users\Brandon\CudaGame\include_refactored\Rendering\D3D12Constants.h(23,1): warning C4324: 'CudaGame::Rendering::PerFrameConstants': structure was padded due to alignment specifier [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  (compiling source file '../src_refactored/Demos/Full3DGame_DX12.cpp')
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(92,34): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(38,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(92,49): warning C4100: 'xoffset': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(92,34): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(99,31): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(38,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(119,13): warning C4457: declaration of 'mode' hides function parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(99,78):
+      see declaration of 'mode'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(99,78): warning C4100: 'mode': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(99,52): warning C4100: 'scancode': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(170,33): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(38,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(174,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(175,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(179,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(180,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(181,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(182,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(170,33): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(187,40): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(38,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(187,76): warning C4100: 'mods': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(187,40): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(197,40): warning C4459: declaration of 'playerEntity' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(59,14):
+      see declaration of 'playerEntity'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(221,40): warning C4459: declaration of 'playerEntity' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(59,14):
+      see declaration of 'playerEntity'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(752,14): warning C4459: declaration of 'frameCount' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(88,5):
+      see declaration of 'frameCount'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(753,11): warning C4459: declaration of 'fps' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(87,7):
+      see declaration of 'fps'
+  
+  EnemyAISystem.cpp
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\EnemyAISystem.cpp(79,47): warning C4100: 'entity': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\EnemyAISystem.cpp(108,46): warning C4100: 'entity': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\EnemyAISystem.cpp(193,90): warning C4100: 'deltaTime': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  LevelSystem.cpp
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\LevelSystem.cpp(272,53): warning C4100: 'deltaTime': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\LevelSystem.cpp(288,45): warning C4100: 'deltaTime': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\LevelSystem.cpp(314,45): warning C4100: 'deltaTime': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\LevelSystem.cpp(320,19): warning C4189: 'interactable': local variable is initialized but not referenced [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  TargetingSystem.cpp
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(17,36): warning C4100: 'deltaTime': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(41,52): warning C4100: 'entity': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(75,89): warning C4100: 'combat': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(75,58): warning C4100: 'entity': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(138,59): warning C4100: 'targetEntity': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Gameplay\TargetingSystem.cpp(143,54): warning C4100: 'targetPosition': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  Generating Code...
+  Full3DGame_DX12.vcxproj -> C:\Users\Brandon\CudaGame\build\Release\Release\Full3DGame_DX12.exe
+  Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.interposer.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.common.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.dlss.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.reflex.dll

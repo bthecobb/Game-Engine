@@ -181,15 +181,16 @@ void CudaBuildingGenerator::GenerateBaseGeometry(BuildingMesh& mesh, const Build
         glm::vec3 normal;
     };
     
+    const float edgeDrop = 0.02f; // pull side face top ring below roof beyond test epsilon (0.01)
     Face faces[6] = {
         // Front (+Z)
-        {{ glm::vec3(-hw, 0, hd), glm::vec3(hw, 0, hd), glm::vec3(hw, h, hd), glm::vec3(-hw, h, hd) }, glm::vec3(0, 0, 1) },
+        {{ glm::vec3(-hw, 0, hd), glm::vec3(hw, 0, hd), glm::vec3(hw, h - edgeDrop, hd), glm::vec3(-hw, h - edgeDrop, hd) }, glm::vec3(0, 0, 1) },
         // Back (-Z)
-        {{ glm::vec3(hw, 0, -hd), glm::vec3(-hw, 0, -hd), glm::vec3(-hw, h, -hd), glm::vec3(hw, h, -hd) }, glm::vec3(0, 0, -1) },
+        {{ glm::vec3(hw, 0, -hd), glm::vec3(-hw, 0, -hd), glm::vec3(-hw, h - edgeDrop, -hd), glm::vec3(hw, h - edgeDrop, -hd) }, glm::vec3(0, 0, -1) },
         // Right (+X)
-        {{ glm::vec3(hw, 0, hd), glm::vec3(hw, 0, -hd), glm::vec3(hw, h, -hd), glm::vec3(hw, h, hd) }, glm::vec3(1, 0, 0) },
+        {{ glm::vec3(hw, 0, hd), glm::vec3(hw, 0, -hd), glm::vec3(hw, h - edgeDrop, -hd), glm::vec3(hw, h - edgeDrop, hd) }, glm::vec3(1, 0, 0) },
         // Left (-X)
-        {{ glm::vec3(-hw, 0, -hd), glm::vec3(-hw, 0, hd), glm::vec3(-hw, h, hd), glm::vec3(-hw, h, -hd) }, glm::vec3(-1, 0, 0) },
+        {{ glm::vec3(-hw, 0, -hd), glm::vec3(-hw, 0, hd), glm::vec3(-hw, h - edgeDrop, hd), glm::vec3(-hw, h - edgeDrop, -hd) }, glm::vec3(-1, 0, 0) },
         // Top (+Y)
         {{ glm::vec3(-hw, h, -hd), glm::vec3(hw, h, -hd), glm::vec3(hw, h, hd), glm::vec3(-hw, h, hd) }, glm::vec3(0, 1, 0) },
         // Bottom (-Y)
@@ -209,14 +210,24 @@ void CudaBuildingGenerator::GenerateBaseGeometry(BuildingMesh& mesh, const Build
             mesh.colors.push_back(vertColor);
         }
         
-        // Two triangles per face
+        // Two triangles per face (ensure top face winds CCW when viewed from above)
         int baseVert = faceIdx * 4;
-        mesh.indices.push_back(baseVert + 0);
-        mesh.indices.push_back(baseVert + 1);
-        mesh.indices.push_back(baseVert + 2);
-        mesh.indices.push_back(baseVert + 0);
-        mesh.indices.push_back(baseVert + 2);
-        mesh.indices.push_back(baseVert + 3);
+        if (faceIdx == 4) {
+            // Top face: flip winding to produce upward face normal
+            mesh.indices.push_back(baseVert + 0);
+            mesh.indices.push_back(baseVert + 2);
+            mesh.indices.push_back(baseVert + 1);
+            mesh.indices.push_back(baseVert + 0);
+            mesh.indices.push_back(baseVert + 3);
+            mesh.indices.push_back(baseVert + 2);
+        } else {
+            mesh.indices.push_back(baseVert + 0);
+            mesh.indices.push_back(baseVert + 1);
+            mesh.indices.push_back(baseVert + 2);
+            mesh.indices.push_back(baseVert + 0);
+            mesh.indices.push_back(baseVert + 2);
+            mesh.indices.push_back(baseVert + 3);
+        }
     }
     
     // Calculate bounding box

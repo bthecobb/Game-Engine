@@ -1,4 +1,5 @@
-#include "Rendering/Mesh.h"
+#include "Rendering/ProceduralCharacter.h"
+#include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -166,6 +167,48 @@ Mesh CreateLowPolyCharacter() {
     // For now, we'll use a uniform color in shader
     
     return Mesh(vertices, indices, {});  // Empty texture vector
+}
+
+CharacterMeshGPU CreateLowPolyCharacterGPU() {
+    // Build CPU mesh first
+    Mesh cpuMesh = CreateLowPolyCharacter();
+    
+    // Interleave as pos(3), normal(3)
+    std::vector<float> vertexData;
+    vertexData.reserve(cpuMesh.vertices.size() * 6);
+    for (const auto& v : cpuMesh.vertices) {
+        vertexData.push_back(v.Position.x);
+        vertexData.push_back(v.Position.y);
+        vertexData.push_back(v.Position.z);
+        vertexData.push_back(v.Normal.x);
+        vertexData.push_back(v.Normal.y);
+        vertexData.push_back(v.Normal.z);
+    }
+
+    CharacterMeshGPU gpu{};
+
+    glGenVertexArrays(1, &gpu.vao);
+    glBindVertexArray(gpu.vao);
+
+    glGenBuffers(1, &gpu.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, gpu.vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &gpu.ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpu.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, cpuMesh.indices.size() * sizeof(uint32_t), cpuMesh.indices.data(), GL_STATIC_DRAW);
+
+    // Position (location = 0)
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    // Normal (location = 1)
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+
+    glBindVertexArray(0);
+
+    gpu.indexCount = static_cast<uint32_t>(cpuMesh.indices.size());
+    return gpu;
 }
 
 } // namespace Rendering

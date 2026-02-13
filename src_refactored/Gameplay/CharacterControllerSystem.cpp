@@ -3,8 +3,11 @@
 #include "Physics/PhysXPhysicsSystem.h"
 #include "Rendering/OrbitCamera.h"
 #include "Gameplay/LevelComponents.h"  // For WallComponent
+#include "Animation/AnimationSystem.h"
+#include "Gameplay/AnimationControllerComponent.h"
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
+#include <fstream>
 
 // GLFW key constants (to avoid linking GLFW when not needed)
 #define GLFW_KEY_W 87
@@ -47,6 +50,17 @@ void CharacterControllerSystem::SetCamera(Rendering::OrbitCamera* camera) {
 void CharacterControllerSystem::Update(float deltaTime) {
     auto& coordinator = Core::Coordinator::GetInstance();
     
+    // DEBUG: Log entity count and status every 60 frames TO FILE (avoids shader compiler interleaving)
+    static int debugCounter = 0;
+    static std::ofstream ccsLog("ccs_debug.txt", std::ios::trunc);
+    if (++debugCounter % 60 == 0 && ccsLog.is_open()) {
+        ccsLog << "[CCS DEBUG] Frame " << debugCounter 
+               << " | Entities: " << mEntities.size() 
+               << " | Camera: " << (m_camera ? "SET" : "NULL")
+               << " | PhysX: " << (m_physicsSystem ? "SET" : "NULL") << std::endl;
+        ccsLog.flush();
+    }
+    
     for (auto const& entity : mEntities) {
         // Get all required components
         auto& charController = coordinator.GetComponent<Physics::CharacterControllerComponent>(entity);
@@ -76,9 +90,100 @@ void CharacterControllerSystem::Update(float deltaTime) {
         // Handle dashing
         HandleDashing(charController, movement, rigidbody, input, moveDirection, deltaTime);
         
-        // Camera updates are handled in the main game loop, not here
-        // This prevents duplicate updates that cause shaking
+        // Update Animation State (DECOUPLED via AnimationControllerComponent)
+        if (coordinator.HasComponent<AnimationControllerComponent>(entity)) {
+            auto& animCtrl = coordinator.GetComponent<AnimationControllerComponent>(entity);
+            UpdateAnimationController(charController, rigidbody, movement, animCtrl);
+        } else if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+            auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+            UpdateAnimationState(charController, rigidbody, movement, animComp);
+        }
     }
+}
+
+void CharacterControllerSystem::UpdateAnimationController(
+    const Physics::CharacterControllerComponent& controller,
+    const Physics::RigidbodyComponent& rb,
+    const Gameplay::PlayerMovementComponent& movement,
+    Gameplay::AnimationControllerComponent& animCtrl)
+{
+    // Write Physics State to Blackboard
+    float horizontalSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
+    
+    animCtrl.SetSpeed(horizontalSpeed);
+    animCtrl.SetVerticalSpeed(rb.velocity.y);
+    animCtrl.SetGrounded(controller.isGrounded);
+    
+    animCtrl.boolParams["IsWallRunning"] = controller.isWallRunning;
+    animCtrl.boolParams["IsDashing"] = controller.isDashing;
+    
+    // We leave the State determination to AnimationControllerSystem
+}
+
+// Legacy Direct Update (to be deprecated or used as fallback)
+void CharacterControllerSystem::UpdateAnimationState(
+    const Physics::CharacterControllerComponent& controller,
+    const Physics::RigidbodyComponent& rb,
+    const PlayerMovementComponent& movement,
+    Animation::AnimationComponent& anim) 
+{
+    using namespace Animation;
+    
+    AnimationState targetState = AnimationState::IDLE;
+    
+    // Determine target state based on physics
+    if (controller.isWallRunning) {
+        targetState = AnimationState::WALL_RUNNING;
+    } else if (controller.isDashing) {
+        // Dashing usually overrides everything
+        // We don't have a DASH state in enum? Let's check.
+        // Step 11463 View: Yes, we do? No, not explicit. 
+        // We have RUNNING, SPRINTING.
+        // Let's use RUNNING for now or add DASH later.
+        targetState = AnimationState::RUNNING; 
+    } else if (!controller.isGrounded) {
+        // Airborne
+        if (rb.velocity.y > 0.5f) {
+            targetState = AnimationState::JUMPING;
+        } else {
+            targetState = AnimationState::FALLING;
+        }
+    } else {
+        // Grounded
+        float horizontalSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
+        if (horizontalSpeed > 0.1f) {
+            if (horizontalSpeed > movement.baseSpeed * 1.1f) {
+                targetState = AnimationState::SPRINTING; // Use Running clip if Sprinting not available
+            } else {
+                targetState = AnimationState::WALKING; // Or RUNNING depending on speed
+            }
+            
+            // Map strictly to available clips for now (Idle, Walk, Run, Attack)
+            // If speed > 5, Run. Else Walk.
+            if (horizontalSpeed > 5.0f || movement.movementState == MovementState::RUNNING) {
+                targetState = AnimationState::RUNNING;
+            } else {
+                targetState = AnimationState::WALKING;
+            }
+        } else {
+            targetState = AnimationState::IDLE;
+        }
+    }
+    
+    // Attack override (if we had combat component here, we'd check it)
+    // For now, simple movement state mapping.
+    
+    // State Transition Logic
+    if (targetState != anim.currentState) {
+        anim.previousState = anim.currentState;
+        anim.currentState = targetState;
+        anim.animationTime = 0.0f; // Reset time on state change
+        // In a real system, we'd crossfade here.
+        // AnimationSystem::updateEntityAnimation handles the clip selection based on currentState.
+    }
+    
+    // Update Blend Parameters
+    anim.movementSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
 }
 
 void CharacterControllerSystem::UpdateTimers(Physics::CharacterControllerComponent& controller, float deltaTime) {
@@ -129,7 +234,8 @@ void CharacterControllerSystem::CheckGrounding(Core::Entity entity,
     
     // Simple ground check - in a real implementation, use PhysX raycast
     bool wasGrounded = controller.isGrounded;
-    float groundY = 0.0f; // Assuming ground at Y=0
+    // Ground height matches top surface of ground cube at y = -0.5
+    float groundY = -0.5f;
     float feetY = transform.position.y - CHARACTER_HEIGHT * 0.5f;
     
     controller.isGrounded = (feetY <= groundY + GROUND_CHECK_DISTANCE) && (rigidbody.velocity.y <= 0.1f);
@@ -160,6 +266,12 @@ glm::vec3 CharacterControllerSystem::GetCameraRelativeMovement(const PlayerInput
     if (input.keys[GLFW_KEY_S]) inputDir.y -= 1.0f;
     if (input.keys[GLFW_KEY_A]) inputDir.x -= 1.0f;
     if (input.keys[GLFW_KEY_D]) inputDir.x += 1.0f;
+    
+    // DEBUG: Log input detection every 60 frames
+    static int inputDebugCounter = 0;
+    if (++inputDebugCounter % 60 == 0 && glm::length(inputDir) > 0.01f) {
+        std::cout << "[CCS INPUT] inputDir: (" << inputDir.x << ", " << inputDir.y << ")" << std::endl;
+    }
     
     // Normalize diagonal movement
     if (glm::length(inputDir) > 1.0f) {

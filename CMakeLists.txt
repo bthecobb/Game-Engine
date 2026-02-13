@@ -1,6 +1,7 @@
-# CMakeLists.txt for AAA Game Engine
+﻿# CMakeLists.txt for AAA Game Engine
 
 cmake_minimum_required(VERSION 3.20)
+
 
 # Enable testing
 enable_testing()
@@ -10,9 +11,13 @@ option(BUILD_TESTING "Enable building tests" ON)
 option(ENABLE_WARNINGS "Enable extra warnings" ON)
 option(ENABLE_CUDA "Enable CUDA features" ON)
 option(ENABLE_RENDER_TESTS "Build rendering tests (requires API alignment)" OFF)
+# Focused build options
+option(BUILD_DEMOS "Build demo executables (CudaPhysicsDemo, CudaRenderingDemo, LightingIntegrationDemo)" OFF)
+option(BUILD_ENHANCEDGAME "Build EnhancedGame executable" OFF)
+option(ENABLE_DX12_BACKEND "Build DX12 backend scaffold (Windows only)" OFF)
 
 # First configure C++ project
-project(AAA_Game_Engine LANGUAGES CXX)
+project(AAA_Game_Engine LANGUAGES CXX CUDA)
 
 # Apply warning settings if enabled (milestone didn't have /WX enabled)
 if(ENABLE_WARNINGS)
@@ -92,7 +97,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     )
 
     if(WIN32)
-        # Windows-specific Clang flags
+        
+# Windows-specific Clang flags
         add_compile_options(
             -D_DEBUG=$<CONFIG:Debug>
             "-fms-compatibility"
@@ -112,7 +118,10 @@ set(CMAKE_CUDA_ARCHITECTURES 86)
 
 # CUDA specific flags - only set if CUDA language is enabled
 if(CMAKE_CUDA_COMPILER)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
+    # Fix for "cl.exe not found" - Explicitly set host compiler
+    set(CMAKE_CUDA_HOST_COMPILER "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.38.33130/bin/HostX64/x64/cl.exe")
+    
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
     set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
     set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
     
@@ -290,6 +299,62 @@ if(ENABLE_PHYSX)
     endif()
 endif()
 
+# === NVIDIA Streamline SDK Integration (for DLSS, Reflex, RTXGI) ===
+option(ENABLE_STREAMLINE "Enable NVIDIA Streamline SDK (DLSS, Reflex, RTXGI)" ON)
+
+if(WIN32 AND ENABLE_DX12_BACKEND AND ENABLE_STREAMLINE)
+    set(STREAMLINE_SDK_DIR "${CMAKE_SOURCE_DIR}/vendor/streamline-sdk")
+    set(STREAMLINE_INCLUDE_DIR "${STREAMLINE_SDK_DIR}/include")
+    set(STREAMLINE_LIB_DIR "${STREAMLINE_SDK_DIR}/lib/x64")
+    set(STREAMLINE_BIN_DIR "${STREAMLINE_SDK_DIR}/bin/x64")
+    
+    # Check if Streamline SDK exists
+    if(EXISTS "${STREAMLINE_INCLUDE_DIR}/sl.h")
+        message(STATUS "NVIDIA Streamline SDK found at: ${STREAMLINE_SDK_DIR}")
+        
+        set(STREAMLINE_LIBRARIES
+            "${STREAMLINE_LIB_DIR}/sl.interposer.lib"  # Streamline core library
+        )
+        
+        # Verify Streamline libraries exist
+        foreach(lib ${STREAMLINE_LIBRARIES})
+            if(NOT EXISTS ${lib})
+                message(WARNING "Streamline library not found: ${lib}")
+                set(ENABLE_STREAMLINE OFF)
+            endif()
+        endforeach()
+        
+        if(ENABLE_STREAMLINE)
+            message(STATUS "Streamline libraries:")
+            foreach(lib ${STREAMLINE_LIBRARIES})
+                message(STATUS "  - ${lib}")
+            endforeach()
+            
+            # List required DLLs
+            set(STREAMLINE_DLLS
+                "${STREAMLINE_BIN_DIR}/sl.interposer.dll"
+                "${STREAMLINE_BIN_DIR}/sl.common.dll"
+                "${STREAMLINE_BIN_DIR}/sl.dlss.dll"
+                "${STREAMLINE_BIN_DIR}/sl.reflex.dll"
+            )
+            
+            message(STATUS "Streamline DLLs to copy:")
+            foreach(dll ${STREAMLINE_DLLS})
+                if(EXISTS ${dll})
+                    message(STATUS "  - ${dll}")
+                else()
+                    message(WARNING "  - Missing: ${dll}")
+                endif()
+            endforeach()
+        endif()
+    else()
+        message(WARNING "Streamline SDK not found at ${STREAMLINE_SDK_DIR}; disabling Streamline")
+        set(ENABLE_STREAMLINE OFF)
+    endif()
+else()
+    set(ENABLE_STREAMLINE OFF)
+endif()
+
 # Configure Assimp
 find_package(assimp QUIET)
 if(NOT assimp_FOUND)
@@ -333,6 +398,7 @@ include_directories(
 )
 
 # Configure all targets to use consistent runtime library
+message(STATUS "DEBUG: Marker Line 400")
 function(configure_msvc_runtime TARGET_NAME)
     if(MSVC)
         set_target_properties(${TARGET_NAME} PROPERTIES
@@ -343,6 +409,7 @@ endfunction()
 
 # --- Demo Executables ---
 
+if(BUILD_DEMOS)
 # CUDA Physics Demo
 add_executable(CudaPhysicsDemo
     src_refactored/Demos/CudaPhysicsDemo.cpp
@@ -354,6 +421,8 @@ add_executable(CudaPhysicsDemo
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -377,6 +446,8 @@ add_executable(CudaRenderingDemo
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -399,6 +470,8 @@ add_executable(LightingIntegrationDemo
     src_refactored/Rendering/CameraDebugSystem.cpp
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     src_refactored/Core/EntityManager.cpp
     src_refactored/Core/ComponentManager.cpp
 )
@@ -433,12 +506,23 @@ set(TEST_SOURCES
 )
 
 # Add CPU-only skybox utility tests
+
 list(APPEND TEST_SOURCES tests/SkyboxUtilsTests.cpp)
+# Third-person camera rig tests
+list(APPEND TEST_SOURCES tests/ThirdPersonCameraRigTests.cpp)
 
 # Enemy AI tests (logic only)
 list(APPEND TEST_SOURCES 
     tests/EnemyAITests.cpp
     src_refactored/Gameplay/EnemyAISystem.cpp
+)
+
+# Procedural character tests
+list(APPEND TEST_SOURCES
+    tests/ProceduralCharacterTests.cpp
+    src_refactored/Rendering/ProceduralCharacter.cpp
+    src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/ShaderProgram.cpp
 )
 
 # Add OpenGL-dependent skybox tests (conditionally)
@@ -476,6 +560,7 @@ else()
 endif()
 
 # Conditionally add physics-dependent tests (exclude advanced CUDA perf framework for now)
+message(STATUS "DEBUG: Marker 1 - Before PHYSX")
 if(ENABLE_PHYSX)
     list(APPEND TEST_SOURCES 
         tests/CharacterControllerTests.cpp
@@ -487,14 +572,36 @@ if(ENABLE_PHYSX)
     )
 endif()
 
-# Note: PlayerMovementTests requires gmock and Full3DGameIntegrationTests needs refactoring
-# These are temporarily disabled until dependencies are resolved
-# list(APPEND TEST_SOURCES tests/PlayerMovementTests.cpp)
-# list(APPEND TEST_SOURCES tests/Full3DGameIntegrationTests.cpp)
+# DX12 Backend tests (conditionally added)
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    message(STATUS "[DX12] Adding DX12 unit tests to TEST_SOURCES")
+    list(APPEND TEST_SOURCES
+        tests/DX12ShaderManagerTests.cpp
+        tests/DX12PipelineStateTests.cpp
+        tests/RayTracingSystemTests.cpp
+        # tests/DX12RenderPipelineTests.cpp # Exclude from TestRunner to avoid main() collision
+        tests/D3D12MeshTests.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+    )
+    message(STATUS "[DX12] Added 13 DX12 sources to test suite (including mesh system)")
+endif()
+
 
 add_executable(TestRunner ${TEST_SOURCES})
+# Ensure ThirdPersonCameraRigTests is included even if list append misses due to cache
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/ThirdPersonCameraRigTests.cpp")
+    target_sources(TestRunner PRIVATE tests/ThirdPersonCameraRigTests.cpp)
+endif()
 
 # Add GTest
+message(STATUS "DEBUG: Reached GTest FetchContent block. ENABLE_RENDER_TESTS=${ENABLE_RENDER_TESTS}")
 include(FetchContent)
 FetchContent_Declare(
     googletest
@@ -521,10 +628,10 @@ target_link_libraries(TestRunner PRIVATE
     glm::glm
     GTest::gtest
     GTest::gtest_main
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:${OPENGL_LIBRARIES}>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:glfw>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:glad>
-    $<$<BOOL:${ENABLE_RENDER_TESTS}>:assimp>
+    ${OPENGL_LIBRARIES}
+    glfw
+    glad
+    assimp
 )
 
 if(ENABLE_CUDA)
@@ -544,6 +651,51 @@ endif()
 if(ENABLE_PHYSX)
     target_link_libraries(TestRunner PRIVATE ${PHYSX_LIBRARIES})
     target_compile_definitions(TestRunner PRIVATE ENABLE_PHYSX)
+endif()
+
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    target_link_libraries(TestRunner PRIVATE
+        d3d12
+        dxgi
+        dxcompiler
+        glfw
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    target_compile_definitions(TestRunner PRIVATE 
+        ENABLE_DX12_BACKEND
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    # Copy DXC DLLs for tests
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:TestRunner>
+            COMMENT "Copying dxcompiler.dll for tests"
+        )
+        add_custom_command(TARGET TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:TestRunner>
+            COMMENT "Copying dxil.dll for tests"
+        )
+    endif()
+    
+    # Copy Streamline DLLs for TestRunner
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET TestRunner POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:TestRunner>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # Set output directory for test binaries
@@ -579,6 +731,9 @@ target_compile_definitions(TestRunner PRIVATE
 set_target_properties(TestRunner PROPERTIES
     MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
 )
+
+# === DX12 Standalone Unit Tests ===
+# DX12TestRunner definition moved to end of file to ensure optional dependecies are loaded.
 
 # Copy PhysX DLLs to TestRunner output directory
 if(ENABLE_PHYSX AND WIN32)
@@ -640,26 +795,27 @@ target_link_libraries(LightingIntegrationDemo PRIVATE
 )
 
 target_compile_definitions(LightingIntegrationDemo PRIVATE ASSET_DIR="${ASSET_DIR}")
-
-target_link_libraries(TestRunner PRIVATE
-    glm::glm
-)
-
+endif() # BUILD_DEMOS
 
 # --- CUDA Properties ---
 
-set_target_properties(CudaPhysicsDemo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+if(TARGET CudaPhysicsDemo)
+    set_target_properties(CudaPhysicsDemo PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+endif()
 
-set_target_properties(CudaRenderingDemo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+if(TARGET CudaRenderingDemo)
+    set_target_properties(CudaRenderingDemo PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+endif()
 
 # Enable verbose output for debugging
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Enhanced Game target with all original features in ECS
+if(BUILD_ENHANCEDGAME)
 add_executable(EnhancedGame
     src_refactored/EnhancedGameMain.cpp
     src_refactored/Gameplay/PlayerMovementSystem.cpp
@@ -681,6 +837,8 @@ add_executable(EnhancedGame
     src_refactored/Rendering/Framebuffer.cpp
     src_refactored/Rendering/LightingSystem.cpp
     src_refactored/Rendering/Mesh.cpp
+    src_refactored/Rendering/Skybox.cpp
+    src_refactored/Rendering/SkyboxUtils.cpp
     # Debug
     src_refactored/Debug/OpenGLDebugRenderer.cpp
     src_refactored/Rendering/RenderDebugSystem.cpp
@@ -726,6 +884,7 @@ add_custom_command(TARGET EnhancedGame POST_BUILD
         $<TARGET_FILE_DIR:EnhancedGame>/assets
     COMMENT "Copying assets to EnhancedGame build directory"
 )
+endif() # BUILD_ENHANCEDGAME
 
 # Full 3D game with all features
 add_executable(Full3DGame
@@ -756,6 +915,8 @@ add_executable(Full3DGame
     src_refactored/Rendering/ProceduralCharacter.cpp
     src_refactored/Rendering/Skybox.cpp
     src_refactored/Rendering/SkyboxUtils.cpp
+    # Rendering Backends
+    src_refactored/Rendering/Backends/GLRenderBackend.cpp
     # CUDA Building Generation (conditional - use CUDA or CPU fallback)
     $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingGenerator.cpp>
     $<$<BOOL:${ENABLE_CUDA}>:src_refactored/Rendering/CudaBuildingKernels.cu>
@@ -792,11 +953,14 @@ if(ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     )
     
     # Set CUDA source properties
-    set_source_files_properties(
-        src_refactored/Rendering/CudaBuildingKernels.cu
-        PROPERTIES
-        LANGUAGE CUDA
-    )
+    
+    # Set CUDA source properties (Implicit for .cu files)
+    # set_source_files_properties(
+    #     src_refactored/Rendering/CudaBuildingKernels.cu
+    #     src_refactored/Rendering/CullAndDraw.cu
+    #     PROPERTIES
+    #     LANGUAGE CUDA
+    # )
 endif()
 
 target_link_libraries(Full3DGame PRIVATE
@@ -806,6 +970,16 @@ target_link_libraries(Full3DGame PRIVATE
     glm::glm
     assimp
 )
+
+# Optional: compile DX12 backend scaffold (no effect unless enabled)
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    message(STATUS "DX12 backend scaffold enabled")
+    target_sources(Full3DGame PRIVATE
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+    )
+    target_link_libraries(Full3DGame PRIVATE d3d12 dxgi)
+    target_compile_definitions(Full3DGame PRIVATE ENABLE_DX12_BACKEND)
+endif()
 
 # Add linker flag to ignore PhysX static lib runtime conflicts
 if(MSVC)
@@ -853,17 +1027,606 @@ if(ENABLE_PHYSX AND WIN32)
                 $<TARGET_FILE_DIR:Full3DGame>
             COMMENT "Copying PhysX DLL: ${DLL_FILE}"
         )
-        add_custom_command(TARGET EnhancedGame POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${DLL_FILE}
-                $<TARGET_FILE_DIR:EnhancedGame>
-            COMMENT "Copying PhysX DLL: ${DLL_FILE}"
-        )
-        add_custom_command(TARGET CudaPhysicsDemo POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${DLL_FILE}
-                $<TARGET_FILE_DIR:CudaPhysicsDemo>
-            COMMENT "Copying PhysX DLL: ${DLL_FILE}"
-        )
+        if(TARGET EnhancedGame)
+            add_custom_command(TARGET EnhancedGame POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${DLL_FILE}
+                    $<TARGET_FILE_DIR:EnhancedGame>
+                COMMENT "Copying PhysX DLL: ${DLL_FILE}"
+            )
+        endif()
+        if(TARGET CudaPhysicsDemo)
+            add_custom_command(TARGET CudaPhysicsDemo POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${DLL_FILE}
+                    $<TARGET_FILE_DIR:CudaPhysicsDemo>
+                COMMENT "Copying PhysX DLL: ${DLL_FILE}"
+            )
+        endif()
     endforeach()
+endif()
+
+# === DX12 Render Pipeline Unit Tests ===
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    message(WARNING "Configuring DX12TestRunner...")
+    add_executable(DX12TestRunner
+        tests/DX12ShaderManagerTests.cpp
+        tests/DX12PipelineStateTests.cpp
+        tests/RayTracingSystemTests.cpp
+        tests/DX12RenderPipelineTests.cpp
+        tests/D3D12MeshTests.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+        src_refactored/Core/CudaCore.cpp
+        src_refactored/Rendering/MeshletGenerator.cpp
+    )
+
+    target_include_directories(DX12TestRunner PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        "C:/Users/Brandon/CudaGame/build/_deps/assimp-src/contrib/gtest/include"
+        ${ASSIMP_INCLUDE_DIR}
+        ${assimp_BINARY_DIR}/include
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+
+    message(STATUS "Using Assimp's GTest from: ${CMAKE_BINARY_DIR}/_deps/assimp-src/contrib/gtest/include")
+
+    target_link_libraries(DX12TestRunner PRIVATE
+        ${CMAKE_BINARY_DIR}/CullAndDraw.obj
+        glm::glm
+        gtest
+        d3d12
+        dxgi
+        dxcompiler
+        glfw
+        assimp
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart>
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cuda_driver>
+    )
+
+    set_source_files_properties(
+        src_refactored/Rendering/CullAndDraw.cu
+        PROPERTIES LANGUAGE CUDA
+    )
+
+    target_compile_definitions(DX12TestRunner PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+
+    target_compile_definitions(DX12TestRunner PRIVATE "ASSET_DIR=\"${CMAKE_SOURCE_DIR}/Assets/\"")
+
+    set_target_properties(DX12TestRunner PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+
+    # Copy DXC DLLs 
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET DX12TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:DX12TestRunner>
+            COMMENT "Copying dxcompiler.dll for DX12TestRunner"
+        )
+        add_custom_command(TARGET DX12TestRunner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:DX12TestRunner>
+            COMMENT "Copying dxil.dll for DX12TestRunner"
+        )
+    endif()
+    
+    # Copy Streamline DLLs 
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET DX12TestRunner POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:DX12TestRunner>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+
+    message(STATUS "DX12TestRunner executable will be built")
+endif()
+
+# === DX12 Backend Test Executable ===
+if(WIN32 AND ENABLE_DX12_BACKEND)
+    add_executable(DX12BackendTest
+        src_refactored/Demos/DX12BackendTest.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+    )
+    
+    target_include_directories(DX12BackendTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12BackendTest PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12BackendTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    # Set output directory
+    set_target_properties(DX12BackendTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12BackendTest executable will be built")
+    
+    # DX12 Resource Creation Test
+    add_executable(DX12ResourceTest
+        src_refactored/Demos/DX12ResourceTest.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+    )
+    
+    target_include_directories(DX12ResourceTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12ResourceTest PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12ResourceTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+    )
+    
+    set_target_properties(DX12ResourceTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12ResourceTest executable will be built")
+    
+    # DX12 Shader Compilation Test
+    add_executable(DX12ShaderTest
+        src_refactored/Demos/DX12ShaderTest.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+    )
+    
+    target_include_directories(DX12ShaderTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+    )
+    
+    target_link_libraries(DX12ShaderTest PRIVATE
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+    )
+    
+    target_compile_definitions(DX12ShaderTest PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+    )
+    
+    set_target_properties(DX12ShaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    message(STATUS "DX12ShaderTest executable will be built")
+    
+    # Copy DXC DLLs to output directory for shader compilation
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET DX12ShaderTest POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:DX12ShaderTest>
+            COMMENT "Copying dxcompiler.dll for shader compilation"
+        )
+        add_custom_command(TARGET DX12ShaderTest POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:DX12ShaderTest>
+            COMMENT "Copying dxil.dll for DXIL validation"
+        )
+    endif()
+    
+    # DX12 Pipeline Demo - Full AAA Rendering Demo
+    add_executable(DX12PipelineDemo
+        src_refactored/Demos/DX12PipelineDemo.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Camera.cpp
+        src_refactored/Core/CudaCore.cpp
+        src_refactored/Animation/AnimationResources.cpp
+        src_refactored/Animation/AnimationSystem.cpp
+        src_refactored/Animation/AnimationStateMachine.cpp
+        src_refactored/Animation/BlendTree.cpp
+        src_refactored/Animation/BlendTree.cpp
+        src_refactored/Animation/IKSolver.cpp
+        src_refactored/Core/EntityManager.cpp
+        src_refactored/Core/ComponentManager.cpp
+        src_refactored/Core/Logger.cpp
+        src_refactored/Rendering/MeshletGenerator.cpp
+    )
+    
+    target_include_directories(DX12PipelineDemo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        ${assimp_BINARY_DIR}/include
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+    )
+    
+    target_link_libraries(DX12PipelineDemo PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+        assimp
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart CUDA::cuda_driver>
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+    )
+    
+    target_compile_definitions(DX12PipelineDemo PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+        ASSET_DIR="${CMAKE_SOURCE_DIR}/assets"
+    )
+    
+    set_target_properties(DX12PipelineDemo PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+    
+    # Copy Streamline DLLs for demo
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET DX12PipelineDemo POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:DX12PipelineDemo>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    message(STATUS "DX12PipelineDemo executable will be built")
+    
+    # CUDA Frustum Culling Library (AAA GPU optimization)
+    # Separate library to isolate CUDA compilation from DX12/PhysX includes
+    # KERNEL COMPILATION WORKAROUND
+    # MSBuild/NVCC integration is broken on this env ("single input file" error).
+    # We compile the kernel MANUALLY using a custom command and link the object.
+    
+    if(ENABLE_CUDA)
+        set(CUDA_OBJ_FILE "${CMAKE_BINARY_DIR}/Release/CullAndDraw.obj")
+        set(NVCC_PATH "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc.exe")
+        set(HOST_COMPILER_PATH "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.38.33130/bin/HostX64/x64")
+        
+        # Build the command using proven arguments
+        add_custom_command(
+            OUTPUT ${CUDA_OBJ_FILE}
+            COMMAND "${NVCC_PATH}"
+            ARGS 
+            -ccbin "${HOST_COMPILER_PATH}"
+            -c "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CullAndDraw.cu"
+            -o "${CUDA_OBJ_FILE}"
+            -I"${CMAKE_SOURCE_DIR}/include_refactored"
+            -I"${CMAKE_SOURCE_DIR}/include"
+            -I"${CMAKE_SOURCE_DIR}/glm"
+            -DGLM_ENABLE_EXPERIMENTAL
+            -O3 -std=c++17
+            --machine 64
+            --generate-code=arch=compute_86,code=[compute_86,sm_86]
+            -Xcompiler "/MD" 
+            MAIN_DEPENDENCY "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CullAndDraw.cu"
+            COMMENT "Manually compiling CullAndDraw.cu to bypass MSBuild error"
+        )
+        
+        # Add a custom target to ensure it builds
+        add_custom_target(CompileCudaKernel DEPENDS ${CUDA_OBJ_FILE})
+        
+        # Manual Compile for Particle Kernels
+        set(PARTICLE_CUDA_OBJ "${CMAKE_BINARY_DIR}/Release/ParticleKernels.obj")
+        add_custom_command(
+            OUTPUT ${PARTICLE_CUDA_OBJ}
+            COMMAND "${NVCC_PATH}"
+            ARGS 
+            -ccbin "${HOST_COMPILER_PATH}"
+            -c "${CMAKE_SOURCE_DIR}/src_refactored/VFX/ParticleKernels.cu"
+            -o "${PARTICLE_CUDA_OBJ}"
+            -I"${CMAKE_SOURCE_DIR}/include_refactored"
+            -I"${CMAKE_SOURCE_DIR}/include"
+            -I"${CMAKE_SOURCE_DIR}/glm"
+            -DGLM_FORCE_CUDA
+            -DGLM_ENABLE_EXPERIMENTAL
+            -O3 -std=c++17
+            --machine 64
+            --generate-code=arch=compute_86,code=[compute_86,sm_86]
+            -Xcompiler "/MD" 
+            MAIN_DEPENDENCY "${CMAKE_SOURCE_DIR}/src_refactored/VFX/ParticleKernels.cu"
+            COMMENT "Manually compiling ParticleKernels.cu"
+        )
+        add_custom_target(CompileParticleKernels DEPENDS ${PARTICLE_CUDA_OBJ})
+
+        # Manual Compile for Building Generator Kernels
+        set(BUILDING_CUDA_OBJ "${CMAKE_BINARY_DIR}/Release/CudaBuildingKernels.obj")
+        add_custom_command(
+            OUTPUT ${BUILDING_CUDA_OBJ}
+            COMMAND "${NVCC_PATH}"
+            ARGS 
+            -ccbin "${HOST_COMPILER_PATH}"
+            -c "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CudaBuildingKernels.cu"
+            -o "${BUILDING_CUDA_OBJ}"
+            -I"${CMAKE_SOURCE_DIR}/include_refactored"
+            -I"${CMAKE_SOURCE_DIR}/include"
+            -I"${CMAKE_SOURCE_DIR}/glm"
+            -DGLM_FORCE_CUDA
+            -DGLM_ENABLE_EXPERIMENTAL
+            -O3 -std=c++17
+            --machine 64
+            --generate-code=arch=compute_86,code=[compute_86,sm_86]
+            -Xcompiler "/MD" 
+            MAIN_DEPENDENCY "${CMAKE_SOURCE_DIR}/src_refactored/Rendering/CudaBuildingKernels.cu"
+            COMMENT "Manually compiling CudaBuildingKernels.cu"
+        )
+        add_custom_target(CompileBuildingKernels DEPENDS ${BUILDING_CUDA_OBJ})
+    endif()
+    
+    # Full3DGame DX12 - Game with D3D12 Renderer
+    add_executable(Full3DGame_DX12_Debug3
+        src_refactored/Demos/Full3DGame_DX12.cpp
+        src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+        src_refactored/Rendering/NVIDIAReflex.cpp
+        src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+        src_refactored/Rendering/RayTracingSystem.cpp
+        src_refactored/Rendering/DX12RenderPipeline.cpp
+        src_refactored/Rendering/D3D12Mesh.cpp
+        src_refactored/Rendering/ProceduralHumanoidMesh.cpp
+        src_refactored/Animation/ProceduralAnimationGenerator.cpp
+        src_refactored/Rendering/ShaderManager.cpp
+        src_refactored/Rendering/PipelineStateObject.cpp
+        src_refactored/Rendering/Camera.cpp
+        src_refactored/Rendering/OrbitCamera.cpp
+        # Gameplay systems (re-added with proper component registrations)
+        src_refactored/Gameplay/CharacterControllerSystem.cpp
+        src_refactored/Gameplay/EnemyAISystem.cpp
+        src_refactored/Gameplay/LevelSystem.cpp
+        src_refactored/Gameplay/TargetingSystem.cpp
+        src_refactored/Gameplay/PlayerMovementSystem.cpp
+        src_refactored/Physics/WallRunningSystem.cpp
+        src_refactored/AI/AISystem.cpp
+        src_refactored/VFX/ParticleSystem.cpp
+        # src_refactored/VFX/ParticleKernels.cu (Moved to Manual Build)
+        ${PARTICLE_CUDA_OBJ}
+        # Character & Animation
+        src_refactored/Gameplay/CharacterFactory.cpp
+        src_refactored/Animation/AnimationSystem.cpp
+        # Core ECS - use refactored versions with ECS-PhysX sync
+        src_refactored/Core/EntityManager.cpp
+        src_refactored/Core/ComponentManager.cpp
+        src_refactored/Core/ThreadPool.cpp
+        # World streaming system
+        src_refactored/World/WorldChunkManager.cpp
+        # Physics - use refactored version with ECS-PhysX sync
+        src_refactored/Physics/PhysXPhysicsSystem.cpp
+        # Procedural building generation
+        src_refactored/Rendering/CudaBuildingGenerator_DX12.cpp
+        # Mesh shader infrastructure (DX12 Ultimate)
+        src_refactored/Rendering/MeshletGenerator.cpp
+        # Testing System
+        src_refactored/Testing/TestSystem.cpp
+        # Phase 3: Modular Cuda Core
+        src_refactored/Core/CudaCore.cpp
+        # src_refactored/Rendering/CullAndDraw.cu (Manual Build Not Needed if ENABLE_CUDA is on, but let's add it to target)
+        src_refactored/Rendering/CullAndDraw.cu
+        ${CUDA_OBJ_FILE}
+        ${BUILDING_CUDA_OBJ}
+    )
+    
+    if(ENABLE_CUDA)
+        add_dependencies(Full3DGame_DX12_Debug3 CompileCudaKernel CompileParticleKernels CompileBuildingKernels)
+    endif()
+    
+    target_include_directories(Full3DGame_DX12_Debug3 PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        ${CMAKE_SOURCE_DIR}/include
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_INCLUDE_DIR}>
+        $<$<BOOL:${ENABLE_CUDA}>:${CUDAToolkit_INCLUDE_DIRS}>
+        # Assimp generated config.h
+        ${CMAKE_BINARY_DIR}/_deps/assimp-build/include
+    )
+    
+    target_link_libraries(Full3DGame_DX12_Debug3 PRIVATE
+        glfw
+        glm::glm
+        d3d12
+        dxgi
+        dxcompiler
+        $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
+        $<$<BOOL:${ENABLE_PHYSX}>:${PHYSX_LIBRARIES}>
+        $<$<BOOL:${ENABLE_CUDA}>:CUDA::cudart CUDA::cuda_driver>
+        assimp
+    )
+    
+    target_compile_definitions(Full3DGame_DX12_Debug3 PRIVATE
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        GLM_FORCE_CUDA
+        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
+        ASSET_DIR="${CMAKE_SOURCE_DIR}/assets"
+    )
+    
+    set_target_properties(Full3DGame_DX12_Debug3 PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+        MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
+        OUTPUT_NAME "Full3DGame_DX12_Debug3_Run2"
+    )
+    
+    # Copy Streamline DLLs for game
+    if(ENABLE_STREAMLINE)
+        foreach(dll ${STREAMLINE_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET Full3DGame_DX12_Debug3 POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:Full3DGame_DX12_Debug3>
+                    COMMENT "Copying Streamline DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    # Copy PhysX DLLs for game
+    if(ENABLE_PHYSX)
+        set(PHYSX_DLL_DIR "${PHYSX_ROOT}/bin/win.x86_64.vc142.md/release")
+        file(GLOB PHYSX_DLLS "${PHYSX_DLL_DIR}/*.dll")
+        foreach(dll ${PHYSX_DLLS})
+            if(EXISTS ${dll})
+                add_custom_command(TARGET Full3DGame_DX12_Debug3 POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${dll}
+                        $<TARGET_FILE_DIR:Full3DGame_DX12_Debug3>
+                    COMMENT "Copying PhysX DLL: ${dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+    
+    message(STATUS "Full3DGame_DX12 executable will be built")
+endif()
+
+# Unit Tests
+if(BUILD_TESTING)
+    add_executable(AnimationSystemTests
+        tests/AnimationSystemTests.cpp
+        src_refactored/Gameplay/AnimationControllerSystem.cpp
+        src_refactored/Animation/AnimationSystem.cpp
+        src_refactored/Animation/AnimationResources.cpp
+        src_refactored/Animation/AnimationStateMachine.cpp
+        src_refactored/Animation/BlendTree.cpp
+        src_refactored/Animation/IKSolver.cpp
+        src_refactored/Core/Logger.cpp
+        src_refactored/Core/EntityManager.cpp
+        src_refactored/Core/ComponentManager.cpp
+    )
+    
+    target_include_directories(AnimationSystemTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include_refactored
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/_deps/assimp-build/include
+    )
+    
+    target_link_libraries(AnimationSystemTests PRIVATE
+        glm::glm
+        assimp
+    )
+    
+    # PhysX might be needed if headers include it
+    if(ENABLE_PHYSX)
+        target_link_libraries(AnimationSystemTests PRIVATE ${PHYSX_LIBRARIES})
+    endif()
+
+    add_test(NAME AnimationSystemTests COMMAND AnimationSystemTests)
+endif()
+
+# Demo: Integrated Animation (Visual)
+add_executable(IntegratedAnimationDemo
+    src_refactored/Demos/IntegratedAnimationDemo.cpp
+    src_refactored/Core/EntityManager.cpp
+    src_refactored/Core/ComponentManager.cpp
+    src_refactored/Core/Logger.cpp
+    src_refactored/Rendering/DX12RenderPipeline.cpp
+    src_refactored/Rendering/D3D12Mesh.cpp
+    src_refactored/Rendering/Backends/DX12RenderBackend.cpp
+    src_refactored/Rendering/Camera.cpp
+    src_refactored/Core/CudaCore.cpp
+    src_refactored/Rendering/NVIDIAReflex.cpp
+    src_refactored/Rendering/Meshlet.cpp
+    src_refactored/Rendering/StreamlineDLSSWrapper.cpp
+    src_refactored/Rendering/RayTracingSystem.cpp
+    src_refactored/Animation/AnimationSystem.cpp
+    src_refactored/Animation/AnimationResources.cpp
+    src_refactored/Animation/AnimationStateMachine.cpp
+    src_refactored/Animation/BlendTree.cpp
+    src_refactored/Animation/IKSolver.cpp
+    src_refactored/Physics/PhysXPhysicsSystem.cpp
+    src_refactored/Gameplay/CharacterControllerSystem.cpp
+    src_refactored/Gameplay/AnimationControllerSystem.cpp
+    src_refactored/Gameplay/CharacterFactory.cpp
+    src_refactored/Gameplay/CombatSystem.cpp
+)
+
+target_include_directories(IntegratedAnimationDemo PRIVATE
+    ${CMAKE_SOURCE_DIR}/include_refactored
+    ${CMAKE_SOURCE_DIR}/include
+    ${ASSIMP_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}/_deps/assimp-build/include
+
+    ${CMAKE_BINARY_DIR}/_deps/glfw-src/include
+    ${PHYSX_INCLUDE_DIRS}
+)
+
+target_link_libraries(IntegratedAnimationDemo PRIVATE
+    d3d12
+    dxgi
+    d3dcompiler
+    glm::glm
+    glfw
+    assimp
+    CUDA::cudart
+    ${PHYSX_LIBRARIES}
+)
+
+target_compile_definitions(IntegratedAnimationDemo PRIVATE
+    NOMINMAX
+    _CRT_SECURE_NO_WARNINGS
+    GLM_FORCE_CUDA
+    ASSET_DIR="${CMAKE_SOURCE_DIR}/assets"
+)
+
+# Copy Assets/DLLs
+if(MSVC)
+    add_custom_command(TARGET IntegratedAnimationDemo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/Testwuson.X" # If exists
+        $<TARGET_FILE_DIR:IntegratedAnimationDemo>
+    )
 endif()

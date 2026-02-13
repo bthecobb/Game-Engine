@@ -1,0 +1,62 @@
+﻿MSBuild version 17.11.2+c078802d4 for .NET Framework
+
+  glfw.vcxproj -> C:\Users\Brandon\CudaGame\build\_deps\glfw-build\src\Release\glfw3.lib
+  Microsoft (R) C/C++ Optimizing Compiler Version 19.38.33140 for x64
+  Copyright (C) Microsoft Corporation.  All rights reserved.
+  cl /c /IC:\Users\Brandon\CudaGame\include_refactored /I"C:\Users\Brandon\CudaGame\build\_deps\assimp-src\include" /I"C:\Users\Brandon\CudaGame\vendor\PhysX-107.0-physx-5.6.0\physx\include" /IC:\Users\Brandon\CudaGame\include /I"C:\Users\Brandon\CudaGame\vendor\streamline-sdk\include" /I"C:\Users\Brandon\CudaGame\build\_deps\glfw-src\include" /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\include" /W4 /WX- /diagnostics:column /O2 /D _MBCS /D WIN32 /D _WINDOWS /D NOMINMAX /D _CRT_SECURE_NO_WARNINGS /D STREAMLINE_SDK_AVAILABLE /D "ASSET_DIR=\"C:/Users/Brandon/CudaGame/assets\"" /D NDEBUG /D _ITERATOR_DEBUG_LEVEL=0 /D GLM_ENABLE_EXPERIMENTAL /D "CMAKE_INTDIR=\"Release\"" /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Fo"Full3DGame_DX12.dir\Release\\" /Fd"Full3DGame_DX12.dir\Release\vc143.pdb" /external:W0 /Gd /TP /errorReport:queue  /external:I "C:/Users/Brandon/CudaGame/glm" C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp
+  Full3DGame_DX12.cpp
+C:\Users\Brandon\CudaGame\include_refactored\Rendering\D3D12Constants.h(23,1): warning C4324: 'CudaGame::Rendering::PerFrameConstants': structure was padded due to alignment specifier [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  (compiling source file '../src_refactored/Demos/Full3DGame_DX12.cpp')
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(206,34): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(41,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(206,49): warning C4100: 'xoffset': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(206,34): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(213,31): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(41,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(233,13): warning C4457: declaration of 'mode' hides function parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(213,78):
+      see declaration of 'mode'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(213,78): warning C4100: 'mode': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(213,52): warning C4100: 'scancode': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(284,33): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(41,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(288,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(289,17): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(293,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(294,19): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(295,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(296,13): warning C4244: '=': conversion from 'double' to 'float', possible loss of data [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(284,33): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(301,40): warning C4459: declaration of 'window' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(41,13):
+      see declaration of 'window'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(301,76): warning C4100: 'mods': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(301,40): warning C4100: 'window': unreferenced formal parameter [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(311,40): warning C4459: declaration of 'playerEntity' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(65,14):
+      see declaration of 'playerEntity'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(335,40): warning C4459: declaration of 'playerEntity' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(65,14):
+      see declaration of 'playerEntity'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(974,14): warning C4459: declaration of 'frameCount' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(94,5):
+      see declaration of 'frameCount'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(975,11): warning C4459: declaration of 'fps' hides global declaration [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+      C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(93,7):
+      see declaration of 'fps'
+  
+C:\Users\Brandon\CudaGame\src_refactored\Demos\Full3DGame_DX12.cpp(694): warning C4701: potentially uninitialized local variable 'buildingColor' used [C:\Users\Brandon\CudaGame\build\Full3DGame_DX12.vcxproj]
+  Full3DGame_DX12.vcxproj -> C:\Users\Brandon\CudaGame\build\Release\Release\Full3DGame_DX12.exe
+  Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.interposer.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.common.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.dlss.dll	Copying Streamline DLL: C:/Users/Brandon/CudaGame/vendor/streamline-sdk/bin/x64/sl.reflex.dll

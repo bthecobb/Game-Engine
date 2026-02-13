@@ -129,3 +129,17 @@ gmon.out
 # Misc
 *.orig
 *.rej
+
+# Local archives and old snapshots
+OLD/
+
+# Local logs / scratch lists
+game_*.txt
+__files.txt
+all_files_list.txt
+
+# Visual Studio local build directory
+build-vs/
+
+# Legacy or local-only shaders root (new renderer uses assets/shaders/)
+/shaders/

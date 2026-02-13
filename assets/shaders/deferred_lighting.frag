@@ -10,6 +10,7 @@ uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
 uniform sampler2D gMetallicRoughnessAOEmissive;
 uniform sampler2D gEmissive;
+uniform sampler2D gMotion; // Motion vectors (RG)
 
 // Shadow mapping
 uniform sampler2D shadowMap;
@@ -28,7 +29,7 @@ struct Light {
 
 uniform Light light;
 uniform vec3 viewPos;
-uniform int debugMode; // 0=final, 1=position, 2=normal, 3=albedo, 4=metallic/roughness/AO
+uniform int debugMode; // 0=final, 1=position, 2=normal, 3=albedo, 4=metallic/roughness/AO, 5=emissive color, 6=emissive power, 7=motion vectors
 uniform float depthScale; // Runtime-adjustable depth scale for position visualization
 
 float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir)
@@ -103,6 +104,15 @@ void main()
         // Emissive power only
         float ePow = texture(gMetallicRoughnessAOEmissive, TexCoord).a;
         FragColor = vec4(vec3(ePow / 15.0), 1.0); // normalized visualization
+        return;
+    }
+    else if (debugMode == 7) {
+        // Motion vectors visualization (magnitude heatmap)
+        vec2 mv = texture(gMotion, TexCoord).rg;
+        float mag = length(mv);
+        // Amplify for visibility; clamp to [0,1]
+        float v = clamp(mag * 4.0, 0.0, 1.0);
+        FragColor = vec4(v, 0.0, 1.0 - v, 1.0);
         return;
     }
 

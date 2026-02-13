@@ -249,13 +249,23 @@ void RenderSystem::ShadowPass() {
             glm::mat4 modelMatrix = transform.getMatrix();
             m_shadowShader->SetMat4("model", modelMatrix);
             
+            // For shadow pass, also avoid missing faces on generator VAO/simple cubes
+            bool forceDoubleSided = (meshComponent.modelPath == "player_cube") || (meshComponent.vaoId != 0);
+            if (forceDoubleSided) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
+
             // Use simple cube for player_cube, Model class for everything else
             if (meshComponent.modelPath == "player_cube") {
                 RenderSimpleCube();
+            } else if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
+                glBindVertexArray(meshComponent.vaoId);
+                glDrawElements(GL_TRIANGLES, meshComponent.indexCount, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
             } else {
                 Model model(meshComponent.modelPath);
                 model.Draw(*m_shadowShader);
             }
+
+            glEnable(GL_CULL_FACE);
             submitted++;
         }
     }
@@ -374,6 +384,10 @@ void RenderSystem::GeometryPass() {
                 m_geometryPassShader->SetFloat("ao", 1.0f);
             }
             
+            // For generator VAO and simple cubes, render double-sided to avoid missing faces
+            bool forceDoubleSided = (meshComponent.modelPath == "player_cube") || (meshComponent.vaoId != 0);
+            if (forceDoubleSided) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
+
             // Use simple cube for player_cube
             if (meshComponent.modelPath == "player_cube") {
                 LogDrawCall("GeometryPass", 1, m_cubeVAO, "GL_TRIANGLES", 36); // Use placeholder shader ID
@@ -381,6 +395,15 @@ void RenderSystem::GeometryPass() {
                 entityCount++;
                 m_drawCallCount++;
                 m_triangleCount += 12; // 36 vertices / 3 = 12 triangles
+            } else if (meshComponent.vaoId != 0 && meshComponent.indexCount > 0) {
+                // Draw generator VAO path when provided
+                LogDrawCall("GeometryPass", 1, meshComponent.vaoId, "GL_TRIANGLES", meshComponent.indexCount);
+                glBindVertexArray(meshComponent.vaoId);
+                glDrawElements(GL_TRIANGLES, meshComponent.indexCount, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
+                entityCount++;
+                m_drawCallCount++;
+                m_triangleCount += meshComponent.indexCount / 3;
             } else {
                 // Log model draw (approximate triangle count)
                 LogDrawCall("GeometryPass", 1, 0, "MODEL_DRAW", -1); // Use placeholder shader ID
@@ -390,6 +413,9 @@ void RenderSystem::GeometryPass() {
                 m_drawCallCount++;
                 m_triangleCount += 100; // Rough estimate for model
             }
+
+            // Restore default culling
+            glEnable(GL_CULL_FACE);
         }
     }
 
