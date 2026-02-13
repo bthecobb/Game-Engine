@@ -2,6 +2,7 @@
 // Implements optimal meshlet partitioning for mesh shader pipeline
 
 #include "Rendering/Meshlet.h"
+#include <iostream>
 #include <glm/gtc/epsilon.hpp>
 #include <algorithm>
 #include <unordered_set>
@@ -176,6 +177,39 @@ MeshletMesh MeshletGenerator::Generate(
     }
     
     return result;
+}
+
+void MeshletGenerator::ValidateMeshlets(MeshletMesh& mesh) {
+    if (mesh.meshlets.empty()) return;
+    
+    std::vector<Meshlet> validMeshlets;
+    validMeshlets.reserve(mesh.meshlets.size());
+    
+    for (const auto& m : mesh.meshlets) {
+        // 1. Degenerate Count Check
+        if (m.vertexCount == 0 || m.primitiveCount == 0) {
+            continue; // Skip empty
+        }
+        
+        // 2. Hardware Limit Check (NV Mesh Shader)
+        if (m.vertexCount > MESHLET_MAX_VERTICES || m.primitiveCount > MESHLET_MAX_PRIMITIVES) {
+            // This suggests logic error in Split, but for safety we cull it
+            continue; 
+        }
+        
+        // 3. NaN Check (Bounding Sphere)
+        if (std::isnan(m.boundingSphereRadius) || std::isinf(m.boundingSphereRadius)) {
+             continue;
+        }
+
+        validMeshlets.push_back(m);
+    }
+    
+    if (validMeshlets.size() != mesh.meshlets.size()) {
+        std::cerr << "[MeshletGenerator] Removed " << (mesh.meshlets.size() - validMeshlets.size()) 
+                  << " invalid/degenerate meshlets." << std::endl;
+        mesh.meshlets = validMeshlets;
+    }
 }
 
 } // namespace Rendering

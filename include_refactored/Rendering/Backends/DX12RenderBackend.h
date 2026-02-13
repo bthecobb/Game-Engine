@@ -45,6 +45,7 @@ public:
     void Present();
     void WaitForGPU();
     void MoveToNextFrame();
+    void ResetCommandList();
 
     // Getters for advanced features
     ID3D12Device* GetDevice() const { return m_device.Get(); }

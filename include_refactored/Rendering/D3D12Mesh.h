@@ -7,6 +7,7 @@
 #include <string>
 #include <glm/glm.hpp>
 #include "Rendering/Meshlet.h"
+#include "Animation/AnimationResources.h"
 
 namespace CudaGame {
 namespace Rendering {
@@ -16,6 +17,8 @@ class DX12RenderBackend;
 
 // Vertex format for geometry pass (matches HLSL)
 // AAA Standard: position, normal, tangent, texcoord, color
+// Vertex format for geometry pass (Unified for Static and Skinned)
+// AAA Standard: position, normal, tangent, texcoord, color, boneIndices, boneWeights
 struct Vertex {
     glm::vec3 position;
     glm::vec3 normal;
@@ -23,11 +26,34 @@ struct Vertex {
     glm::vec2 texcoord;
     glm::vec4 color;     // rgb = vertex color multiplier, a = emissive intensity
     
-    Vertex() : color(1.0f, 1.0f, 1.0f, 0.0f) {}  // Default: white, no emissive
+    // Animation Data (Unified)
+    glm::ivec4 boneIndices; // Up to 4 bones (Default: 0,0,0,0)
+    glm::vec4 boneWeights;  // Weights sum to 1.0 (Default: 0,0,0,0 for static)
+
+    Vertex() 
+        : color(1.0f, 1.0f, 1.0f, 0.0f), 
+          boneIndices(0), 
+          boneWeights(0.0f) {}  
+
     Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec3& tan, const glm::vec2& uv)
-        : position(pos), normal(norm), tangent(tan), texcoord(uv), color(1.0f, 1.0f, 1.0f, 0.0f) {}
+        : position(pos), normal(norm), tangent(tan), texcoord(uv), 
+          color(1.0f, 1.0f, 1.0f, 0.0f),
+          boneIndices(0),
+          boneWeights(0.0f) {}
+
     Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec3& tan, const glm::vec2& uv, const glm::vec4& col)
-        : position(pos), normal(norm), tangent(tan), texcoord(uv), color(col) {}
+        : position(pos), normal(norm), tangent(tan), texcoord(uv), 
+          color(col),
+          boneIndices(0),
+          boneWeights(0.0f) {}
+          
+    // Skinned Constructor
+    Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec3& tan, const glm::vec2& uv, const glm::vec4& col, 
+           const glm::ivec4& bIndices, const glm::vec4& bWeights)
+        : position(pos), normal(norm), tangent(tan), texcoord(uv), 
+          color(col),
+          boneIndices(bIndices),
+          boneWeights(bWeights) {}
 };
 
 // Extended vertex for procedural buildings with emissive windows
@@ -82,6 +108,9 @@ public:
                 const std::vector<Vertex>& vertices,
                 const std::vector<uint32_t>& indices,
                 const std::string& name);
+
+    // Load mesh from file (OBJ/FBX/X/GLTF)
+    bool LoadFromFile(DX12RenderBackend* backend, const std::string& filename, bool loadSkeleton = true);
     
     // Getters
     const D3D12_VERTEX_BUFFER_VIEW& GetVertexBufferView() const { return m_vertexBuffer.vertexBufferView; }
@@ -137,12 +166,42 @@ public:
     // Update GPU instance buffer with current transform
     void UpdateGPUInstanceData();
     
+    // Animation State (Per-Instance)
+    std::vector<glm::mat4> boneMatrices;
+    uint32_t globalBoneOffset = 0; // Offset in the global structured buffer
+    
+    // Load animation from file (Assimp)
+    bool LoadAnimation(const std::string& filePath, Animation::Skeleton& outSkeleton, std::unique_ptr<Animation::AnimationClip>& outClip);
+    
+    // Get loaded animations from file
+    const std::vector<std::shared_ptr<Animation::AnimationClip>>& GetAnimations() const { return m_animations; }
+    
+    // Add manual animation (for procedural meshes)
+    void AddAnimation(std::shared_ptr<Animation::AnimationClip> clip) {
+        m_animations.push_back(clip);
+    }
+
+    // Set skeleton for skinning
+    void SetSkeleton(std::shared_ptr<Animation::Skeleton> skeleton) { m_skeleton = skeleton; }
+    std::shared_ptr<Animation::Skeleton> GetSkeleton() const { return m_skeleton; }
+    
+    // Create skinned mesh (Unified)
+    bool CreateSkinned(DX12RenderBackend* backend,
+                      const std::vector<Vertex>& vertices,
+                      const std::vector<uint32_t>& indices,
+                      const std::string& name);
+
+    void SetBoneBuffer(ID3D12Resource* buffer) { m_globalBoneBuffer = buffer; }
+
 private:
+    ID3D12Resource* m_globalBoneBuffer = nullptr;
     GPUBuffer m_vertexBuffer;
     GPUBuffer m_indexBuffer;
     MeshletBuffers m_meshlets;
     Material m_material;
     std::string m_name;
+    std::shared_ptr<Animation::Skeleton> m_skeleton;
+    std::vector<std::shared_ptr<Animation::AnimationClip>> m_animations;
 };
 
 // Procedural mesh generators
@@ -156,6 +215,9 @@ public:
     
     // Generate plane mesh (1x1 on XZ plane)
     static std::unique_ptr<D3D12Mesh> CreatePlane(DX12RenderBackend* backend);
+    
+    // Generate a multi-box mesh (Skinned) based on the provided Skeleton
+    static std::unique_ptr<D3D12Mesh> CreateSkinnedBlockMesh(DX12RenderBackend* backend, std::shared_ptr<Animation::Skeleton> skeleton);
 };
 
 } // namespace Rendering

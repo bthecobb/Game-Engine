@@ -1,14 +1,15 @@
 // Geometry Pass Vertex Shader - AAA G-Buffer Rendering
 // Outputs to multiple render targets: Albedo, Normal, Velocity
 
-struct VSInput
-{
+struct VSInput {
     float3 position : POSITION;
     float3 normal : NORMAL;
     float3 tangent : TANGENT;
     float2 texcoord : TEXCOORD;
-    float4 color : COLOR0;  // rgb = vertex color, a = emissive intensity
-};
+    float4 color : COLOR;
+    int4   boneIndices : BLENDINDICES;
+    float4 boneWeights : BLENDWEIGHT;
+};  // rgb = vertex color, a = emissive intensity
 
 struct PSInput
 {

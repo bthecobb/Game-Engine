@@ -3,6 +3,8 @@
 #include "Physics/PhysXPhysicsSystem.h"
 #include "Rendering/OrbitCamera.h"
 #include "Gameplay/LevelComponents.h"  // For WallComponent
+#include "Animation/AnimationSystem.h"
+#include "Gameplay/AnimationControllerComponent.h"
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
 #include <fstream>
@@ -88,9 +90,100 @@ void CharacterControllerSystem::Update(float deltaTime) {
         // Handle dashing
         HandleDashing(charController, movement, rigidbody, input, moveDirection, deltaTime);
         
-        // Camera updates are handled in the main game loop, not here
-        // This prevents duplicate updates that cause shaking
+        // Update Animation State (DECOUPLED via AnimationControllerComponent)
+        if (coordinator.HasComponent<AnimationControllerComponent>(entity)) {
+            auto& animCtrl = coordinator.GetComponent<AnimationControllerComponent>(entity);
+            UpdateAnimationController(charController, rigidbody, movement, animCtrl);
+        } else if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+            auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+            UpdateAnimationState(charController, rigidbody, movement, animComp);
+        }
     }
+}
+
+void CharacterControllerSystem::UpdateAnimationController(
+    const Physics::CharacterControllerComponent& controller,
+    const Physics::RigidbodyComponent& rb,
+    const Gameplay::PlayerMovementComponent& movement,
+    Gameplay::AnimationControllerComponent& animCtrl)
+{
+    // Write Physics State to Blackboard
+    float horizontalSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
+    
+    animCtrl.SetSpeed(horizontalSpeed);
+    animCtrl.SetVerticalSpeed(rb.velocity.y);
+    animCtrl.SetGrounded(controller.isGrounded);
+    
+    animCtrl.boolParams["IsWallRunning"] = controller.isWallRunning;
+    animCtrl.boolParams["IsDashing"] = controller.isDashing;
+    
+    // We leave the State determination to AnimationControllerSystem
+}
+
+// Legacy Direct Update (to be deprecated or used as fallback)
+void CharacterControllerSystem::UpdateAnimationState(
+    const Physics::CharacterControllerComponent& controller,
+    const Physics::RigidbodyComponent& rb,
+    const PlayerMovementComponent& movement,
+    Animation::AnimationComponent& anim) 
+{
+    using namespace Animation;
+    
+    AnimationState targetState = AnimationState::IDLE;
+    
+    // Determine target state based on physics
+    if (controller.isWallRunning) {
+        targetState = AnimationState::WALL_RUNNING;
+    } else if (controller.isDashing) {
+        // Dashing usually overrides everything
+        // We don't have a DASH state in enum? Let's check.
+        // Step 11463 View: Yes, we do? No, not explicit. 
+        // We have RUNNING, SPRINTING.
+        // Let's use RUNNING for now or add DASH later.
+        targetState = AnimationState::RUNNING; 
+    } else if (!controller.isGrounded) {
+        // Airborne
+        if (rb.velocity.y > 0.5f) {
+            targetState = AnimationState::JUMPING;
+        } else {
+            targetState = AnimationState::FALLING;
+        }
+    } else {
+        // Grounded
+        float horizontalSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
+        if (horizontalSpeed > 0.1f) {
+            if (horizontalSpeed > movement.baseSpeed * 1.1f) {
+                targetState = AnimationState::SPRINTING; // Use Running clip if Sprinting not available
+            } else {
+                targetState = AnimationState::WALKING; // Or RUNNING depending on speed
+            }
+            
+            // Map strictly to available clips for now (Idle, Walk, Run, Attack)
+            // If speed > 5, Run. Else Walk.
+            if (horizontalSpeed > 5.0f || movement.movementState == MovementState::RUNNING) {
+                targetState = AnimationState::RUNNING;
+            } else {
+                targetState = AnimationState::WALKING;
+            }
+        } else {
+            targetState = AnimationState::IDLE;
+        }
+    }
+    
+    // Attack override (if we had combat component here, we'd check it)
+    // For now, simple movement state mapping.
+    
+    // State Transition Logic
+    if (targetState != anim.currentState) {
+        anim.previousState = anim.currentState;
+        anim.currentState = targetState;
+        anim.animationTime = 0.0f; // Reset time on state change
+        // In a real system, we'd crossfade here.
+        // AnimationSystem::updateEntityAnimation handles the clip selection based on currentState.
+    }
+    
+    // Update Blend Parameters
+    anim.movementSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
 }
 
 void CharacterControllerSystem::UpdateTimers(Physics::CharacterControllerComponent& controller, float deltaTime) {

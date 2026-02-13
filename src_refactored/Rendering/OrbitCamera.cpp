@@ -504,7 +504,21 @@ glm::vec3 OrbitCamera::FilterTargetPosition(const glm::vec3& rawTarget, float de
     }
     
     m_previousTargetPosition = rawTarget;
+    m_previousTargetPosition = rawTarget;
     return m_smoothedTargetPosition;
+}
+
+void OrbitCamera::SetViewAngles(float yaw, float pitch) {
+    m_yaw = yaw;
+    m_pitch = glm::clamp(pitch, m_orbitSettings.minPitch, m_orbitSettings.maxPitch);
+    m_previousYaw = m_yaw;
+    m_previousPitch = m_pitch;
+    
+    // Reset velocities
+    m_yawVelocity = 0.0f;
+    m_pitchVelocity = 0.0f;
+
+    UpdateCameraVectorsFromPosition();
 }
 
 } // namespace Rendering

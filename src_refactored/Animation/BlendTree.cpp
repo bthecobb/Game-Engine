@@ -137,6 +137,59 @@ void BlendNode2D::Evaluate(float time, std::vector<BoneTransform>& outPose, cons
     }
 }
 
+// LayeredBlendNode implementation
+void LayeredBlendNode::Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) {
+    if (!m_baseNode || !m_overlayNode) return;
+
+    // 1. Get Master Alpha
+    float alpha = 1.0f;
+    if (!m_alphaInputName.empty()) {
+        for (const auto& input : inputs) {
+            if (input.name == m_alphaInputName) {
+                alpha = glm::clamp(input.value, 0.0f, 1.0f);
+                break;
+            }
+        }
+    }
+    
+    // Optimization: If alpha is 0, just evaluate base
+    if (alpha <= 0.001f) {
+        m_baseNode->Evaluate(time, outPose, inputs);
+        return;
+    }
+
+    // 2. Evaluate Children
+    std::vector<BoneTransform> poseBase(outPose.size()), poseOverlay(outPose.size());
+    m_baseNode->Evaluate(time, poseBase, inputs);
+    m_overlayNode->Evaluate(time, poseOverlay, inputs);
+    
+    // 3. Blend based on mask
+    size_t count = std::min(poseBase.size(), poseOverlay.size());
+    if (m_mask) {
+        count = std::min(count, m_mask->weights.size());
+    }
+    
+    for (size_t i = 0; i < count; ++i) {
+        float boneWeight = (m_mask && i < m_mask->weights.size()) ? m_mask->weights[i] : 0.0f;
+        float finalWeight = boneWeight * alpha;
+        
+        if (finalWeight <= 0.001f) {
+            outPose[i] = poseBase[i];
+        } else if (finalWeight >= 0.999f) {
+            outPose[i] = poseOverlay[i];
+        } else {
+            outPose[i].position = glm::mix(poseBase[i].position, poseOverlay[i].position, finalWeight);
+            outPose[i].rotation = glm::slerp(poseBase[i].rotation, poseOverlay[i].rotation, finalWeight);
+            outPose[i].scale    = glm::mix(poseBase[i].scale, poseOverlay[i].scale, finalWeight);
+        }
+    }
+    
+    // Fill remaining bones beyond mask with Base? Or Identity? Usually Base.
+    for (size_t i = count; i < outPose.size(); ++i) { // If mask is smaller than skeleton
+         if (i < poseBase.size()) outPose[i] = poseBase[i];
+    }
+}
+
 // BlendTree implementation
 void BlendTree::Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) {
     if (m_rootNode) {

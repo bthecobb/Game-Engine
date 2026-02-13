@@ -5,6 +5,7 @@
 #include "Gameplay/LevelComponents.h"
 #include "Gameplay/PlayerMovementSystem.h"
 #include "Gameplay/CharacterControllerSystem.h"
+#include "Gameplay/AnimationControllerComponent.h"
 #include "Gameplay/EnemyAISystem.h"
 #include "Gameplay/LevelSystem.h"
 #include "Gameplay/TargetingSystem.h"
@@ -29,13 +30,26 @@
 #include <random>
 #include <memory>
 #include <unordered_map>
+#include "Rendering/ProceduralHumanoidMesh.h"
+#include "Animation/ProceduralAnimationGenerator.h"
+
 #include <cmath>
 #include <fstream>
+#include <glm/gtx/string_cast.hpp>
 
 using namespace physx;
 
 using namespace CudaGame;
+using namespace CudaGame;
 using namespace CudaGame::Rendering;
+
+#include "Testing/TestSystem.h" // Added for Unified Testing System
+
+#include "Gameplay/CharacterFactory.h"
+#include "Animation/AnimationSystem.h"
+#include "Animation/AnimationComponent.h"
+#include "AI/AIComponent.h"
+#include "Gameplay/CombatComponents.h"
 
 // Window dimensions
 const unsigned int WINDOW_WIDTH = 1920;
@@ -56,6 +70,7 @@ std::shared_ptr<Gameplay::LevelSystem> levelSystem;
 std::shared_ptr<Gameplay::TargetingSystem> targetingSystem;
 std::shared_ptr<Gameplay::PlayerMovementSystem> playerMovementSystem;
 std::shared_ptr<Physics::WallRunningSystem> wallRunningSystem;
+std::shared_ptr<CudaGame::Animation::AnimationSystem> animationSystem;
 
 // Entity to mesh mapping for D3D12 rendering
 std::unordered_map<Core::Entity, std::unique_ptr<D3D12Mesh>> entityMeshes;
@@ -68,6 +83,9 @@ std::unordered_map<Core::Entity, size_t> buildingEntityToMeshIndex;  // Map buil
 // World chunk streaming manager
 std::unique_ptr<World::WorldChunkManager> chunkManager;
 uint64_t frameNumber = 0;
+
+// Character Factory
+std::unique_ptr<Gameplay::CharacterFactory> characterFactory;
 
 // Explicit list of gameplay entities that should be rendered in the DX12 demo
 // (ground, player, and enemies created in CreateGameWorld / SpawnEnemy)
@@ -116,7 +134,13 @@ int frameCount = 0;
 float fpsAccumulator = 0.0f;
 
 // Forward declarations for character mesh
-class DX12RenderBackend;
+namespace CudaGame { namespace Rendering { class DX12RenderBackend; struct BuildingMesh; } }
+class DX12RenderBackend; // Local alias or global? DX12RenderBackend is in CudaGame::Rendering namespace.
+// Using full qualification to be safe
+std::unique_ptr<D3D12Mesh> CreateD3D12MeshFromBuilding(
+    CudaGame::Rendering::DX12RenderBackend* backend, 
+    const CudaGame::Rendering::BuildingMesh& buildingMesh
+);
 
 // Helper to add a box to procedural character mesh (uses Vertex struct from D3D12Mesh.h)
 void AddCharacterBox(std::vector<Rendering::Vertex>& vertices, std::vector<uint32_t>& indices,
@@ -386,6 +410,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    (void)mods;
     if (button >= 0 && button < 8) {
         if (action == GLFW_PRESS)
             mouseButtons[button] = true;
@@ -395,10 +420,10 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 }
 
 // Update player input component from GLFW
-void UpdateInputComponent(Core::Entity playerEntity) {
-    if (!coordinator.HasComponent<Gameplay::PlayerInputComponent>(playerEntity)) return;
+void UpdateInputComponent(Core::Entity entity) {
+    if (!coordinator.HasComponent<Gameplay::PlayerInputComponent>(entity)) return;
     
-    auto& input = coordinator.GetComponent<Gameplay::PlayerInputComponent>(playerEntity);
+    auto& input = coordinator.GetComponent<Gameplay::PlayerInputComponent>(entity);
     
     // Keyboard state
     for (int i = 0; i < 1024; ++i) {
@@ -430,14 +455,14 @@ void UpdateInputComponent(Core::Entity playerEntity) {
 }
 
 // Handle player movement with enhanced features (dash, sprint, etc.)
-void HandlePlayerMovement(Core::Entity playerEntity, float deltaTime) {
-    if (!coordinator.HasComponent<Gameplay::PlayerInputComponent>(playerEntity)) return;
-    if (!coordinator.HasComponent<Gameplay::PlayerMovementComponent>(playerEntity)) return;
-    if (entityPhysicsActors.find(playerEntity) == entityPhysicsActors.end()) return;
+void HandlePlayerMovement(Core::Entity entity, float deltaTime) {
+    if (!coordinator.HasComponent<Gameplay::PlayerInputComponent>(entity)) return;
+    if (!coordinator.HasComponent<Gameplay::PlayerMovementComponent>(entity)) return;
+    if (entityPhysicsActors.find(entity) == entityPhysicsActors.end()) return;
     
-    auto& input = coordinator.GetComponent<Gameplay::PlayerInputComponent>(playerEntity);
-    auto& movement = coordinator.GetComponent<Gameplay::PlayerMovementComponent>(playerEntity);
-    PxRigidDynamic* playerActor = static_cast<PxRigidDynamic*>(entityPhysicsActors[playerEntity]);
+    auto& input = coordinator.GetComponent<Gameplay::PlayerInputComponent>(entity);
+    auto& movement = coordinator.GetComponent<Gameplay::PlayerMovementComponent>(entity);
+    PxRigidDynamic* playerActor = static_cast<PxRigidDynamic*>(entityPhysicsActors[entity]);
     
     // Update dash cooldown timer
     if (movement.dashCooldownTimer > 0.0f) {
@@ -721,77 +746,405 @@ void GenerateBuildingsForChunk(World::WorldChunk& chunk) {
             buildingCollider.shape = Physics::ColliderShape::BOX;
             buildingCollider.halfExtents = glm::vec3(width / 2.0f, height / 2.0f, depth / 2.0f);
             coordinator.AddComponent(building, buildingCollider);
+
+            // Create Visual Mesh for Rendering
+            if (renderPipeline && renderPipeline->GetBackend()) {
+                auto buildingRenderMesh = CreateD3D12MeshFromBuilding(renderPipeline->GetBackend(), mesh);
+                if (buildingRenderMesh) {
+                    // Set transform
+                    // buildingRenderMesh->transform is updated by system or manual logic.
+                    // Here we set initial transform.
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(x, -0.5f, z)); // Match entity transform
+                    // Note: entity transform is handled by rendering system (UpdateRenderComponents etc).
+                    // But D3D12Mesh holds its own transform for per-object constants in DX12 pipeline currently.
+                    // We must ensure the System syncs them.
+                    // For static buildings, setting it once here is okay for now.
+                    buildingRenderMesh->transform = model;
+
+                    renderPipeline->AddMesh(buildingRenderMesh.get());
+                    entityMeshes[building] = std::move(buildingRenderMesh);
+                    // Add mesh entity to renderEntities for potential future use
+                }
+            }
         }
     }
     
     chunk.buildingCounts[static_cast<int>(chunk.lodLevel)] = buildingsToGenerate;
 }
 
-void CreateGameWorld() {
-    std::cout << "Creating 3D game world (EXPANDED 10000x10000)..." << std::endl;
+
+
+// Create D3D12Mesh from procedurally generated BuildingMesh
+std::unique_ptr<D3D12Mesh> CreateD3D12MeshFromBuilding(
+    Rendering::DX12RenderBackend* backend, 
+    const BuildingMesh& buildingMesh) 
+{
+    // Convert BuildingMesh to standard Vertex format with vertex colors
+    std::vector<Vertex> vertices;
+    vertices.reserve(buildingMesh.positions.size());
     
-    // ====== GROUND (10000x10000 - EXPANDED for larger world) ======
+    // Debug: count color variations
+    int brightCount = 0, darkCount = 0, wallCount = 0;
+    
+    for (size_t i = 0; i < buildingMesh.positions.size(); ++i) {
+        Vertex v;
+        v.position = buildingMesh.positions[i];
+        v.normal = buildingMesh.normals[i];
+        v.tangent = glm::vec3(1, 0, 0);  // Default tangent
+        v.texcoord = i < buildingMesh.uvs.size() ? buildingMesh.uvs[i] : glm::vec2(0);
+        
+        // Set vertex color from BuildingMesh
+        // RGB = vertex color for variety, A = emissive intensity for window glow
+        glm::vec3 vertColor = i < buildingMesh.colors.size() ? buildingMesh.colors[i] : glm::vec3(1.0f);
+        glm::vec3 emissive = i < buildingMesh.emissive.size() ? buildingMesh.emissive[i] : glm::vec3(0);
+        float emissiveIntensity = glm::length(emissive) / 10.0f;  // Normalize emissive to 0-1 range
+        
+        v.color = glm::vec4(vertColor, emissiveIntensity);
+        vertices.push_back(v);
+        
+        // Debug: categorize vertex
+        float brightness = (vertColor.r + vertColor.g + vertColor.b) / 3.0f;
+        if (brightness > 0.6f) brightCount++;
+        else if (brightness < 0.2f) darkCount++;
+        else wallCount++;
+    }
+    
+    // Debug output for first building only
+    // Debug output for building generation
+    if (buildingMesh.positions.size() > 0) {
+        std::cerr << "[BuildingMesh] Generated: " << buildingMesh.positions.size() << " verts, " 
+                  << buildingMesh.indices.size() << " indices. "
+                  << "Colors: " << buildingMesh.colors.size()
+                  << " (bright:" << brightCount << " dark:" << darkCount << " wall:" << wallCount << ")" << std::endl;
+
+        // Log first 4 vertices for debugging
+        std::cerr << "[BuildingMesh] First 4 vertices:" << std::endl;
+        for (size_t i = 0; i < std::min((size_t)4, buildingMesh.positions.size()); ++i) {
+            std::cerr << "  V[" << i << "] Pos: " << glm::to_string(buildingMesh.positions[i]) 
+                      << " Norm: " << glm::to_string(buildingMesh.normals[i]) << std::endl;
+        }
+    } else {
+        std::cerr << "[BuildingMesh] ERROR: Generated mesh has 0 vertices!" << std::endl;
+    }
+    
+    auto mesh = std::make_unique<D3D12Mesh>();
+    if (mesh->Create(backend, vertices, buildingMesh.indices, "ProceduralBuilding")) {
+        // Generate meshlets for Mesh Shader pipeline
+        mesh->GenerateMeshlets(backend, vertices, buildingMesh.indices);
+        return mesh;
+    }
+    return nullptr;
+}
+
+
+// Sync ECS entities with D3D12 rendering
+void SyncEntitiesToRenderer() {
+    renderPipeline->ClearMeshes();
+    
+    for (Core::Entity entity : renderEntities) {
+        if (!coordinator.HasComponent<Rendering::TransformComponent>(entity)) continue;
+        if (!coordinator.HasComponent<Rendering::MaterialComponent>(entity)) continue;
+        
+        auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
+        auto& material = coordinator.GetComponent<Rendering::MaterialComponent>(entity);
+        
+        if (entityMeshes.find(entity) == entityMeshes.end()) {
+            std::unique_ptr<D3D12Mesh> mesh;
+            
+            // 1. Check for explicit MeshComponent (Asset Loading)
+            bool meshLoaded = false;
+            if (coordinator.HasComponent<Rendering::MeshComponent>(entity)) {
+                auto& meshComp = coordinator.GetComponent<Rendering::MeshComponent>(entity);
+                
+                // Check if procedural mesh requested (Internal Debug Model)
+                // Check if procedural mesh requested (Internal Debug Model)
+                if (meshComp.modelPath == "internal:ProceduralArm") {
+                    std::cout << "[Renderer] Generating Procedural Skinned Arm..." << std::endl;
+                    
+                    std::shared_ptr<Animation::Skeleton> skeleton = nullptr;
+                    if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+                         auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+                         skeleton = animComp.skeleton;
+                    }
+                    if (!skeleton) {
+                        std::cout << "[Renderer] Warning: No skeleton found for ProceduralArm, creating empty." << std::endl;
+                        skeleton = std::make_shared<Animation::Skeleton>();
+                    }
+
+                    mesh = Rendering::MeshGenerator::CreateSkinnedBlockMesh(renderPipeline->GetBackend(), skeleton);
+                    
+                    if (mesh) {
+                        meshLoaded = true;
+                        // Link skeleton and animations intentionally (similar to LoadFromFile logic)
+                        if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+                             auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+                             // animComp.skeleton already set via pointer copy if it existed
+                             animComp.globalTransforms.resize(skeleton->bones.size(), glm::mat4(1.0f));
+                             
+                             const auto& anims = mesh->GetAnimations();
+                             if (!anims.empty()) {
+                                 std::cout << "[Renderer] Registering " << anims.size() << " procedural animations." << std::endl;
+                                 for (const auto& clip : anims) {
+                                     animComp.animations[clip->name] = *clip;
+                                 }
+                                 // Auto-play
+                                 animComp.currentAnimation = anims[0]->name;
+                                 animComp.isPlaying = true;
+                                 animComp.playbackSpeed = 1.0f;
+                             }
+                        }
+                    }
+                }
+                // Standard File Loading
+                else if (!meshComp.modelPath.empty() && meshComp.modelPath.find(".") != std::string::npos) {
+                    mesh = std::make_unique<D3D12Mesh>();
+                     
+                    bool needsSkeleton = coordinator.HasComponent<Animation::AnimationComponent>(entity);
+                    
+                    std::cerr << "[Renderer] Loading mesh from file: " << meshComp.modelPath << " (Skeleton required: " << needsSkeleton << ")" << std::endl;
+                    if (mesh->LoadFromFile(renderPipeline->GetBackend(), meshComp.modelPath, needsSkeleton)) {
+                        meshLoaded = true;
+                        std::cerr << "[Renderer] Loaded mesh SUCCESS: " << meshComp.modelPath << std::endl;
+                        
+                        // Link skeleton to AnimationComponent if loaded
+                        if (needsSkeleton && mesh->GetSkeleton()) {
+                            std::cerr << "[Renderer] Linking skeleton..." << std::endl;
+                            auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+                            animComp.skeleton = mesh->GetSkeleton();
+                            std::cerr << "[Renderer] Skeleton linked. Bones: " << (animComp.skeleton ? std::to_string(animComp.skeleton->bones.size()) : "NULL") << std::endl;
+                            
+                            animComp.globalTransforms.resize(mesh->GetSkeleton()->bones.size(), glm::mat4(1.0f));
+                            std::cerr << "[Renderer] Resized globalTransforms." << std::endl;
+                            
+                            // Register embedded animations
+                            const auto& anims = mesh->GetAnimations();
+                            std::cerr << "[Renderer] Got " << anims.size() << " animations." << std::endl;
+                            
+                            if (!anims.empty()) {
+                                std::cerr << "[Renderer] Registering " << anims.size() << " animations for entity " << entity << std::endl;
+                                int animIndex = 0;
+                                for (const auto& clip : anims) {
+                                    if (clip) {
+                                        std::cerr << "  - Clip " << animIndex << ": " << (clip->name.empty() ? "UNNAMED" : clip->name) << std::endl;
+                                        animComp.animations[clip->name] = *clip; // Copy content
+                                        animIndex++;
+                                    } else {
+                                        std::cerr << "  - Clip " << animIndex << " is NULL!" << std::endl;
+                                    }
+                                }
+                                
+                                // Auto-play first animation if none selected
+                                if (animComp.currentAnimation.empty()) {
+                                    animComp.currentAnimation = anims[0]->name;
+                                    animComp.isPlaying = true;
+                                    animComp.playbackSpeed = 1.0f;
+                                    std::cerr << "[Renderer] Auto-playing animation: " << animComp.currentAnimation << std::endl;
+                                }
+                            }
+                        }
+                    } else {
+                        mesh.reset(); // Failed to load
+                        std::cerr << "[Renderer] Failed to load mesh: " << meshComp.modelPath << ", falling back..." << std::endl;
+                    }
+                }
+            }
+
+            if (meshLoaded) {
+                 // Already loaded
+            }
+            // 2. Procedural Buildings
+            else if (buildingEntityToMeshIndex.find(entity) != buildingEntityToMeshIndex.end()) {
+                size_t meshIdx = buildingEntityToMeshIndex[entity];
+                if (meshIdx < generatedBuildingMeshes.size()) {
+                    mesh = CreateD3D12MeshFromBuilding(renderPipeline->GetBackend(), generatedBuildingMeshes[meshIdx]);
+                }
+            }
+            // 3. Skinned Mesh (Procedural Fallback)
+            else if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+                auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+                if (animComp.skeleton && animComp.skeleton->bones.size() > 0) {
+                     // Using procedural block mesh if existing skeleton is valid but not from file
+                     mesh = MeshGenerator::CreateSkinnedBlockMesh(renderPipeline->GetBackend(), animComp.skeleton);
+                } else {
+                     // No skeleton or empty, use cube
+                     mesh = MeshGenerator::CreateCube(renderPipeline->GetBackend());
+                }
+            }
+            // 4. Transform-based procedural shapes
+            else if (transform.scale.y < 2.0f && (transform.scale.x > 10.0f || transform.scale.z > 10.0f)) {
+                mesh = MeshGenerator::CreatePlane(renderPipeline->GetBackend());
+            }
+            else {
+                mesh = MeshGenerator::CreateCube(renderPipeline->GetBackend());
+            }
+            
+            if (mesh) {
+                entityMeshes[entity] = std::move(mesh);
+            }
+        }
+        
+        if (entityMeshes[entity]) {
+            entityMeshes[entity]->transform = transform.getMatrix();
+            entityMeshes[entity]->GetMaterial().albedoColor = glm::vec4(material.albedo, 1.0f);
+            entityMeshes[entity]->GetMaterial().metallic = material.metallic;
+            entityMeshes[entity]->GetMaterial().roughness = material.roughness;
+            entityMeshes[entity]->GetMaterial().ambientOcclusion = material.ao;
+            
+            // Sync Animation Bone Matrices - handled in animation sync block below
+            // NOTE: finalBoneMatrices (with inverse bind pose) are synced at line ~1619
+
+            entityMeshes[entity]->UpdateGPUInstanceData();
+            renderPipeline->AddMesh(entityMeshes[entity].get());
+        }
+    }
+}
+
+// ... CreateGameWorld modified ...
+
+void CreateGameWorld() {
+    std::cerr << "[Setup] Entering CreateGameWorld..." << std::endl;
+    std::cerr << "Creating 3D game world (EXPANDED 10000x10000)..." << std::endl;
+    
+    // Ground
     auto ground = coordinator.CreateEntity();
     renderEntities.push_back(ground);
     coordinator.AddComponent(ground, Rendering::TransformComponent{
-        glm::vec3(0.0f, -1.0f, 0.0f),
-        glm::vec3(0.0f),
-        glm::vec3(10000.0f, 1.0f, 10000.0f)  // EXPANDED: 10000x10000
+        glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f), glm::vec3(10000.0f, 1.0f, 10000.0f)
     });
     coordinator.AddComponent(ground, Rendering::MaterialComponent{
-        glm::vec3(0.25f, 0.25f, 0.28f), // Slightly blue-gray ground
-        0.0f, 0.8f, 1.0f
+        glm::vec3(0.25f, 0.25f, 0.28f), 0.0f, 0.8f, 1.0f
     });
-    
-    // Ground collider (half extents = 5000)
     Physics::ColliderComponent groundCollider{};
     groundCollider.shape = Physics::ColliderShape::BOX;
     groundCollider.halfExtents = glm::vec3(5000.0f, 0.5f, 5000.0f);
     coordinator.AddComponent(ground, groundCollider);
     
-    std::cout << "  - Ground: 10000x10000 (EXPANDED)" << std::endl;
+    std::cerr << "  - Ground: 10000x10000 (EXPANDED)" << std::endl;
     
+    // Spawn Player using CharacterFactory (Phase 8 AAA)
+    // Setup Profile first if needed, but Factory has default "Knight"
+    // We override position.
+    glm::vec3 spawnPos(0.0f, 1.5f, 0.0f);
     
-    // Create player entity AT GROUND LEVEL
-    playerEntity = coordinator.CreateEntity();
-    renderEntities.push_back(playerEntity);
-    coordinator.AddComponent(playerEntity, Rendering::TransformComponent{
-        glm::vec3(0.0f, 1.5f, 0.0f),  // At ground level (half height above ground)
-        glm::vec3(0.0f),
-        glm::vec3(2.0f, 3.0f, 2.0f)  // Much bigger so it's visible
-    });
-    coordinator.AddComponent(playerEntity, Rendering::MaterialComponent{
-        glm::vec3(0.2f, 0.6f, 0.9f), // Blue player
-        0.2f, 0.4f, 1.0f
-    });
+    if (characterFactory) {
+        std::cerr << "[Setup] Calling CharacterFactory::SpawnCharacter..." << std::endl;
+        playerEntity = characterFactory->SpawnCharacter("Knight", spawnPos);
+        std::cerr << "[Setup] CharacterFactory::SpawnCharacter RETURNED. Entity: " << playerEntity << std::endl;
+        // playerEntity = characterFactory->SpawnCharacter("ProceduralTest", spawnPos);
+    } else {
+        std::cerr << "[Setup] Factory disabled. Spawning simple player cube." << std::endl;
+        playerEntity = coordinator.CreateEntity();
+        coordinator.AddComponent(playerEntity, Rendering::TransformComponent{spawnPos, glm::vec3(0), glm::vec3(1)});
+        coordinator.AddComponent(playerEntity, Rendering::MeshComponent{"cube"}); // Assumes cube.obj exists or handled
+        coordinator.AddComponent(playerEntity, Rendering::MaterialComponent{glm::vec3(0,1,0), 0.5f, 0.5f});
+        Physics::RigidbodyComponent rb;
+        rb.mass = 80.0f;
+        coordinator.AddComponent(playerEntity, rb);
+        Physics::CharacterControllerComponent cct;
+        cct.height = 1.8f;
+        cct.radius = 0.5f;
+        coordinator.AddComponent(playerEntity, cct);
+        coordinator.AddComponent(playerEntity, Gameplay::PlayerMovementComponent{}); // Needed for movement
+    }
     
-    // Add gameplay components
-    coordinator.AddComponent(playerEntity, Gameplay::PlayerMovementComponent{});
-    coordinator.AddComponent(playerEntity, Gameplay::PlayerCombatComponent{});
-    coordinator.AddComponent(playerEntity, Gameplay::PlayerInputComponent{});
-    coordinator.AddComponent(playerEntity, Gameplay::PlayerRhythmComponent{});
-    coordinator.AddComponent(playerEntity, Gameplay::GrapplingHookComponent{});
-    
-    // Add physics/controller components (required for CharacterControllerSystem and PhysXPhysicsSystem)
-    Physics::RigidbodyComponent playerRB{};
-    playerRB.mass = 80.0f;
-    playerRB.inverseMass = 1.0f / 80.0f;
-    playerRB.isKinematic = false;
-    coordinator.AddComponent(playerEntity, playerRB);
-    
-    // ColliderComponent is CRITICAL - PhysXPhysicsSystem only processes entities with this component!
-    Physics::ColliderComponent playerCollider{};
-    playerCollider.shape = Physics::ColliderShape::CAPSULE;
-    playerCollider.capsuleRadius = 0.5f;
-    playerCollider.capsuleHeight = 1.0f;
-    playerCollider.halfExtents = glm::vec3(0.5f, 0.5f, 0.5f);  // Used for capsule half-height
-    coordinator.AddComponent(playerEntity, playerCollider);
-    
-    coordinator.AddComponent(playerEntity, Physics::CharacterControllerComponent{});
-    
-    std::cout << "  - Player created at origin" << std::endl;
-    
-    
+    if (playerEntity != 0) {
+        renderEntities.push_back(playerEntity);
+        
+        // Check for Animation
+        if (coordinator.HasComponent<Animation::AnimationComponent>(playerEntity)) {
+             auto& anim = coordinator.GetComponent<Animation::AnimationComponent>(playerEntity);
+             if (!anim.currentAnimation.empty()) {
+                std::cout << "[Setup] Player playing loaded animation: " << anim.currentAnimation << std::endl;
+             } else {
+                std::cout << "[Setup] Player has no default animation." << std::endl;
+             }
+        }
+        
+        // Add Player Logic Components (if missing)
+        if (!coordinator.HasComponent<Gameplay::PlayerInputComponent>(playerEntity)) {
+             coordinator.AddComponent(playerEntity, Gameplay::PlayerInputComponent{});
+        }
+        if (!coordinator.HasComponent<Gameplay::PlayerRhythmComponent>(playerEntity)) {
+            coordinator.AddComponent(playerEntity, Gameplay::PlayerRhythmComponent{});
+        }
+        if (!coordinator.HasComponent<Gameplay::GrapplingHookComponent>(playerEntity)) {
+            coordinator.AddComponent(playerEntity, Gameplay::GrapplingHookComponent{});
+        }
+        if (!coordinator.HasComponent<Gameplay::PlayerMovementComponent>(playerEntity)) {
+            coordinator.AddComponent(playerEntity, Gameplay::PlayerMovementComponent{});
+        }
+        if (!coordinator.HasComponent<Physics::CharacterControllerComponent>(playerEntity)) {
+            coordinator.AddComponent(playerEntity, Physics::CharacterControllerComponent{});
+        }
+        
+        // Add physics components for movement (required for PhysXPhysicsSystem)
+        if (!coordinator.HasComponent<Physics::RigidbodyComponent>(playerEntity)) {
+            Physics::RigidbodyComponent rb;
+            rb.mass = 70.0f;  // Human mass
+            rb.useGravity = true;
+            rb.isKinematic = false;
+            coordinator.AddComponent(playerEntity, rb);
+        }
+        if (!coordinator.HasComponent<Physics::ColliderComponent>(playerEntity)) {
+            Physics::ColliderComponent col;
+            col.shape = Physics::ColliderShape::CAPSULE;
+            col.radius = 0.4f;
+            col.halfExtents = glm::vec3(0.4f, 0.9f, 0.4f);  // Capsule half-height
+            coordinator.AddComponent(playerEntity, col);
+        }
+        
+        // Ensure Material is set to RED for visibility debugging -> REMOVED to allow Factory Blue
+        if (coordinator.HasComponent<Rendering::MaterialComponent>(playerEntity)) {
+            auto& mat = coordinator.GetComponent<Rendering::MaterialComponent>(playerEntity);
+            mat.roughness = 0.5f;
+            mat.metallic = 0.0f;
+        }
+        
+        std::cout << "  - Player created via CharacterFactory" << std::endl;
+
+        // TEST: Replace with Procedural Mesh for Phase 1 verification
+        bool useProceduralMesh = true; 
+        if (useProceduralMesh) {
+             std::cerr << "  - [ProceduralSystem] Replacing Player Mesh with Procedural Humanoid..." << std::endl;
+             if (renderPipeline) { // Update AnimationComponent to match new skeleton
+                 auto procMesh = Rendering::ProceduralHumanoidMesh::Create(renderPipeline->GetBackend());
+                 if (procMesh) {
+                     // Get skeleton reference before moving mesh
+                     auto skeleton = procMesh->GetSkeleton();
+                     
+                     // 1. Assign to Renderer
+                     entityMeshes[playerEntity] = std::move(procMesh);
+                     
+                     // 2. Update Animation Component
+                     if (coordinator.HasComponent<Animation::AnimationComponent>(playerEntity)) {
+                         auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(playerEntity);
+                         animComp.skeleton = skeleton;
+                         animComp.finalBoneMatrices.resize(skeleton->bones.size(), glm::mat4(1.0f));
+                         
+                         // Create and Play Procedural Clip
+                         auto walkClip = Animation::ProceduralAnimationGenerator::CreateWalkClip(skeleton);
+                         auto idleClip = Animation::ProceduralAnimationGenerator::CreateIdleClip(skeleton);
+                         
+                         // Store animations in mesh so they persist
+                         entityMeshes[playerEntity]->AddAnimation(walkClip);
+                         entityMeshes[playerEntity]->AddAnimation(idleClip);
+                         
+                         animComp.currentAnimation = "Procedural_Walk"; 
+                         animComp.useProceduralGeneration = true; // Enable Phase 2 runtime logic
+                         animComp.isPlaying = true;
+                         animComp.animationTime = 0.0f;
+                         
+                         std::cout << "  - [ProceduralSystem] Active. Playing: " << animComp.currentAnimation << std::endl;
+                     }
+                 } else {
+                     std::cerr << "  - [ProceduralSystem] FAILURE: Could not create mesh!" << std::endl;
+                 }
+             }
+        }
+    } else {
+        std::cerr << "FAILED TO SPAWN PLAYER!" << std::endl;
+    }
+
     // ====== ENEMIES (25, EXPANDED: ±1500 with 100 safe distance) ======
     std::cout << "  - Spawning enemies..." << std::endl;
     std::random_device rd_enemy;
@@ -811,84 +1164,120 @@ void CreateGameWorld() {
             safetyIterations++;
         }
         
-        glm::vec3 spawnPos(x, 1.0f, z);
+        glm::vec3 enemySpawnPos(x, 1.0f, z);
         glm::vec3 enemyColor(1.0f, 0.0f, 0.0f); // Red enemies (OpenGL style)
         
-        Core::Entity enemyEntity = SpawnEnemy(spawnPos, enemyColor);
+        Core::Entity enemyEntity = SpawnEnemy(enemySpawnPos, enemyColor);
         renderEntities.push_back(enemyEntity);
-        std::cout << "    Enemy " << (i+1) << " spawned at (" << spawnPos.x << ", " << spawnPos.y << ", " << spawnPos.z << ")" << std::endl;
+        std::cout << "    Enemy " << (i+1) << " spawned at (" << enemySpawnPos.x << ", " << enemySpawnPos.y << ", " << enemySpawnPos.z << ")" << std::endl;
     }
     
-    // ====== BUILDINGS (500 random, EXPANDED for larger world) ======
-    std::cout << "  - Generating 500 buildings (EXPANDED)..." << std::endl;
+    // ====== BUILDINGS (Dynamic City Generation) ======
+    std::cout << "  - Generating Dynamic City (World Size: 10000x10000)..." << std::endl;
     int buildingCount = 0;
     
-    // Use random distribution EXPANDED: ±4500 range
     std::random_device rd;
-    std::mt19937 gen(42);  // Fixed seed for reproducibility
-    std::uniform_real_distribution<> pos_dis(-4500.0, 4500.0);
-    std::uniform_real_distribution<> height_dis(12.0, 60.0);  // EXPANDED: 12-60 (taller buildings)
+    std::mt19937 gen(42);  // Fixed seed for deterministic layout
+    std::uniform_real_distribution<> offset_dis(-80.0, 80.0); // Random offset within block (250 size)
+    std::uniform_real_distribution<> height_dis(20.0, 140.0);  // Taller buildings
+    std::uniform_real_distribution<> width_dis(10.0, 25.0);    // Varied width
+    std::uniform_real_distribution<> probability_dis(0.0, 1.0); // For density check
     
-    // Reserve space for generated building meshes
-    generatedBuildingMeshes.reserve(500);
+    // Dynamic World Settings
+    const float worldMin = -4500.0f;
+    const float worldMax = 4500.0f;
+    const float blockSize = 250.0f; 
     
-    for (int i = 0; i < 500; ++i) {
-        float x = static_cast<float>(pos_dis(gen));
-        float z = static_cast<float>(pos_dis(gen));
-        float height = static_cast<float>(height_dis(gen));
+    // Reserve space for generated building meshes (Estimate: 40x40 blocks * 2 buildings avg)
+    generatedBuildingMeshes.reserve(3200);
+    
+    // Iterate through world in blocks
+    for (float x = worldMin; x <= worldMax; x += blockSize) {
+        for (float z = worldMin; z <= worldMax; z += blockSize) {
+            
+            // 1. Density Check: 60% chance to have buildings in this block
+            // This creates the "per 2-3 buildings" clustering effect users asked for
+            // Skip center spawn area
+            if (abs(x) < 200.0f && abs(z) < 200.0f) continue;
+            
+            // Simple hash-like check or random for density
+            // Using random here since seed is fixed
+            if (probability_dis(gen) > 0.6f) continue; // 40% empty blocks
+            
+            // 2. Spawn Cluster in this block (1-3 buildings)
+            int buildingsInBlock = 1 + (static_cast<int>(probability_dis(gen) * 10) % 3);
+            
+            for (int b = 0; b < buildingsInBlock; ++b) {
+                // Calculate position with offset
+                float xPos = x + static_cast<float>(offset_dis(gen));
+                float zPos = z + static_cast<float>(offset_dis(gen));
+            
+            // Skip center area (spawn zone)
+            if (abs(xPos) < 100.0f && abs(zPos) < 100.0f) continue;
+
+            float height = static_cast<float>(height_dis(gen));
+            
+            // Varied building dimensions
+            float buildingWidth = static_cast<float>(width_dis(gen));
+            float buildingDepth = static_cast<float>(width_dis(gen));
+
         
-        // OpenGL building widths: 6, 8, 10, 12 cycle
-        float buildingWidth = 6.0f + (i % 4) * 2.0f;
-        float buildingDepth = 6.0f + ((i + 1) % 4) * 2.0f;
+            
+            // Generate seed based on position
+            uint32_t seed = static_cast<uint32_t>((abs(xPos) * 1000 + abs(zPos)) * 12345);
+
         
         // Configure building style for procedural generation
         BuildingStyle style;
         style.baseWidth = buildingWidth;
         style.baseDepth = buildingDepth;
         style.height = height;
-        style.seed = static_cast<uint32_t>(i * 12345);  // Unique seed per building
-        style.baseColor = glm::vec3(0.5f + (i % 10) * 0.02f, 0.55f + (i % 7) * 0.02f, 0.6f + (i % 5) * 0.02f);
+        style.seed = seed;  // Unique seed per building
+        style.baseColor = glm::vec3(0.5f + (seed % 10) * 0.02f, 0.55f + (seed % 7) * 0.02f, 0.6f + (seed % 5) * 0.02f);
         style.accentColor = glm::vec3(0.2f, 0.25f, 0.3f);
         
         // Generate building mesh (with emissive windows)
-        BuildingMesh mesh = buildingGenerator->GenerateBuilding(style);
-        generatedBuildingMeshes.push_back(mesh);
-        
-        // Create building entity
-        Core::Entity building = coordinator.CreateEntity();
-        renderEntities.push_back(building);
-        
-        // Map this entity to its mesh index
-        buildingEntityToMeshIndex[building] = generatedBuildingMeshes.size() - 1;
-        
-        coordinator.AddComponent(building, Rendering::TransformComponent{
-            glm::vec3(x, -0.5f, z),  // Base at ground level (mesh already has height)
-            glm::vec3(0.0f),
-            glm::vec3(1.0f)  // No scaling - mesh is already at correct size
-        });
-        
-        // Material: WHITE albedo so vertex colors control final color
-        coordinator.AddComponent(building, Rendering::MaterialComponent{
-            glm::vec3(1.0f),  // White albedo - vertex colors control output
-            0.3f,   // Metallic
-            0.6f,   // Roughness
-            1.0f    // AO
-        });
-        
-        // Add WallComponent for wall-running (matching OpenGL)
-        Gameplay::WallComponent wallComp;
-        wallComp.canWallRun = true;
-        coordinator.AddComponent(building, wallComp);
-        
-        // Collider (based on style dimensions)
-        Physics::ColliderComponent buildingCollider{};
-        buildingCollider.shape = Physics::ColliderShape::BOX;
-        buildingCollider.halfExtents = glm::vec3(buildingWidth / 2.0f, height / 2.0f, buildingDepth / 2.0f);
-        coordinator.AddComponent(building, buildingCollider);
-        
-        buildingCount++;
-    }
-    
+        if (buildingGenerator) {
+            Rendering::BuildingMesh mesh = buildingGenerator->GenerateBuilding(style);
+            generatedBuildingMeshes.push_back(mesh);
+            
+            // Create building entity
+            Core::Entity building = coordinator.CreateEntity();
+            renderEntities.push_back(building);
+            
+            // Map this entity to its mesh index
+            buildingEntityToMeshIndex[building] = generatedBuildingMeshes.size() - 1;
+            
+            coordinator.AddComponent(building, Rendering::TransformComponent{
+                glm::vec3(xPos, -0.5f, zPos),  // Base at ground level (mesh already has height)
+                glm::vec3(0.0f),
+                glm::vec3(1.0f)  // No scaling - mesh is already at correct size
+            });
+            
+            // Material: WHITE albedo so vertex colors control final color
+            coordinator.AddComponent(building, Rendering::MaterialComponent{
+                glm::vec3(1.0f),  // White albedo - vertex colors control output
+                0.3f,   // Metallic
+                0.6f,   // Roughness
+                1.0f    // AO
+            });
+            
+            // Add WallComponent for wall-running (matching OpenGL)
+            Gameplay::WallComponent wallComp;
+            wallComp.canWallRun = true;
+            coordinator.AddComponent(building, wallComp);
+            
+            // Collider (based on style dimensions)
+            Physics::ColliderComponent buildingCollider{};
+            buildingCollider.shape = Physics::ColliderShape::BOX;
+            buildingCollider.halfExtents = glm::vec3(buildingWidth / 2.0f, height / 2.0f, buildingDepth / 2.0f);
+            coordinator.AddComponent(building, buildingCollider);
+            
+            buildingCount++;
+        }
+    } // End inner loop (b)
+    } // End mid loop (z)
+} // End outer loop (x)
     std::cout << "    Generated " << buildingCount << " procedural buildings with emissive windows" << std::endl;
     
     // ====== BOUNDARY WALLS (invisible, matching OpenGL) ======
@@ -937,7 +1326,8 @@ void CreateGameWorld() {
         collectibleComp.value = 25.0f;
         coordinator.AddComponent(collectible, collectibleComp);
         
-        // Random position within ±900 range
+        // Random position within ±500 range (City Area)
+        std::uniform_real_distribution<> pos_dis(-500.0, 500.0);
         float cx = static_cast<float>(pos_dis(gen));
         float cz = static_cast<float>(pos_dis(gen));
         
@@ -957,119 +1347,6 @@ void CreateGameWorld() {
     std::cout << "World created with " << (1 + 1 + numEnemies + buildingCount + 4 + collectibleCount) << " entities" << std::endl;
 }
 
-// Create D3D12Mesh from procedurally generated BuildingMesh
-std::unique_ptr<D3D12Mesh> CreateD3D12MeshFromBuilding(
-    Rendering::DX12RenderBackend* backend, 
-    const BuildingMesh& buildingMesh) 
-{
-    // Convert BuildingMesh to standard Vertex format with vertex colors
-    std::vector<Vertex> vertices;
-    vertices.reserve(buildingMesh.positions.size());
-    
-    // Debug: count color variations
-    int brightCount = 0, darkCount = 0, wallCount = 0;
-    
-    for (size_t i = 0; i < buildingMesh.positions.size(); ++i) {
-        Vertex v;
-        v.position = buildingMesh.positions[i];
-        v.normal = buildingMesh.normals[i];
-        v.tangent = glm::vec3(1, 0, 0);  // Default tangent
-        v.texcoord = i < buildingMesh.uvs.size() ? buildingMesh.uvs[i] : glm::vec2(0);
-        
-        // Set vertex color from BuildingMesh
-        // RGB = vertex color for variety, A = emissive intensity for window glow
-        glm::vec3 vertColor = i < buildingMesh.colors.size() ? buildingMesh.colors[i] : glm::vec3(1.0f);
-        glm::vec3 emissive = i < buildingMesh.emissive.size() ? buildingMesh.emissive[i] : glm::vec3(0);
-        float emissiveIntensity = glm::length(emissive) / 10.0f;  // Normalize emissive to 0-1 range
-        
-        v.color = glm::vec4(vertColor, emissiveIntensity);
-        vertices.push_back(v);
-        
-        // Debug: categorize vertex
-        float brightness = (vertColor.r + vertColor.g + vertColor.b) / 3.0f;
-        if (brightness > 0.6f) brightCount++;
-        else if (brightness < 0.2f) darkCount++;
-        else wallCount++;
-    }
-    
-    // Debug output for first building only
-    static bool debugOnce = true;
-    if (debugOnce && buildingMesh.positions.size() > 0) {
-        std::cout << "[BuildingMesh] Vertices: " << buildingMesh.positions.size() 
-                  << ", Colors: " << buildingMesh.colors.size()
-                  << " (bright:" << brightCount << " dark:" << darkCount << " wall:" << wallCount << ")" << std::endl;
-        debugOnce = false;
-    }
-    
-    auto mesh = std::make_unique<D3D12Mesh>();
-    if (mesh->Create(backend, vertices, buildingMesh.indices, "ProceduralBuilding")) {
-        // Generate meshlets for Mesh Shader pipeline
-        mesh->GenerateMeshlets(backend, vertices, buildingMesh.indices);
-        return mesh;
-    }
-    return nullptr;
-}
-
-
-// Sync ECS entities with D3D12 rendering
-void SyncEntitiesToRenderer() {
-    // Clear existing meshes from pipeline (needed to re-add with updated transforms)
-    renderPipeline->ClearMeshes();
-    
-    // Iterate through the explicit list of world entities we created for this demo
-    for (Core::Entity entity : renderEntities) {
-        if (!coordinator.HasComponent<Rendering::TransformComponent>(entity)) continue;
-        if (!coordinator.HasComponent<Rendering::MaterialComponent>(entity)) continue;
-        
-        auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
-        auto& material = coordinator.GetComponent<Rendering::MaterialComponent>(entity);
-        
-        // Create D3D12 mesh for this entity (only once, cached)
-        if (entityMeshes.find(entity) == entityMeshes.end()) {
-            std::unique_ptr<D3D12Mesh> mesh;
-            
-            // Check if this is a procedural building
-            auto buildingIt = buildingEntityToMeshIndex.find(entity);
-            if (buildingIt != buildingEntityToMeshIndex.end()) {
-                // Use procedural building mesh
-                size_t meshIdx = buildingIt->second;
-                if (meshIdx < generatedBuildingMeshes.size()) {
-                    mesh = CreateD3D12MeshFromBuilding(
-                        renderPipeline->GetBackend(), 
-                        generatedBuildingMeshes[meshIdx]
-                    );
-                }
-            }
-            // Ground plane: very flat and wide
-            else if (transform.scale.y < 2.0f && (transform.scale.x > 10.0f || transform.scale.z > 10.0f)) {
-                mesh = MeshGenerator::CreatePlane(renderPipeline->GetBackend());
-            }
-            // Everything else (player, enemies, collectibles)
-            else {
-                mesh = MeshGenerator::CreateCube(renderPipeline->GetBackend());
-            }
-            
-            if (mesh) {
-                entityMeshes[entity] = std::move(mesh);
-            }
-        }
-        
-        // Update mesh transform and material from ECS (every frame)
-        if (entityMeshes[entity]) {
-            entityMeshes[entity]->transform = transform.getMatrix();
-            entityMeshes[entity]->GetMaterial().albedoColor = glm::vec4(material.albedo, 1.0f);
-            entityMeshes[entity]->GetMaterial().metallic = material.metallic;
-            entityMeshes[entity]->GetMaterial().roughness = material.roughness;
-            entityMeshes[entity]->GetMaterial().ambientOcclusion = material.ao;
-            
-            // Sync transform to GPU (Mesh Shader path)
-            entityMeshes[entity]->UpdateGPUInstanceData();
-            
-            // Add to render pipeline
-            renderPipeline->AddMesh(entityMeshes[entity].get());
-        }
-    }
-}
 
 
 int main() {
@@ -1096,6 +1373,7 @@ int main() {
     CHECKPOINT("Window initialized");
     
     // Initialize ECS
+    // Initialize ECS
     coordinator.Initialize();
     CHECKPOINT("ECS coordinator initialized");
     
@@ -1108,9 +1386,11 @@ int main() {
     // Register gameplay components
     coordinator.RegisterComponent<Gameplay::PlayerMovementComponent>();
     coordinator.RegisterComponent<Gameplay::PlayerCombatComponent>();
+    coordinator.RegisterComponent<Gameplay::CombatComponent>(); // Added for CharacterFactory
     coordinator.RegisterComponent<Gameplay::PlayerInputComponent>();
     coordinator.RegisterComponent<Gameplay::PlayerRhythmComponent>();
     coordinator.RegisterComponent<Gameplay::GrapplingHookComponent>();
+    coordinator.RegisterComponent<AI::AIComponent>(); // Added for CharacterFactory
     CHECKPOINT("Player components registered");
     
     // Register enemy components
@@ -1154,6 +1434,18 @@ int main() {
         return -1;
     }
     std::cout << "PhysX physics system initialized (as ECS system)" << std::endl;
+    
+    // Register Animation Component (Required for Character Controller)
+    coordinator.RegisterComponent<Animation::AnimationComponent>();
+    coordinator.RegisterComponent<Gameplay::AnimationControllerComponent>();
+    
+    // Register AnimationSystem (Simple Clip Playback)
+    animationSystem = coordinator.RegisterSystem<CudaGame::Animation::AnimationSystem>();
+    Core::Signature animSignature;
+    animSignature.set(coordinator.GetComponentType<Animation::AnimationComponent>());
+    coordinator.SetSystemSignature<CudaGame::Animation::AnimationSystem>(animSignature);
+    animationSystem->initialize();
+    std::cout << "AnimationSystem initialized" << std::endl;
     
     // Register and initialize CharacterControllerSystem (handles camera-relative movement)
     characterControllerSystem = coordinator.RegisterSystem<Gameplay::CharacterControllerSystem>();
@@ -1245,7 +1537,7 @@ int main() {
         60.0f,
         static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
         0.1f,
-        200.0f
+        5000.0f
     );
 
     // Start in free-look mode around the player, like the GL demo.
@@ -1285,6 +1577,7 @@ int main() {
     std::cout << "Press 1 for Third Person, 2 for Free Look, 3 for Combat Focus" << std::endl;
 
 
+    std::cerr << "[Main] Initializing D3D12 RenderPipeline..." << std::endl;
     // Initialize D3D12 rendering pipeline
     renderPipeline = std::make_unique<DX12RenderPipeline>();
     DX12RenderPipeline::InitParams renderParams = {};
@@ -1300,22 +1593,49 @@ int main() {
         glfwTerminate();
         return -1;
     }
+    std::cerr << "[Main] D3D12 pipeline initialized SUCCESS. Next: CharacterFactory" << std::endl;
     std::cout << "D3D12 pipeline initialized" << std::endl;
+
+    // Initialize CharacterFactory
+    std::cerr << "[Main] Creating CharacterFactory..." << std::endl;
+    characterFactory = std::make_unique<Gameplay::CharacterFactory>();
+    
+    std::cerr << "[Main] Initializing CharacterFactory..." << std::endl;
+    characterFactory->Initialize();
+    std::cout << "CharacterFactory initialized" << std::endl;
 
     // Create game world with ECS entities
     // Initialize procedural building generator
+    std::cerr << "[Main] Initializing BuildingGenerator..." << std::endl;
     buildingGenerator = std::make_unique<CudaBuildingGenerator>();
     if (!buildingGenerator->Initialize()) {
         std::cerr << "Failed to initialize building generator" << std::endl;
     } else {
-        std::cout << "Building generator initialized" << std::endl;
+        std::cerr << "[Main] Building generator initialized" << std::endl;
     }
     
+    // --- Manual Procedural Animation Setup for Debugging ---
+    /*
+    {
+        auto procAnim = std::make_unique<Animation::AnimationClip>();
+        procAnim->name = "ProceduralWave";
+        // ... (lines omitted for brevity, block disabled) ...
+        if (animationSystem) {
+             animationSystem->registerAnimationClip(std::move(procAnim));
+             std::cout << "[Setup] Registered 'ProceduralWave' animation." << std::endl;
+        }
+    }
+    */
+    // -----------------------------------------------------
+
+    std::cout << "[Setup] Calling CreateGameWorld..." << std::endl;
     CreateGameWorld();
+    std::cout << "[Setup] CreateGameWorld FINISHED." << std::endl;
     
     // Initialize WorldChunkManager for chunk-based streaming
     // NOTE: Building generation disabled in callbacks to avoid overwhelming DX12
     // Buildings are pre-generated in CreateGameWorld for stability
+    std::cout << "[Setup] Initializing ChunkManager..." << std::endl;
     chunkManager = std::make_unique<World::WorldChunkManager>();
     chunkManager->Initialize(
         // Generate callback (runs on worker thread)
@@ -1341,15 +1661,59 @@ int main() {
     if (targetingSystem) {
         targetingSystem->SetPlayerEntity(playerEntity);
     }
-
+    
     // Initial sync of entities to renderer
+    std::cout << "[Setup] Syncing entities to renderer..." << std::endl;
     SyncEntitiesToRenderer();
+    std::cout << "[Setup] SyncEntitiesToRenderer FINISHED." << std::endl;
     std::cout << "Game world synced to renderer: " << renderPipeline->GetMeshCount() << " meshes" << std::endl;
     
+    // Take initial verification screenshot (Frame 0)
+    std::cerr << "[Verify] Taking Frame 0 Screenshot..." << std::endl;
+    renderPipeline->RenderFrame(); // Render once to populate buffers
+    renderPipeline->SaveScreenshot("frame_0_init.bmp");
+    std::cerr << "[Verify] Frame 0 Saved." << std::endl;
+
+    // === UNIFIED TESTING SYSTEM ===
+    std::cerr << "[TestSystem] Initializing..." << std::endl;
+    auto& testSystem = CudaGame::Testing::TestSystem::GetInstance();
+    std::cerr << "[TestSystem] Instance acquired." << std::endl;
+    
+    // Scenario 1: Procedural Walk (Visually verify leg movement)
+    std::cerr << "[TestSystem] Registering Scenario: ProceduralWalk" << std::endl;
+    testSystem.RegisterScenario("ProceduralWalk", 4.0f, [&](){
+        std::cout << "[TestSetup] Setting up Procedural Walk..." << std::endl;
+        if (playerEntity != 0 && coordinator.HasComponent<Animation::AnimationComponent>(playerEntity)) {
+             auto& anim = coordinator.GetComponent<Animation::AnimationComponent>(playerEntity);
+             anim.useProceduralGeneration = true;
+             anim.currentAnimation = "Procedural_Walk"; 
+             anim.proceduralPhase = 0.0f; 
+        }
+        // Force Camera to side view
+        if (mainCamera) {
+            mainCamera->SetCameraMode(OrbitCamera::CameraMode::FREE_LOOK);
+            mainCamera->SetViewAngles(0.0f, 20.0f); // Yaw, Pitch
+            mainCamera->SetDistance(5.0f);
+        }
+    });
+
+    // Check Arguments
+    std::cerr << "[TestSystem] Checking arguments..." << std::endl;
+    for(int i=1; i < __argc; ++i) {
+        if (std::string(__argv[i]) == "--test-suite") {
+             if (i+1 < __argc) {
+                 std::cerr << "[TestSystem] Starting suite: " << __argv[i+1] << std::endl;
+                 testSystem.StartSuite(__argv[i+1]);
+             }
+        }
+    }
+    std::cerr << "[TestSystem] Initialization done." << std::endl;
+    
     // (Debug-only initial entity dump removed to keep DX12 output clean.)
+    std::cerr << "[Main] About to enter main loop..." << std::endl;
 
     // Main game loop
-    std::cout << "\n[CHECKPOINT] All initialization complete. Entering main loop..." << std::endl;
+    std::cerr << "[CHECKPOINT] All initialization complete. Entering main loop..." << std::endl;
     std::cout << "Press ESC to exit, TAB for mouse capture..." << std::endl;
     
     // Fixed timestep physics (matches OpenGL version)
@@ -1358,75 +1722,120 @@ int main() {
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
     auto startTime = std::chrono::high_resolution_clock::now();
-    uint32_t frameCount = 0;
-    float fps = 0.0f;
-    float time = 0.0f;
+    frameNumber = 0;
     
-
+    std::cerr << "[Main] Starting while loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
+         static int logSafeGuard = 0;
+         if (logSafeGuard < 10) std::cerr << "[Loop] Frame " << frameNumber << " Start" << std::endl;
 
-        // Exit on ESC
-        if (keys[GLFW_KEY_ESCAPE]) {
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-        }
-
-        // Calculate actual delta time from frame timing
-        auto currentFrameTime = std::chrono::high_resolution_clock::now();
-        float deltaTime = std::chrono::duration<float>(currentFrameTime - lastFrameTime).count();
-        lastFrameTime = currentFrameTime;
+        // Calculate delta time
+        if (logSafeGuard < 10) std::cerr << "[Loop] Calculating deltaTime..." << std::endl;
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float>(currentTime - lastFrameTime).count();
+        lastFrameTime = currentTime;
         
-        // Clamp deltaTime to prevent physics explosion on frame spikes
+        // Cap delta time to avoid spiraling on lag spikes
         if (deltaTime > 0.1f) deltaTime = 0.1f;
         
-        time += deltaTime;
+        frameTime = deltaTime;
+        fpsAccumulator += deltaTime;
+        frameCount++;
         
-        static std::ofstream debugLoopFile("debug_loop.txt");
-        if (debugLoopFile.is_open() && frameCount % 60 == 0) {
-            auto stats = renderPipeline->GetFrameStats();
-            debugLoopFile << "Frame: " << frameCount << " | Time: " << time << " | deltaTime: " << deltaTime 
-                          << " | MouseCaptured: " << mouseCaptured
-                          << " | Meshes: " << renderPipeline->GetMeshCount()
-                          << " | DrawCalls: " << stats.drawCalls
-                          << " | Tris: " << stats.triangles << std::endl;
+        // Update FPS counter every 0.5s
+        if (fpsAccumulator >= 0.5f) {
+            fps = frameCount / fpsAccumulator;
+            frameCount = 0;
+            fpsAccumulator = 0.0f;
+            
+            if (showFPS) {
+                // std::cout << "\rFPS: " << static_cast<int>(fps) << " | Meshes: " << renderPipeline->GetMeshCount() << std::flush;
+            }
         }
+        
+        if (logSafeGuard < 10) std::cerr << "[Loop] Polling GLFW events..." << std::endl;
+        glfwPollEvents();
         
         
         // Update input component from GLFW
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating input..." << std::endl;
         UpdateInputComponent(playerEntity);
-        
+        if (logSafeGuard < 10) std::cerr << "[Loop] Input Updated" << std::endl;
+
         // Handle player movement via CharacterControllerSystem (camera-relative movement)
-        // This replaces the inline HandlePlayerMovement - the system uses the camera set via SetCamera()
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating CharacterController..." << std::endl;
         if (mouseCaptured && characterControllerSystem) {
             characterControllerSystem->Update(deltaTime);
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Controller Updated" << std::endl;
         
         // Update gameplay systems (matching OpenGL game loop order)
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating EnemyAI..." << std::endl;
         if (enemyAISystem) {
             enemyAISystem->Update(deltaTime);
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating LevelSystem..." << std::endl;
         if (levelSystem) {
             levelSystem->Update(deltaTime);
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating TargetingSystem..." << std::endl;
         if (targetingSystem) {
             targetingSystem->Update(deltaTime);
         }
         // PlayerMovementSystem DISABLED - conflicts with CharacterControllerSystem
         // Both systems were modifying player velocity, causing microsliding
         // CharacterControllerSystem alone handles all player movement now
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating WallRunning..." << std::endl;
         if (wallRunningSystem) {
             wallRunningSystem->Update(deltaTime);
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Gameplay Systems Updated" << std::endl;
+        
+        // Update Animation System
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating Animation..." << std::endl;
+        if (animationSystem) {
+             if (logSafeGuard < 10) std::cerr << "[Loop] Calling animationSystem->update()..." << std::endl;
+             animationSystem->update(deltaTime);
+             if (logSafeGuard < 10) std::cerr << "[Loop] animationSystem->update() done." << std::endl;
+             
+             // SYNC ANIMATION TO RENDERER
+             // Copy computed bone matrices from ECS to D3D12Mesh resources so the renderer can upload them
+             static int syncLogCounter = 0;
+             bool shouldLog = (syncLogCounter++ % 60 == 0); // Log once per second
+             
+             if (logSafeGuard < 10) std::cerr << "[Loop] Syncing bone matrices to renderer..." << std::endl;
+             for (Core::Entity entity : renderEntities) {
+                 if (coordinator.HasComponent<Animation::AnimationComponent>(entity)) {
+                      auto& animComp = coordinator.GetComponent<Animation::AnimationComponent>(entity);
+                      
+                      // Find corresponding mesh resource
+                      auto it = entityMeshes.find(entity);
+                      if (it != entityMeshes.end() && it->second) {
+                          D3D12Mesh* mesh = it->second.get();
+                          
+                          // Only update if we have valid data
+                          if (!animComp.finalBoneMatrices.empty()) {
+                              mesh->boneMatrices = animComp.finalBoneMatrices;
+                          }
+                      }
+                 }
+             }
+             if (logSafeGuard < 10) std::cerr << "[Loop] Bone matrices synced." << std::endl;
+        }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Animation Updated/Synced" << std::endl;
         
         // Update chunk streaming based on player position
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating ChunkManager..." << std::endl;
         if (chunkManager && playerEntity != 0) {
             auto& playerTransform = coordinator.GetComponent<Rendering::TransformComponent>(playerEntity);
             chunkManager->Update(playerTransform.position, frameNumber);
             chunkManager->ProcessCompletedChunks();
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Chunks Updated" << std::endl;
         ++frameNumber;
 
         // Camera mode toggles (match GL renderer behavior: 1=ORBIT_FOLLOW, 2=FREE_LOOK, 3=COMBAT_FOCUS, 4=THIRD_PERSON)
+        if (logSafeGuard < 10) std::cerr << "[Loop] Handling camera mode..." << std::endl;
         if (mainCamera) {
             static bool key1Prev = false;
             static bool key2Prev = false;
@@ -1454,16 +1863,21 @@ int main() {
             key2Prev = key2;
             key3Prev = key3;
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Camera mode done." << std::endl;
         
         // Fixed timestep physics update (matches OpenGL version - fixes speed bursting)
         // This runs physics at consistent 60 FPS regardless of frame rate
+        if (logSafeGuard < 10) std::cerr << "[Loop] Physics update..." << std::endl;
         accumulator += deltaTime;
         while (accumulator >= FIXED_TIMESTEP) {
             if (physicsSystem) {
+                if (logSafeGuard < 10) std::cerr << "[Loop] Calling physicsSystem->Update()..." << std::endl;
                 physicsSystem->Update(FIXED_TIMESTEP);
+                if (logSafeGuard < 10) std::cerr << "[Loop] physicsSystem->Update() done." << std::endl;
             }
             accumulator -= FIXED_TIMESTEP;
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Physics loop done." << std::endl;
         
         
         // Debug: Log CharacterControllerSystem entity count and player velocity every 60 frames
@@ -1478,16 +1892,22 @@ int main() {
                       << "force: (" << playerRB.forceAccumulator.x << ", " << playerRB.forceAccumulator.y 
                       << ", " << playerRB.forceAccumulator.z << ")" << std::endl;
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Getting player position from PhysX..." << std::endl;
         
         // Update camera with player position/velocity from PhysX (avoids ECS-PhysX sync jitter)
         glm::vec3 playerPos(0.0f);
         glm::vec3 playerVel(0.0f);
         
         // Read position directly from PhysX actor (not ECS) to avoid sync jitter
+        if (logSafeGuard < 10) std::cerr << "[Loop] Finding playerEntity in entityPhysicsActors..." << std::endl;
         auto physIt = entityPhysicsActors.find(playerEntity);
+        if (logSafeGuard < 10) std::cerr << "[Loop] Found: " << (physIt != entityPhysicsActors.end()) << std::endl;
         if (physIt != entityPhysicsActors.end() && physIt->second) {
+            if (logSafeGuard < 10) std::cerr << "[Loop] Accessing PhysX actor..." << std::endl;
             PxRigidActor* actor = physIt->second;
+            if (logSafeGuard < 10) std::cerr << "[Loop] Calling getGlobalPose()..." << std::endl;
             PxTransform pxTrans = actor->getGlobalPose();
+            if (logSafeGuard < 10) std::cerr << "[Loop] Got transform." << std::endl;
             playerPos = glm::vec3(pxTrans.p.x, pxTrans.p.y, pxTrans.p.z);
             
             // Get velocity if dynamic actor
@@ -1497,13 +1917,16 @@ int main() {
             }
         } else {
             // Fallback to ECS position if no physics actor
+            if (logSafeGuard < 10) std::cerr << "[Loop] No physics actor, using ECS fallback..." << std::endl;
             if (coordinator.HasComponent<Rendering::TransformComponent>(playerEntity)) {
                 playerPos = coordinator.GetComponent<Rendering::TransformComponent>(playerEntity).position;
             }
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Player position retrieved." << std::endl;
         
         // ====== BOUNDED CAMERA FOLLOW SYSTEM ======
         // Based on RE Engine (damped spring-arm) + Unreal (offset clamping)
+        if (logSafeGuard < 10) std::cerr << "[Loop] Camera follow system..." << std::endl;
         static glm::vec3 smoothedPlayerPos = playerPos;
         
         // Calculate player horizontal speed
@@ -1559,35 +1982,46 @@ int main() {
         smoothedPlayerPos = playerPos + offset;
         
         // Single camera update - use smoothed player position
+        if (logSafeGuard < 10) std::cerr << "[Loop] Updating camera..." << std::endl;
         if (mainCamera) {
             mainCamera->Update(deltaTime, smoothedPlayerPos, playerVel);
         }
+        if (logSafeGuard < 10) std::cerr << "[Loop] Camera updated." << std::endl;
         
         // Sync ECS entities to renderer (in full game, only do this when entities change)
+        if (logSafeGuard < 10) std::cerr << "[Loop] Syncing Entities..." << std::endl;
         SyncEntitiesToRenderer();
+        if (logSafeGuard < 10) std::cerr << "[Loop] Entities Synced." << std::endl;
 
         // Render frame
+        if (logSafeGuard < 10) std::cerr << "[Loop] BeginFrame..." << std::endl;
         renderPipeline->BeginFrame(mainCamera.get());
+        
+        if (logSafeGuard < 10) std::cerr << "[Loop] RenderFrame..." << std::endl;
         renderPipeline->RenderFrame();
+        
+        if (logSafeGuard < 10) std::cerr << "[Loop] EndFrame..." << std::endl;
         renderPipeline->EndFrame();
-
-        // Calculate FPS
-        frameCount++;
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float elapsed = std::chrono::duration<float>(currentTime - startTime).count();
-
-        if (elapsed >= 1.0f) {
-            fps = frameCount / elapsed;
-            
-            auto stats = renderPipeline->GetFrameStats();
-            std::cout << "[Game] FPS: " << static_cast<int>(fps)
-                      << " | Draw Calls: " << stats.drawCalls
-                      << " | Triangles: " << stats.triangles
-                      << " | Frame: " << stats.totalFrameMs << "ms" << std::endl;
-
-            frameCount = 0;
-            startTime = currentTime;
+        
+        if (logSafeGuard < 10) std::cerr << "[Loop] Frame Finished." << std::endl;
+        logSafeGuard++;
+        
+        // Auto-Screenshot after 20 frames to prove it runs
+        if (frameCount == 20) {
+             std::cout << "[Auto-Verify] Taking Screenshot..." << std::endl;
+             renderPipeline->SaveScreenshot("verification_screenshot.bmp");
         }
+
+        // === TEST SYSTEM UPDATE ===
+        if (testSystem.IsActive()) {
+            testSystem.Update(deltaTime);
+            if (testSystem.ShouldCaptureFrame()) {
+                 std::string filename = "TestResults/" + testSystem.GetCurrentTestName() + "/frame_" + std::to_string(testSystem.GetFrameCounter()) + ".bmp";
+                 renderPipeline->SaveScreenshot(filename);
+            }
+        }
+
+
     }
 
     std::cout << "Shutting down..." << std::endl;

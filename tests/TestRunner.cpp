@@ -43,7 +43,7 @@ int main()
     // testFramework.RegisterSuite(CreatePhysicsTestSuite());
 #endif
 #ifdef ENABLE_RENDER_TESTS
-    // testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
+    testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
 #endif
 // testFramework.RegisterSuite(CreateEmissiveTextureTestSuite());
     // testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());

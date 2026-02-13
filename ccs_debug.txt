@@ -45,3 +45,4 @@
 [CCS DEBUG] Frame 2700 | Entities: 1 | Camera: SET | PhysX: SET
 [CCS DEBUG] Frame 2760 | Entities: 1 | Camera: SET | PhysX: SET
 [CCS DEBUG] Frame 2820 | Entities: 1 | Camera: SET | PhysX: SET
+[CCS DEBUG] Frame 2880 | Entities: 1 | Camera: SET | PhysX: SET

@@ -73,7 +73,7 @@ public:
         // Redirect stderr to stdout to capture it
         cmd += L" > dxc_out.txt 2>&1";
         
-        std::cerr << "[ShaderCompiler] Executing with include path: " << std::string(dir.begin(), dir.end()) << std::endl;  
+        std::wcerr << L"[ShaderCompiler] Executing with include path: " << dir << std::endl;  
         std::wcout << L"[ShaderCompiler] Executing: " << cmd << std::endl;
         
         int ret = _wsystem(cmd.c_str());

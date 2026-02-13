@@ -15,14 +15,15 @@ cbuffer PerObjectConstants : register(b1) {
     column_major float4x4 worldMatrix;
     column_major float4x4 prevWorldMatrix;
     column_major float4x4 normalMatrix;
-    // Extra data not in GeometryPass_VS but used here? 
-    // Wait, if I change this, I might break alignment if the C++ side sends more data.
-    // The C++ side sends PerObjectConstants which has: world, prevWorld, normal.
-    // The extra fields (color, roughness, etc.) are in MaterialConstants (b2) in the C++ code!
-    // SkinningShader was trying to read them from b1.
-    // I should remove them from here and rely on the PS to read them from b2 if needed.
-    // BUT, SkinningShader uses 'useSkinning' which was in b1.
-    // I need to check where 'useSkinning' is sent from C++.
+    uint boneOffset;
+    uint isSkinned;
+    float2 _paddingObj; // Match C++ alignment if needed, or rely on pack. C++ had float _padding[14].
+    // C++ struct: 3 mats (64*3=192) + 2 uints (8) + 56 bytes padding = 256.
+    // HLSL cbuffer packing is 16-byte aligned vectors.
+    // 3 mats take 3*64 = 192 bytes. Aligned.
+    // boneOffset (4), isSkinned (4) = 8 bytes.
+    // We need 56 bytes padding. float4 * 3 + float2 = 48 + 8 = 56.
+    float4 _pad0; float4 _pad1; float4 _pad2; float2 _pad3; 
 };
 
 // Bone matrices buffer (t0 space1)
@@ -33,6 +34,7 @@ struct VSInput {
     float3 normal : NORMAL;
     float3 tangent : TANGENT;
     float2 texcoord : TEXCOORD;
+    float4 color : COLOR;
     int4 boneIndices : BLENDINDICES;
     float4 boneWeights : BLENDWEIGHT;
 };
@@ -46,6 +48,7 @@ struct VSOutput {
     float2 texcoord : TEXCOORD;
     float4 currClipPos : CURR_CLIP_POS;
     float4 prevClipPos : PREV_CLIP_POS;
+    float4 color : COLOR;
 };
 
 VSOutput main(VSInput input) {
@@ -55,16 +58,14 @@ VSOutput main(VSInput input) {
     float3 localNormal = input.normal;
     float3 localTangent = input.tangent;
 
-    // Skinning logic
-    // We assume this shader is ONLY used for skinned meshes, so we always skin.
-    // If useSkinning flag is needed, it must be passed correctly.
-    // However, checking C++ code, we switch PSO based on skinning.
-    // So this shader IS the skinning shader. We don't need a flag.
+    // Skinning logic (Always active in this shader)
+    // Offset local bone index by instance's global offset
+    uint4 globalIndices = uint4(input.boneIndices) + boneOffset;
     
-    float4x4 boneTransform = g_BoneMatrices[input.boneIndices.x] * input.boneWeights.x;
-    boneTransform += g_BoneMatrices[input.boneIndices.y] * input.boneWeights.y;
-    boneTransform += g_BoneMatrices[input.boneIndices.z] * input.boneWeights.z;
-    boneTransform += g_BoneMatrices[input.boneIndices.w] * input.boneWeights.w;
+    float4x4 boneTransform = g_BoneMatrices[globalIndices.x] * input.boneWeights.x;
+    boneTransform += g_BoneMatrices[globalIndices.y] * input.boneWeights.y;
+    boneTransform += g_BoneMatrices[globalIndices.z] * input.boneWeights.z;
+    boneTransform += g_BoneMatrices[globalIndices.w] * input.boneWeights.w;
     
     localPos = mul(boneTransform, localPos);
     localNormal = mul((float3x3)boneTransform, localNormal);
@@ -92,7 +93,10 @@ VSOutput main(VSInput input) {
     // Bitangent
     output.bitangent = cross(output.normal, output.tangent);
     
+    output.bitangent = cross(output.normal, output.tangent);
+    
     output.texcoord = input.texcoord;
+    output.color = input.color;
     
     return output;
 }

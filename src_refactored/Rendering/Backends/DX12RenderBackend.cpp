@@ -21,6 +21,11 @@ DX12RenderBackend::~DX12RenderBackend() {
 }
 
 bool DX12RenderBackend::Initialize() {
+    if (m_initialized) {
+        std::cout << "[DX12] Backend already initialized." << std::endl;
+        return true;
+    }
+
     HRESULT hr;
     
     // Enable debug layer in debug builds
@@ -144,6 +149,8 @@ bool DX12RenderBackend::Initialize() {
 
     // Initialize NVIDIA Reflex for latency reduction
     m_reflex = std::make_unique<NVIDIAReflex>();
+    /* 
+    // DISABLE REFLEX FOR DEBUGGING STABILITY
     if (m_reflex->Initialize(m_device.Get())) {
         // Enable Reflex with boost for lowest latency
         m_reflex->SetMode(NVIDIAReflex::Mode::ENABLED_BOOST);
@@ -152,18 +159,32 @@ bool DX12RenderBackend::Initialize() {
     } else {
         std::cerr << "[DX12] Reflex initialization failed (non-critical)" << std::endl;
     }
+    */
+    std::cout << "[DX12] Reflex DISABLED for debugging" << std::endl;
 
     m_initialized = true;
     std::cout << "[DX12] Backend initialized successfully" << std::endl;
+    // std::cout << "[DX12] Backend initialized successfully" << std::endl; // Duplicate in original?
     return true;
+}
+
+void DX12RenderBackend::ResetCommandList() {
+    FrameResources& frame = m_frameResources[m_currentFrameIndex];
+    if (FAILED(frame.commandAllocator->Reset())) {
+        std::cerr << "[DX12] Failed to reset command allocator" << std::endl;
+        return;
+    }
+    if (FAILED(m_cmdList->Reset(frame.commandAllocator.Get(), nullptr))) {
+        std::cerr << "[DX12] Failed to reset command list" << std::endl;
+    }
 }
 
 bool DX12RenderBackend::CreateDescriptorHeaps() {
     HRESULT hr;
     
-    // RTV descriptor heap (3 swapchain + 4 G-Buffer = 7 total)
+    // RTV descriptor heap (3 swapchain + 4 G-Buffer + 1 LitColor = 8 total)
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-    rtvHeapDesc.NumDescriptors = FRAME_COUNT + 4; // Swapchain + G-Buffer RTVs
+    rtvHeapDesc.NumDescriptors = FRAME_COUNT + 5; // Swapchain + G-Buffer RTVs + LitColor
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     
@@ -359,6 +380,7 @@ void DX12RenderBackend::BeginFrame(const glm::vec4& clearColor, int width, int h
         std::cerr << "[DX12] BeginFrame called without swapchain" << std::endl;
         return;
     }
+    // std::cout << "[DX12] BeginFrame..." << std::endl;
     
     m_frameCounter++;
     
@@ -438,6 +460,7 @@ void DX12RenderBackend::Present() {
     }
     
     // Present (vsync off with tearing for low latency)
+    // std::cout << "[DX12] Presenting..." << std::endl;
     HRESULT hr = m_swapchain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
     if (FAILED(hr)) {
         std::cerr << "[DX12] Present failed with HRESULT: " << std::hex << hr << std::dec << std::endl;
@@ -469,8 +492,10 @@ void DX12RenderBackend::MoveToNextFrame() {
     // Wait if GPU hasn't finished with this frame's resources
     FrameResources& nextFrame = m_frameResources[m_currentFrameIndex];
     if (m_fence->GetCompletedValue() < nextFrame.fenceValue) {
+        std::cout << "[DX12] Waiting for Fence " << nextFrame.fenceValue << std::endl;
         m_fence->SetEventOnCompletion(nextFrame.fenceValue, m_fenceEvent);
         WaitForSingleObject(m_fenceEvent, INFINITE);
+        std::cout << "[DX12] Wait Complete" << std::endl;
     }
     
     nextFrame.fenceValue = currentFenceValue;

@@ -89,6 +89,7 @@ public:
     // Spherical coordinates access
     float GetYaw() const { return m_yaw; }
     float GetPitch() const { return m_pitch; }
+    void SetViewAngles(float yaw, float pitch);
     float GetDistance() const { return m_currentDistance; }
     
     // Direction vectors (already inherited from Camera base class)

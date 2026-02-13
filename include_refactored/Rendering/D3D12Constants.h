@@ -28,7 +28,9 @@ struct alignas(256) PerObjectConstants {
     glm::mat4 worldMatrix;          // 64 bytes
     glm::mat4 prevWorldMatrix;      // 64 bytes (for motion vectors)
     glm::mat4 normalMatrix;         // 64 bytes (transpose-inverse of world)
-    float _padding[16];             // 64 bytes (fill to 256)
+    uint32_t boneOffset;            // 4 bytes (Global Bone Buffer Offset)
+    uint32_t isSkinned;             // 4 bytes (Bool flag)
+    float _padding[14];             // 56 bytes (fill to 256)
 };
 
 // Material constants (updated per mesh)

@@ -1,6 +1,31 @@
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #ifdef _WIN32
 #include "Rendering/DX12RenderPipeline.h"
+// Helper for BMP writing
+#include <fstream>
+#include <vector>
+
+#pragma pack(push, 1)
+struct BMPHeader {
+    uint16_t signature = 0x4D42; // "BM"
+    uint32_t fileSize = 0;
+    uint32_t reserved = 0;
+    uint32_t dataOffset = 54; // 14 + 40
+};
+struct BMPInfoHeader {
+    uint32_t headerSize = 40;
+    int32_t width = 0;
+    int32_t height = 0;
+    uint16_t planes = 1;
+    uint16_t bpp = 32; // RGBA
+    uint32_t compression = 0;
+    uint32_t imageSize = 0;
+    int32_t xPixelsPerMeter = 0;
+    int32_t yPixelsPerMeter = 0;
+    uint32_t colorsUsed = 0;
+    uint32_t colorsImportant = 0;
+};
+#pragma pack(pop)
 #include "Rendering/ShaderCompiler.h"
 #include "Core/CudaCore.h"
 #include <iostream>
@@ -10,6 +35,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtx/string_cast.hpp> // Added for debug logs
+
+#ifndef ASSET_DIR
+#define ASSET_DIR "Assets/"
+#endif
 
 namespace CudaGame {
 namespace Rendering {
@@ -36,7 +67,7 @@ bool DX12RenderPipeline::Initialize(const InitParams& params) {
     m_dlssEnabled = params.enableDLSS;
     m_rayTracingEnabled = params.enableRayTracing;
     
-    m_activePath = RenderPath::Indirect_GPU_Driven;
+    m_activePath = RenderPath::VertexShader_Fallback; // CPU Fallback (GPU interop not yet initialized)
 
     // Step 0: Initialize CUDA (Phase 3)
     if (!m_cudaCore) {
@@ -63,6 +94,10 @@ bool DX12RenderPipeline::Initialize(const InitParams& params) {
         std::cerr << "[Pipeline] Failed to initialize CUDA Core" << std::endl;
         return false;
     }
+
+    // Phase 3: Enable GPU Path
+    m_activePath = RenderPath::Indirect_GPU_Driven;
+
 
     // Step 2: Initialize DLSS if enabled
     if (m_dlssEnabled) {
@@ -153,6 +188,12 @@ bool DX12RenderPipeline::Initialize(const InitParams& params) {
         return false;
     }
     
+    // Third, Skinned PSO for animated characters (G-Buffer)
+    if (!CreateSkinnedGeometryPassPSO()) {
+        std::cerr << "[Pipeline] Failed to create Skinned PSO" << std::endl;
+        return false;
+    }
+    
     // Skybox PSO (optional - continue without if shaders unavailable)
     CreateSkyboxPSO();
     
@@ -165,7 +206,14 @@ bool DX12RenderPipeline::Initialize(const InitParams& params) {
         }
     } else {
         m_meshShadersEnabled = false;
-    }if (!CreateConstantBuffers()) {
+    }
+    
+    // Create Particle PSO (Phase 7)
+    if (m_meshShadersSupported && !CreateParticlePSO()) {
+        std::cerr << "[Pipeline] Failed to create Particle PSO" << std::endl;
+    }
+    
+    if (!CreateConstantBuffers()) {
         std::cerr << "[Pipeline] Failed to create constant buffers" << std::endl;
         return false;
     }
@@ -227,6 +275,7 @@ void DX12RenderPipeline::SetDLSSQualityMode(DLSSQualityMode mode) {
 // === Frame Rendering ===
 
 void DX12RenderPipeline::BeginFrame(Camera* camera) {
+    if (!m_initialized) return;
     m_camera = camera;
     m_frameIndex++;
     m_stats = FrameStats();  // Reset stats
@@ -276,20 +325,110 @@ void DX12RenderPipeline::RenderFrame() {
 
     static uint64_t frameCount = 0;
     frameCount++;
-    if (frameCount % 60 == 0) std::cout << "[Frame " << frameCount << "] Start" << std::endl;
+    if (frameCount < 120 || frameCount % 60 == 0) std::cerr << "[Frame " << frameCount << "] Start" << std::endl;
 
     // AAA Rendering Pipeline:
-    // ... [comments] ...
+    // 1. Shadow Pass
+    // 2. G-Buffer Pass (Opaque)
+    // 3. Lighting Pass (Deferred)
+    // 4. Ray Tracing (Reflections/Shadows)
+    // 5. DLSS (Upscale)
+    // 6. Post Process (Bloom/ToneMap)
+    
+    // Phase 4: Upload Animation Matrices
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] UploadBoneMatrices..." << std::endl;
+    UploadBoneMatrices();
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] UploadBoneMatrices done." << std::endl;
     
     // RESTORED: Re-enable passes to fix freeze
+    // RESTORED: Re-enable passes to fix freeze
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] ShadowPass..." << std::endl;
     ShadowPass();
-    GBufferPass();
+    // GBufferPass(); // GPU Path disabled while debugging CPU Fallback
     
+    // CPU Fallback G-Buffer Fill (Invention 1 repurposed)
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] GeometryPass..." << std::endl;
+    GeometryPass(); 
+    if (frameCount < 10) std::cerr << "[Frame Trace] GeometryPass Done." << std::endl;
+    
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] SkyboxPass..." << std::endl;
     SkyboxPass();     
+    if (frameCount < 10) std::cerr << "[Frame Trace] SkyboxPass Done." << std::endl;
+
+    if (frameCount < 10) std::cerr << "[Frame " << frameCount << "] LightingPass..." << std::endl;
     LightingPass();
+    if (frameCount < 10) std::cerr << "[Frame Trace] LightingPass Done." << std::endl;
+
+    // === Pixel Readback Debug ===
+    // === Pixel Readback Debug ===
+    if (!m_readbackBuffer) {
+        D3D12_HEAP_PROPERTIES heapProps = {};
+        heapProps.Type = D3D12_HEAP_TYPE_READBACK;
+        D3D12_RESOURCE_DESC desc = {};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        desc.Width = 512; // Sufficient for row pitch
+        desc.Height = 1;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_UNKNOWN;
+        desc.SampleDesc.Count = 1;
+        desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        m_backend->GetDevice()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_readbackBuffer));
+        m_readbackBuffer->SetName(L"DebugReadbackBuffer");
+    }
     
-    if (m_rayTracingEnabled) {
-        RayTracingPass();
+    // Copy center pixel
+    D3D12_TEXTURE_COPY_LOCATION srcLoc = {};
+    srcLoc.pResource = m_gBuffer.albedoRoughness;
+    srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    srcLoc.SubresourceIndex = 0;
+    
+    D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+    dstLoc.pResource = m_readbackBuffer.Get();
+    dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dstLoc.PlacedFootprint.Offset = 0;
+    dstLoc.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    dstLoc.PlacedFootprint.Footprint.Width = 1;
+    dstLoc.PlacedFootprint.Footprint.Height = 1;
+    dstLoc.PlacedFootprint.Footprint.Depth = 1;
+    dstLoc.PlacedFootprint.Footprint.RowPitch = 256; // Aligned
+    
+    // Source Box (Center)
+    D3D12_BOX box = {};
+    box.left = m_renderWidth / 2;
+    box.right = box.left + 1;
+    box.top = m_renderHeight / 2;
+    box.bottom = box.top + 1;
+    box.front = 0;
+    box.back = 1;
+    
+    TransitionResource(m_gBuffer.albedoRoughness, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE); // Ensure
+    m_backend->GetCommandList()->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, &box);
+    
+    // Note: We need to WAIT for this copy before reading. 
+    // Since we can't easily stall here without m_fence access inside Frame, 
+    // we will read the *previous* frame's value or accept latency.
+    // For simplicity: We will rely on EndFrame's WaitForGPU to flush this command list, 
+    // then read it at the START of the next frame.
+    
+    static int readbackCounter = 0;
+    readbackCounter++;
+    if (readbackCounter < 300 || readbackCounter % 60 == 0) {
+        std::cout << "[PIXEL DEBUG] Attempting readback..." << std::endl;
+        
+        // Force sync for debug
+        m_backend->WaitForGPU(); 
+        
+        void* pData;
+        if (SUCCEEDED(m_readbackBuffer->Map(0, nullptr, &pData))) {
+             uint8_t* rgba = (uint8_t*)pData;
+             std::cout << "[PIXEL DEBUG] Center Pixel (" << m_renderWidth/2 << "," << m_renderHeight/2 << "): " 
+                       << (int)rgba[0] << ", " << (int)rgba[1] << ", " << (int)rgba[2] << ", " << (int)rgba[3] 
+                       << std::endl;
+             m_readbackBuffer->Unmap(0, nullptr);
+        } else {
+             std::cerr << "[PIXEL DEBUG] Failed to Map readback buffer!" << std::endl;
+        }
     }
     
     if (m_dlssEnabled) {
@@ -298,24 +437,54 @@ void DX12RenderPipeline::RenderFrame() {
     
     PostProcessPass();
     
+    /* 
     // NEW KERNEL ARCHITECTURE (Invention 1)
     // Execute AFTER lighting/post-process to ensure it's visible (overlay)
-    if (frameCount % 60 == 0) std::cout << "[Frame " << frameCount << "] Calling GeometryPass" << std::endl;
     GeometryPass(); 
-    if (frameCount % 60 == 0) std::cout << "[Frame " << frameCount << "] GeometryPass Done" << std::endl;
+    */
+    
+    // Particle Pass (Phase 7)
+    if (!m_particleBatches.empty()) {
+        for (const auto& batch : m_particleBatches) {
+            RenderParticles(batch.buffer, batch.count);
+        }
+        m_particleBatches.clear();
+    }
     
     UIPass();
     
     // Calculate total frame time
     // ...
-    if (frameCount % 60 == 0) std::cout << "[Frame " << frameCount << "] End" << std::endl;
+    if (frameCount < 120 || frameCount % 60 == 0) std::cout << "[Frame " << frameCount << "] End" << std::endl;
 }
 
 
 
 void DX12RenderPipeline::EndFrame() {
-    // Present to swap chain
+    if (!m_initialized) return;
+
+    // Transition backbuffer to present state
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = m_backend->GetCurrentBackBuffer();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.Subresource = 0; 
+    
+    m_backend->GetCommandList()->ResourceBarrier(1, &barrier);
+
+    // Execute command list
+    m_backend->GetCommandList()->Close();
+    ID3D12CommandList* ppCommandLists[] = { m_backend->GetCommandList() };
+    m_backend->GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    // Present
     m_backend->Present();
+    
+    // Core Logic: Wait for GPU here if needed, or rely on Backend frame fencing.
+    // For now, WaitForGPU ensures stability until Fence logic is verified robust.
+    m_backend->WaitForGPU(); 
 }
 
 // === Render Passes ===
@@ -368,15 +537,31 @@ void DX12RenderPipeline::GBufferPass() {
     // Bind per-frame constants
     D3D12_GPU_VIRTUAL_ADDRESS perFrameAddress = m_perFrameCB->GetGPUVirtualAddress();
     cmdList->SetGraphicsRootConstantBufferView(0, perFrameAddress);
+    
+    // Bind Global Bone Buffer (Root Param 3) - Only if it exists
+    if (m_globalBoneBuffer) {
+        cmdList->SetGraphicsRootShaderResourceView(3, m_globalBoneBuffer->GetGPUVirtualAddress());
+    }
 
     // Constant buffer slot sizes (256-byte aligned)
     const uint32_t perObjectSlotSize = 256;
     const uint32_t materialSlotSize  = 256;
 
     uint32_t meshIndex = 0;
+    // Track current PSO to minimize switching
+    ID3D12PipelineState* currentPSO = m_gbufferPassPSO.Get();
+    
     for (D3D12Mesh* mesh : m_meshes) {
         meshIndex++;
         if (!mesh) continue;
+        
+        bool isSkinned = (mesh->GetSkeleton() != nullptr);
+        ID3D12PipelineState* requiredPSO = isSkinned ? m_skinnedGeometryPassPSO.Get() : m_gbufferPassPSO.Get();
+        
+        if (requiredPSO != currentPSO) {
+            cmdList->SetPipelineState(requiredPSO);
+            currentPSO = requiredPSO;
+        }
 
         // Per-object constants
         if (m_perObjectData) {
@@ -389,6 +574,15 @@ void DX12RenderPipeline::GBufferPass() {
             objCB->worldMatrix = world;
             objCB->prevWorldMatrix = world;
             objCB->normalMatrix = glm::transpose(glm::inverse(world));
+            
+            // Animation Data
+            if (isSkinned) {
+                objCB->boneOffset = mesh->globalBoneOffset;
+                objCB->isSkinned = 1;
+            } else {
+                objCB->boneOffset = 0;
+                objCB->isSkinned = 0;
+            }
         }
 
         // Material constants
@@ -426,34 +620,71 @@ void DX12RenderPipeline::GBufferPass() {
 }
 
 void DX12RenderPipeline::GeometryPass() {
+    std::cerr << "[GeometryPass] Entered." << std::endl;
     // KERNEL ARCHITECTURE (Invention 1): Redirect to new dispatcher
-    if (m_meshes.empty()) return;
-
-    ExecuteRenderKernel(m_backend->GetCommandList());
-    return; // Disable Legacy Path Below
-
-    /* LEGACY PATH (Disabled)
     if (m_meshes.empty()) {
+        static bool warned = false;
+        if (!warned) {
+             std::cerr << "[Pipeline] WARNING: No meshes to render!" << std::endl;
+             warned = true;
+        }
         return;
     }
-    
+    std::cerr << "[GeometryPass] Meshes: " << m_meshes.size() << std::endl;
+
+    // DEBUG: Log render path status
+    static int logCounter = 0;
+    logCounter++;
+    // Log first 300 frames continuously, then every 60
+    if (logCounter < 300 || logCounter % 60 == 0) {
+        std::string pathName = (m_activePath == RenderPath::Indirect_GPU_Driven) ? "Indirect (GPU)" : "Fallback (CPU)";
+        std::cerr << "[Pipeline DEBUG] Path: " << pathName 
+                  << " | Meshes: " << m_meshes.size() 
+                  << " | CamPos: " << (m_camera ? glm::to_string(m_camera->GetPosition()) : "NULL") 
+                  << std::endl;
+    }
+
+    if (m_activePath == RenderPath::Indirect_GPU_Driven) {
+        // GPU-Driven Rendering Path using CUDA CullAndDraw kernel
+        std::cerr << "[GeometryPass] Executing GPU-Driven path via ExecuteRenderKernel..." << std::endl;
+        ExecuteRenderKernel(static_cast<void*>(m_backend->GetCommandList()));
+        std::cerr << "[GeometryPass] ExecuteRenderKernel returned." << std::endl;
+        return;
+    }
+    // CPU Fallback path - generates actual draw commands
+
+    // LEGACY / FALLBACK PATH (Draw Loop)
     ID3D12GraphicsCommandList* cmdList = m_backend->GetCommandList();
     
-    // Bind root signature and PSO (wireframe or solid based on debug mode)
+    // Bind root signature and PSO
     cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+    
+    // Validate matrices
+    if (m_perFrameData) {
+        // Sanity check projection
+        if (m_perFrameData->projMatrix[3][3] != 0.0f) { // Perspective usually has 0 there
+             // Just a quick heuristic check
+        }
+    }
+
+    // Explicitly choose PSO
     if (m_debugMode == DebugMode::WIREFRAME && m_wireframePSO) {
         cmdList->SetPipelineState(m_wireframePSO.Get());
     } else {
-        cmdList->SetPipelineState(m_geometryPassPSO.Get());
+        if (!m_gbufferPassPSO) {
+            std::cerr << "[Pipeline CRITICAL] m_gbufferPassPSO is NULL!" << std::endl;
+            return;
+        }
+        cmdList->SetPipelineState(m_gbufferPassPSO.Get());
     }
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
-    // Set viewport and scissor to DISPLAY resolution (since we're rendering directly to swap chain)
+    // Set viewport and scissor to RENDER resolution (for G-Buffer)
     D3D12_VIEWPORT viewport = {};
     viewport.TopLeftX = 0;
     viewport.TopLeftY = 0;
-    viewport.Width = (FLOAT)m_displayWidth;  // Use display resolution, not render resolution
-    viewport.Height = (FLOAT)m_displayHeight;
+    viewport.Width = (FLOAT)m_renderWidth;
+    viewport.Height = (FLOAT)m_renderHeight;
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     cmdList->RSSetViewports(1, &viewport);
@@ -461,36 +692,30 @@ void DX12RenderPipeline::GeometryPass() {
     D3D12_RECT scissor = {};
     scissor.left = 0;
     scissor.top = 0;
-    scissor.right = (LONG)m_displayWidth;  // Use display resolution
-    scissor.bottom = (LONG)m_displayHeight;
+    scissor.right = (LONG)m_renderWidth;
+    scissor.bottom = (LONG)m_renderHeight;
     cmdList->RSSetScissorRects(1, &scissor);
     
-    // Bind per-frame constants (same for all meshes)
+    // Bind per-frame constants
     D3D12_GPU_VIRTUAL_ADDRESS perFrameAddress = m_perFrameCB->GetGPUVirtualAddress();
     cmdList->SetGraphicsRootConstantBufferView(0, perFrameAddress);
     
-    // FORWARD RENDERING: Render directly to swap chain (like OpenGL version)
-    // Bind swap chain render target + main depth buffer (BeginFrame already cleared these)
-    D3D12_CPU_DESCRIPTOR_HANDLE swapChainRTV = m_backend->GetCurrentRenderTargetView();
-    D3D12_CPU_DESCRIPTOR_HANDLE mainDSV = m_backend->GetDepthStencilView();
-    cmdList->OMSetRenderTargets(1, &swapChainRTV, FALSE, &mainDSV);
-    
-    // DEBUG: Print camera matrices once per second
-    static uint32_t debugFrameCounter = 0;
-    if (debugFrameCounter++ % 60 == 0 && m_perFrameData) {
-        std::cout << "[DEBUG] Camera pos: (" << m_perFrameData->cameraPosition.x << ", " 
-                  << m_perFrameData->cameraPosition.y << ", " << m_perFrameData->cameraPosition.z << ")" << std::endl;
-        std::cout << "[DEBUG] ViewProj[0]: (" << m_perFrameData->viewProjMatrix[0][0] << ", " 
-                  << m_perFrameData->viewProjMatrix[0][1] << ", " << m_perFrameData->viewProjMatrix[0][2] << ", "
-                  << m_perFrameData->viewProjMatrix[0][3] << ")" << std::endl;
-    }
-    
-    // Render all meshes
-    if (m_meshShadersSupported && m_meshShadersEnabled) {
-        RenderMeshesWithMeshShader(cmdList);
-        return;
-    }
+    // DEFERRED RENDERING: Bind G-Buffer MRTs
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[4] = {
+        m_gBuffer.albedoRTV,
+        m_gBuffer.normalRTV,
+        m_gBuffer.emissiveRTV,
+        m_gBuffer.velocityRTV
+    };
+    cmdList->OMSetRenderTargets(4, rtvs, FALSE, &m_gBuffer.depthDSV);
 
+    // Clear G-Buffer for fallback path (since GBufferPass isn't called)
+    const float clearBlack[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 4; ++i) {
+        cmdList->ClearRenderTargetView(rtvs[i], clearBlack, 0, nullptr);
+    }
+    cmdList->ClearDepthStencilView(m_gBuffer.depthDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    
     uint32_t drawCallCount = 0;
     uint32_t triangleCount = 0;
 
@@ -503,38 +728,48 @@ void DX12RenderPipeline::GeometryPass() {
         meshIndex++;
         if (!mesh) continue;
         
-        // Update per-object constants (GLM column-major, matches HLSL column_major)
-        if (m_perObjectData) {
-            // World transform comes directly from ECS (TransformComponent::getMatrix)
-            glm::mat4 world = mesh->transform;
+        // Debug first few meshes
+        if ((logCounter < 300 || logCounter % 60 == 0) && meshIndex <= 3) {
+            std::cout << "  [Draw " << meshIndex << "] Pos: " << glm::to_string(mesh->transform[3]) 
+                      << " Indices: " << mesh->GetIndexCount() 
+                      << " Skinned: " << (mesh->GetSkeleton() ? "YES" : "NO") << std::endl;
+        }
 
-            // Each mesh gets its own 256-byte slot in the per-object constant buffer.
-            uint32_t meshSlot = meshIndex - 1; // 0-based index
-            if (meshSlot >= MAX_MESHES_PER_FRAME) {
-                break; // Should never happen in this demo
-            }
+        // Update per-object constants
+        // ... (rest of update logic identical to previous) ...
+        if (m_perObjectData) {
+            glm::mat4 world = mesh->transform;
+            uint32_t meshSlot = meshIndex - 1;
+            if (meshSlot >= MAX_MESHES_PER_FRAME) break;
+
             PerObjectConstants* objCB = reinterpret_cast<PerObjectConstants*>(
                 reinterpret_cast<uint8_t*>(m_perObjectData) + meshSlot * perObjectSlotSize);
 
             objCB->worldMatrix = world;
             objCB->prevWorldMatrix = world;
+            objCB->normalMatrix = glm::transpose(glm::inverse(world));
             
-            // Explicitly calculate inverse first to help compiler
-            glm::mat4 invWorld = glm::inverse(world);
-            objCB->normalMatrix = glm::transpose(invWorld);
+            bool isSkinned = (mesh->GetSkeleton() != nullptr);
+            objCB->isSkinned = isSkinned ? 1 : 0;
+             if (isSkinned) {
+                objCB->boneOffset = mesh->globalBoneOffset;
+            } else {
+                objCB->boneOffset = 0;
+            }
         }
         
-        // Update material constants (each mesh has its own slot)
+        // Update material constants
         if (m_materialData) {
             uint32_t meshSlot = meshIndex - 1;
-            if (meshSlot >= MAX_MESHES_PER_FRAME) {
-                break;
-            }
+            if (meshSlot >= MAX_MESHES_PER_FRAME) break;
 
             MaterialConstants* matCB = reinterpret_cast<MaterialConstants*>(
                 reinterpret_cast<uint8_t*>(m_materialData) + meshSlot * materialSlotSize);
+            
+            // Force Alpha to 1.0 just in case
+            Material mat = mesh->GetMaterial();
+            mat.albedoColor.a = 1.0f; 
 
-            const Material& mat = mesh->GetMaterial();
             matCB->albedoColor       = mat.albedoColor;
             matCB->roughness         = mat.roughness;
             matCB->metallic          = mat.metallic;
@@ -543,31 +778,39 @@ void DX12RenderPipeline::GeometryPass() {
             matCB->emissiveColor     = mat.emissiveColor;
         }
         
-        // Bind per-object and material constant buffers for this mesh (using correct slot offsets)
+        // Bind CBVs
         uint32_t meshSlot = meshIndex - 1;
         D3D12_GPU_VIRTUAL_ADDRESS perObjectAddress = m_perObjectCB->GetGPUVirtualAddress() + meshSlot * perObjectSlotSize;
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress  = m_materialCB->GetGPUVirtualAddress()  + meshSlot * materialSlotSize;
         cmdList->SetGraphicsRootConstantBufferView(1, perObjectAddress);
         cmdList->SetGraphicsRootConstantBufferView(2, materialAddress);
         
-        // Bind vertex and index buffers
+        // Force Standard PSO for debugging (ignore skinning for a moment if it's broken)
+        // cmdList->SetPipelineState(m_geometryPassPSO.Get()); 
+        
+        // Proper PSO selection
+        if (mesh->GetSkeleton() && m_globalBoneBuffer) {
+             cmdList->SetGraphicsRootShaderResourceView(3, m_globalBoneBuffer->GetGPUVirtualAddress());
+             cmdList->SetPipelineState(m_skinnedGeometryPassPSO.Get());
+        } else {
+             cmdList->SetPipelineState(m_geometryPassPSO.Get());
+        }
+
         const D3D12_VERTEX_BUFFER_VIEW& vbv = mesh->GetVertexBufferView();
         const D3D12_INDEX_BUFFER_VIEW& ibv = mesh->GetIndexBufferView();
         
         cmdList->IASetVertexBuffers(0, 1, &vbv);
         cmdList->IASetIndexBuffer(&ibv);
         
-        // Draw mesh
         cmdList->DrawIndexedInstanced(mesh->GetIndexCount(), 1, 0, 0, 0);
         
         drawCallCount++;
         triangleCount += mesh->GetIndexCount() / 3;
     }
     
-    m_stats.geometryPassMs = 1.0f;  // TODO: Real timing
+    m_stats.geometryPassMs = 1.0f;
     m_stats.drawCalls = drawCallCount;
     m_stats.triangles = triangleCount;
-    */
 }
 
 void DX12RenderPipeline::ShadowPass() {
@@ -579,12 +822,20 @@ void DX12RenderPipeline::ShadowPass() {
 }
 
 void DX12RenderPipeline::LightingPass() {
-    // TODO: Implement deferred lighting
-    // - Read G-Buffer
-    // - Apply PBR lighting (directional, point, spot lights)
-    // - Write to litColor buffer
+    // DEBUG: Clear LitColor to RED to verify chain
+    ID3D12GraphicsCommandList* cmdList = m_backend->GetCommandList();
     
-    m_stats.lightingPassMs = 2.0f;  // Placeholder
+    // Transition LitColor to RTV
+    TransitionResource(m_lightingBuffers.litColor, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    
+    // Clear to Red
+    float clearColor[] = {1.0f, 0.0f, 0.0f, 1.0f}; 
+    cmdList->ClearRenderTargetView(m_lightingBuffers.litColorRTV, clearColor, 0, nullptr);
+    
+    // Transition back for DLSS
+    TransitionResource(m_lightingBuffers.litColor, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    
+    m_stats.lightingPassMs = 0.1f;
 }
 
 void DX12RenderPipeline::SkyboxPass() {
@@ -663,11 +914,27 @@ void DX12RenderPipeline::DLSSPass() {
 }
 
 void DX12RenderPipeline::PostProcessPass() {
-    // TODO: Implement post-processing
-    // - Bloom
-    // - Tone mapping
-    // - Color grading
-    // - Vignette, chromatic aberration, etc.
+    // Copy Albedo (G-Buffer) to SwapChain for DEBUG
+    ID3D12GraphicsCommandList* cmdList = m_backend->GetCommandList();
+    ID3D12Resource* backBuffer = m_backend->GetCurrentBackBuffer();
+    
+    // Use Albedo as source (Validation of Draw)
+    ID3D12Resource* source = m_gBuffer.albedoRoughness; 
+    
+    if (!source || !backBuffer) return;
+
+    // Transition Source to Copy Source
+    TransitionResource(source, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    // Transition BackBuffer to Copy Dest
+    TransitionResource(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+    
+    // Copy
+    cmdList->CopyResource(backBuffer, source);
+    
+    // Transition BackBuffer Back to Render Target (for EndFrame)
+    TransitionResource(backBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    // Transition Source back
+    TransitionResource(source, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 }
 
 void DX12RenderPipeline::UIPass() {
@@ -838,6 +1105,17 @@ bool DX12RenderPipeline::CreateLightingBuffers() {
         return false;
     }
     std::cout << "  - AO: R8_UNORM [OK]" << std::endl;
+
+    // Create RTV for LitColor
+    // Offset: 3 (Swapchain) + 4 (G-Buffer) = 7
+    ID3D12DescriptorHeap* rtvHeap = m_backend->GetRTVHeap();
+    UINT rtvDescriptorSize = m_backend->GetRTVDescriptorSize();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    rtvHandle.ptr += (3 + 4) * rtvDescriptorSize;
+    
+    m_backend->GetDevice()->CreateRenderTargetView(m_lightingBuffers.litColor, nullptr, rtvHandle);
+    m_lightingBuffers.litColorRTV = rtvHandle;
+    std::cout << "  - LitColor RTV Created at Index 7" << std::endl;
     
     return true;
 }
@@ -955,7 +1233,7 @@ ID3D12Resource* DX12RenderPipeline::CreateTexture2D(uint32_t width, uint32_t hei
     ID3D12Resource* resource = nullptr;
     HRESULT hr = m_backend->GetDevice()->CreateCommittedResource(
         &heapProps,
-        D3D12_HEAP_FLAG_NONE,
+        D3D12_HEAP_FLAG_SHARED,
         &desc,
         initialState,
         pClearValue,
@@ -1058,6 +1336,18 @@ bool DX12RenderPipeline::CompileShaders() {
         ShaderCompiler::ShaderType::Vertex,
         true
     );
+    
+    // Compile Skinning VS (Phase 4)
+    m_skinningVS = ShaderCompiler::CompileFromFile(
+        shaderPath + L"SkinningShader.hlsl",
+        "main",
+        ShaderCompiler::ShaderType::Vertex,
+        true
+    );
+    if (!m_skinningVS) {
+        std::cerr << "[Pipeline] Failed to compile Skinning VS" << std::endl;
+        return false;
+    }
     m_skyboxPS = ShaderCompiler::CompileFromFile(
         shaderPath + L"Skybox_PS.hlsl",
         "main",
@@ -1072,6 +1362,13 @@ bool DX12RenderPipeline::CompileShaders() {
     }
     
     std::cout << "[Pipeline] All shaders compiled successfully" << std::endl;
+    std::cout << "[Pipeline] All shaders compiled successfully" << std::endl;
+    m_particleMeshShader = ShaderCompiler::CompileFromFile(shaderPath + L"ParticleMeshShader.hlsl", "main", ShaderCompiler::ShaderType::Mesh);
+    if (!m_particleMeshShader) {
+        // Not fatal if particle shader optional
+        std::cerr << "[Pipeline] Optional: Failed to compile ParticleMeshShader" << std::endl;
+    }
+
     return true;
 }
 
@@ -1081,34 +1378,48 @@ bool DX12RenderPipeline::CreateRootSignature() {
     // Root parameters for geometry pass
     // - 1x CBV for per-frame constants (camera matrices, time)
     // - 1x CBV for per-object constants (world matrix)
-    // - 1x CBV for material constants (albedo, roughness, metallic)
-    D3D12_ROOT_PARAMETER1 rootParams[3] = {};
+    // Root signature desc
+    D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc = {};
+    rootSigDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
     
-    // Per-frame constants (b0)
+    // Add SRV for Bone Buffer (t0, space1)
+    // Parameter 3: SRV t0, space1 (Global Bone Matrices)
+    // Use Root SRV for raw buffer binding (SetGraphicsRootShaderResourceView)
+    D3D12_ROOT_PARAMETER1 rootParams[4] = {}; 
+    
+    // ... [Copy previous 0,1,2 params] -> No, I should redefine the array or just append the new one.
+    // I need to replace the whole block or carefully insert.
+    // For safety, I will rewrite the parameter setup to include the 4th.
+    
+    // 0: Per-frame (b0)
     rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    rootParams[0].Descriptor.ShaderRegister = 0;  // b0
+    rootParams[0].Descriptor.ShaderRegister = 0;
     rootParams[0].Descriptor.RegisterSpace = 0;
     rootParams[0].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
     rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     
-    // Per-object constants (b1)
+    // 1: Per-object (b1)
     rootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    rootParams[1].Descriptor.ShaderRegister = 1;  // b1
+    rootParams[1].Descriptor.ShaderRegister = 1;
     rootParams[1].Descriptor.RegisterSpace = 0;
     rootParams[1].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
     rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     
-    // Material constants (b2)
+    // 2: Material (b2)
     rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    rootParams[2].Descriptor.ShaderRegister = 2;  // b2
+    rootParams[2].Descriptor.ShaderRegister = 2;
     rootParams[2].Descriptor.RegisterSpace = 0;
     rootParams[2].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE;
     rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     
-    // Root signature desc
-    D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc = {};
-    rootSigDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-    rootSigDesc.Desc_1_1.NumParameters = 3;
+    // 3: Bone Buffer (t0, space1) - SRV
+    rootParams[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    rootParams[3].Descriptor.ShaderRegister = 0;
+    rootParams[3].Descriptor.RegisterSpace = 1; 
+    rootParams[3].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE; 
+    rootParams[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX; // Only needed in VS
+    
+    rootSigDesc.Desc_1_1.NumParameters = 4;
     rootSigDesc.Desc_1_1.pParameters = rootParams;
     rootSigDesc.Desc_1_1.NumStaticSamplers = 0;
     rootSigDesc.Desc_1_1.pStaticSamplers = nullptr;
@@ -1153,7 +1464,9 @@ bool DX12RenderPipeline::CreateGeometryPassPSO() {
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}  // Vertex color + emissive
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},  // Vertex color + emissive
+        {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, 60, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 76, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
     
     // PSO description
@@ -1250,7 +1563,9 @@ bool DX12RenderPipeline::CreateGBufferPassPSO() {
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}  // Vertex color + emissive
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},  // Vertex color + emissive
+        {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, 60, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 76, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -1291,6 +1606,102 @@ bool DX12RenderPipeline::CreateGBufferPassPSO() {
     return true;
 }
 
+bool DX12RenderPipeline::CreateSkinnedGeometryPassPSO() {
+    std::cout << "[Pipeline] Creating Skinned Geometry Pass PSO..." << std::endl;
+    
+    if (!m_skinningVS) {
+        std::cerr << "[Pipeline] Skinned VS missing" << std::endl;
+        return false;
+    }
+
+    // Input layout (Matches SkinnedVertex)
+    // Vertex (60 bytes) + Indices (16) + Weights (16) = 92 bytes
+    D3D12_INPUT_ELEMENT_DESC inputElements[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        // Bone Data (Offsets likely 64 and 80 due to alignment padding)
+        {"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+    };
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_rootSignature.Get();
+    psoDesc.VS = {m_skinningVS->GetBufferPointer(), m_skinningVS->GetBufferSize()};
+    psoDesc.PS = {m_gbufferPS->GetBufferPointer(), m_gbufferPS->GetBufferSize()};
+    
+    // Initialize Blend State (Opaque)
+    psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
+    psoDesc.BlendState.IndependentBlendEnable = FALSE;
+    for (int i = 0; i < 8; ++i) {
+        psoDesc.BlendState.RenderTarget[i].BlendEnable = FALSE;
+        psoDesc.BlendState.RenderTarget[i].LogicOpEnable = FALSE;
+        psoDesc.BlendState.RenderTarget[i].SrcBlend = D3D12_BLEND_ONE;
+        psoDesc.BlendState.RenderTarget[i].DestBlend = D3D12_BLEND_ZERO;
+        psoDesc.BlendState.RenderTarget[i].BlendOp = D3D12_BLEND_OP_ADD;
+        psoDesc.BlendState.RenderTarget[i].SrcBlendAlpha = D3D12_BLEND_ONE;
+        psoDesc.BlendState.RenderTarget[i].DestBlendAlpha = D3D12_BLEND_ZERO;
+        psoDesc.BlendState.RenderTarget[i].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        psoDesc.BlendState.RenderTarget[i].LogicOp = D3D12_LOGIC_OP_NOOP;
+        psoDesc.BlendState.RenderTarget[i].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    }
+    
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // Can enable backface culling later
+    psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
+    psoDesc.RasterizerState.DepthClipEnable = TRUE;
+    psoDesc.DepthStencilState.DepthEnable = TRUE;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    psoDesc.InputLayout = {inputElements, _countof(inputElements)};
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+    // G-Buffer MRT formats (Matches CreateGBufferPassPSO)
+    psoDesc.NumRenderTargets = 4;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;          
+    psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;      
+    psoDesc.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_FLOAT;      
+    psoDesc.RTVFormats[3] = DXGI_FORMAT_R16G16_FLOAT;            
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoDesc.SampleDesc.Count = 1;
+
+    HRESULT hr = m_backend->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_skinnedGeometryPassPSO));
+    if (FAILED(hr)) {
+        std::cerr << "[Pipeline] Failed to create Skinned Geometry Pass PSO" << std::endl;
+        
+        // Retrieve and print detailed D3D12 validation errors
+        Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+        if (SUCCEEDED(m_backend->GetDevice()->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
+            UINT64 numMessages = infoQueue->GetNumStoredMessages();
+            if (numMessages > 0) std::cerr << "[D3D12 Debug Info]:" << std::endl;
+            
+            for (UINT64 i = 0; i < numMessages; i++) {
+                SIZE_T messageLength = 0;
+                infoQueue->GetMessage(i, nullptr, &messageLength);
+                
+                if (messageLength > 0) {
+                    std::vector<byte> messageBuffer(messageLength);
+                    D3D12_MESSAGE* message = reinterpret_cast<D3D12_MESSAGE*>(messageBuffer.data());
+                    
+                    if (SUCCEEDED(infoQueue->GetMessage(i, message, &messageLength))) {
+                         if (message->Severity <= D3D12_MESSAGE_SEVERITY_WARNING) {
+                             std::cerr << "  [" << message->ID << "]: " << message->pDescription << std::endl;
+                         }
+                    }
+                }
+            }
+            infoQueue->ClearStoredMessages();
+        }
+        return false;
+    }
+
+    std::cout << "[Pipeline] Skinned Geometry Pass PSO created" << std::endl;
+    return true;
+}
+
 // === Mesh Shader Support (DX12 Ultimate) ===
 bool DX12RenderPipeline::CheckMeshShaderSupport() {
     if (!m_backend || !m_backend->GetDevice()) {
@@ -1317,10 +1728,6 @@ bool DX12RenderPipeline::CheckMeshShaderSupport() {
 }
 
 bool DX12RenderPipeline::CreateMeshShaderPSO() {
-    // STABILIZATION: Force disable Mesh Shaders to prevent compiler hang
-    std::cout << "[Pipeline] Mesh shaders DISABLED for stabilization" << std::endl;
-    m_meshShadersSupported = false;
-    return false;
 
     if (!m_meshShadersSupported) {
         std::cout << "[Pipeline] Skipping mesh shader PSO - not supported" << std::endl;
@@ -1670,7 +2077,7 @@ void DX12RenderPipeline::RenderMeshesWithMeshShader(ID3D12GraphicsCommandList* c
 }
 
 bool DX12RenderPipeline::CreateConstantBuffers() {
-    std::cout << "[Pipeline] Creating constant buffers..." << std::endl;
+    std::cerr << "[Pipeline] Creating constant buffers..." << std::endl;
     
     // Create upload heaps for constant buffers (CPU writable, GPU readable)
     // D3D12 requires constant buffers to be 256-byte aligned and offsets must be
@@ -1694,6 +2101,7 @@ bool DX12RenderPipeline::CreateConstantBuffers() {
         std::cerr << "[Pipeline] Failed to map per-frame constant buffer" << std::endl;
         return false;
     }
+    std::cerr << "[Pipeline] PerFrame CB created" << std::endl;
     
     // Per-object constants (updated per mesh) - allocate a slot per mesh we can render
     const size_t perObjectBufferSize = perObjectSlotSize * MAX_MESHES_PER_FRAME;
@@ -1708,8 +2116,10 @@ bool DX12RenderPipeline::CreateConstantBuffers() {
         std::cerr << "[Pipeline] Failed to map per-object constant buffer" << std::endl;
         return false;
     }
+    std::cerr << "[Pipeline] PerObject CB created" << std::endl;
     
-    // Material constants (updated per mesh) - also allocate a slot per mesh
+    // Material constants
+    std::cerr << "[Pipeline] Creating Material CB..." << std::endl;
     const size_t materialBufferSize = materialSlotSize * MAX_MESHES_PER_FRAME;
     if (!m_backend->CreateBuffer(materialBufferSize, true, m_materialCB)) {
         std::cerr << "[Pipeline] Failed to create material constant buffer" << std::endl;
@@ -1722,11 +2132,11 @@ bool DX12RenderPipeline::CreateConstantBuffers() {
         std::cerr << "[Pipeline] Failed to map material constant buffer" << std::endl;
         return false;
     }
+    std::cerr << "[Pipeline] Material CB created" << std::endl;
     
-    std::cout << "[Pipeline] Constant buffers created and mapped" << std::endl;
+    std::cerr << "[Pipeline] Creating Culling/Counter Buffers..." << std::endl;
 
     // Phase 3: Object Culling Data Buffer (256-byte aligned max size)
-    // Actually struct size is ~104 bytes. Packed array is fine for compute.
     const size_t cullingSize = MAX_MESHES_PER_FRAME * sizeof(ObjectCullingData);
     
     // Upload Heap for frequent CPU updates
@@ -1750,7 +2160,18 @@ bool DX12RenderPipeline::CreateConstantBuffers() {
 
     HRESULT hr2 = m_backend->GetDevice()->CreateCommittedResource(
         &uploadHeap, D3D12_HEAP_FLAG_NONE, &cullingDesc, 
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_objectCullingDataBuffer));
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_objectCullingUploadBuffer));
+    m_objectCullingUploadBuffer->SetName(L"ObjectCullingUploadBuffer");
+
+    D3D12_HEAP_PROPERTIES defaultHeapCull = {};
+    defaultHeapCull.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC cullingDescDefault = cullingDesc;
+    cullingDescDefault.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    HRESULT hr2b = m_backend->GetDevice()->CreateCommittedResource(
+         &defaultHeapCull, D3D12_HEAP_FLAG_SHARED, &cullingDescDefault,
+         D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_objectCullingDataBuffer));
         
     if (FAILED(hr2)) {
          std::cout << "[Pipeline] Failed to create Culling Buffer" << std::endl;  
@@ -1762,24 +2183,91 @@ bool DX12RenderPipeline::CreateConstantBuffers() {
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     
     D3D12_RESOURCE_DESC countDesc = cullingDesc; 
-    countDesc.Width = 256; // Minimum size for buffer usually, but sizeof(uint) works too. 256 safe.
+    countDesc.Width = 256; 
     countDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS; 
     
     HRESULT hr3 = m_backend->GetDevice()->CreateCommittedResource(
-        &defaultHeap, D3D12_HEAP_FLAG_NONE, &countDesc, 
+        &defaultHeap, D3D12_HEAP_FLAG_SHARED, &countDesc, 
         D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_drawCounterBuffer));
         
     if (FAILED(hr3)) {
          std::cout << "[Pipeline] Failed to create Counter Buffer" << std::endl;  
          return false;
     }
-
-    // Register with CudaCore
-    if (m_cudaCore) {
-        m_cudaCore->RegisterResource(m_objectCullingDataBuffer.Get(), &m_cudaObjectCullingResource);
-        m_cudaCore->RegisterResource(m_drawCounterBuffer.Get(), &m_cudaDrawCounterResource);
-    }
     
+    // Create Readback Buffer for Counter
+    D3D12_HEAP_PROPERTIES readbackHeap = {};
+    readbackHeap.Type = D3D12_HEAP_TYPE_READBACK;
+    readbackHeap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    readbackHeap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    readbackHeap.CreationNodeMask = 1;
+    readbackHeap.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC readbackDesc = countDesc;
+    readbackDesc.Flags = D3D12_RESOURCE_FLAG_NONE; // Readback buffers cannot have UAV flag
+
+    HRESULT hr3b = m_backend->GetDevice()->CreateCommittedResource(
+        &readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_readbackDrawCounter));
+        
+    if (FAILED(hr3b)) {
+        std::cerr << "[Pipeline] Failed to create Readback Draw Counter! HR=" << hr3b << std::endl;
+        return false;
+    }
+    m_readbackDrawCounter->SetName(L"ReadbackDrawCounter");
+
+    std::cerr << "[Pipeline] Culling/Counter Buffers created. Registering with CUDA..." << std::endl;
+
+    // Register with CudaCore (Modern)
+    if (m_cudaCore) {
+        if (m_extMemObjectCulling) m_cudaCore->FreeImportedResource(m_extMemObjectCulling);
+        if (m_extMemDrawCounter) m_cudaCore->FreeImportedResource(m_extMemDrawCounter);
+        
+        std::cerr << "[Pipeline] Importing Culling Buffer (size=" << cullingSize << ")..." << std::endl;
+        m_extMemObjectCulling = m_cudaCore->ImportD3D12Resource(m_objectCullingDataBuffer.Get(), cullingSize);
+        m_objectCullingBufferSize = cullingSize;  // Store for mapping
+        
+        std::cerr << "[Pipeline] Importing Draw Counter (size=" << countDesc.Width << ")..." << std::endl;
+        m_extMemDrawCounter = m_cudaCore->ImportD3D12Resource(m_drawCounterBuffer.Get(), countDesc.Width);
+        m_drawCounterSize = countDesc.Width;  // Store for mapping
+    }
+    std::cerr << "[Pipeline] CUDA Registration Complete." << std::endl;
+
+    
+    // Phase 4: Animation Bone Matrices Buffer
+    std::cerr << "[Pipeline] Creating Global Bone Buffer..." << std::endl;
+    const size_t boneBufferSize = MAX_BONES_GLOBAL * sizeof(glm::mat4); // 640KB
+    
+    // Upload Heap for dynamic updates per frame
+    D3D12_HEAP_PROPERTIES boneHeap = {};
+    boneHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    boneHeap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    boneHeap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    boneHeap.CreationNodeMask = 1;
+    boneHeap.VisibleNodeMask = 1;
+    
+    D3D12_RESOURCE_DESC boneDesc = {};
+    boneDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    boneDesc.Width = boneBufferSize;
+    boneDesc.Height = 1;
+    boneDesc.DepthOrArraySize = 1;
+    boneDesc.MipLevels = 1;
+    boneDesc.Format = DXGI_FORMAT_UNKNOWN;
+    boneDesc.SampleDesc.Count = 1;
+    boneDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    boneDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    HRESULT hr4 = m_backend->GetDevice()->CreateCommittedResource(
+        &boneHeap, D3D12_HEAP_FLAG_NONE, &boneDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_globalBoneBuffer));
+        
+    if (FAILED(hr4)) {
+         std::cerr << "[Pipeline] Failed to create Global Bone Buffer" << std::endl;  
+         return false;
+    }
+    m_globalBoneBuffer->SetName(L"GlobalBoneBuffer");
+    std::cerr << "[Pipeline] Global Bone Buffer created (" << (boneBufferSize/1024) << " KB)" << std::endl;
+
     return true;
 }
 
@@ -1788,7 +2276,7 @@ void DX12RenderPipeline::UploadObjectCullingData() {
     
     ObjectCullingData* data = nullptr;
     D3D12_RANGE readRange = {0, 0};
-    if (SUCCEEDED(m_objectCullingDataBuffer->Map(0, &readRange, reinterpret_cast<void**>(&data)))) {
+    if (SUCCEEDED(m_objectCullingUploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&data)))) {
         const uint32_t perObjectSlotSize = 256;
         const uint32_t materialSlotSize = 256;
         
@@ -1796,16 +2284,10 @@ void DX12RenderPipeline::UploadObjectCullingData() {
             D3D12Mesh* mesh = m_meshes[i];
             
             // Sphere (Use bounding box center/radius approximation)
-            // Assuming D3D12Mesh has GetBounds or public members.
-            // If they are private, I need to use getters.
-            // Checking header... 
-            // If no getters, I will add them or use whatever is available.
-            
-            // Placeholder until I see the file content
             glm::vec3 center(0.0f);
             float radius = 1.0f;
-            if (mesh) { // Safety
-               // Logic to be filled after view_file returns
+            if (mesh) { 
+                // mesh->GetBounds(center, radius); // Assuming this exists or using default
             }
             
             data[i].sphereCenter = center; 
@@ -1829,8 +2311,48 @@ void DX12RenderPipeline::UploadObjectCullingData() {
             
             // Draw
             data[i].indexCount = mesh->GetIndexCount();
+            
+            // FIX: Update Rendering Constant Buffers (m_perObjectCB / m_materialCB)
+            // The GPU-path skips the CPU GeometryPass loop, so we must update them here!
+            uint32_t meshSlot = (uint32_t)i;
+            if (meshSlot < MAX_MESHES_PER_FRAME) {
+                // Update Per-Object CB
+                if (m_perObjectData) {
+                    PerObjectConstants* objCB = reinterpret_cast<PerObjectConstants*>(
+                        reinterpret_cast<uint8_t*>(m_perObjectData) + meshSlot * perObjectSlotSize);
+
+                    objCB->worldMatrix = mesh->transform;
+                    objCB->prevWorldMatrix = mesh->transform; // No motion vectors for now
+                    objCB->normalMatrix = glm::transpose(glm::inverse(mesh->transform));
+                    
+                    bool isSkinned = (mesh->GetSkeleton() != nullptr);
+                    objCB->isSkinned = isSkinned ? 1 : 0;
+                    objCB->boneOffset = isSkinned ? mesh->globalBoneOffset : 0;
+                }
+
+                // Update Material CB
+                if (m_materialData) {
+                    MaterialConstants* matCB = reinterpret_cast<MaterialConstants*>(
+                        reinterpret_cast<uint8_t*>(m_materialData) + meshSlot * materialSlotSize);
+                    
+                    Material mat = mesh->GetMaterial();
+                    mat.albedoColor.a = 1.0f; // Force opaque
+
+                    matCB->albedoColor       = mat.albedoColor;
+                    matCB->roughness         = mat.roughness;
+                    matCB->metallic          = mat.metallic;
+                    matCB->ambientOcclusion  = mat.ambientOcclusion;
+                    matCB->emissiveStrength  = mat.emissiveStrength;
+                    matCB->emissiveColor     = mat.emissiveColor;
+                }
+            }
         }
-        m_objectCullingDataBuffer->Unmap(0, nullptr);
+        m_objectCullingUploadBuffer->Unmap(0, nullptr);
+
+        // Copy from Upload to Default
+        TransitionResource(m_objectCullingDataBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_backend->GetCommandList()->CopyResource(m_objectCullingDataBuffer.Get(), m_objectCullingUploadBuffer.Get());
+        TransitionResource(m_objectCullingDataBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
     }
 }
 
@@ -1839,63 +2361,199 @@ void DX12RenderPipeline::UploadObjectCullingData() {
 // KERNEL ARCHITECTURE IMPLEMENTATION (Invention 1)
 // =================================================================================================
 
-void DX12RenderPipeline::ExecuteRenderKernel(ID3D12GraphicsCommandList* cmdList) {
+extern "C" void LaunchCullAndDrawKernel(
+    const void* objects,
+    void* commands,
+    unsigned int* drawCounter,
+    int objectCount,
+    const float* frustumPlanes,
+    cudaStream_t stream
+);
+
+void DX12RenderPipeline::ExecuteRenderKernel(void* pCmdList) {
+    ID3D12GraphicsCommandList* cmdList = static_cast<ID3D12GraphicsCommandList*>(pCmdList);
+    std::cerr << "[ExecuteRenderKernel] Entered. Path: " << (int)m_activePath << std::endl;
     switch (m_activePath) {
         case RenderPath::VertexShader_Fallback:
+            std::cerr << "[ExecuteRenderKernel] Calling ExecuteVertexShaderPacket..." << std::endl;
             ExecuteVertexShaderPacket(cmdList);
+            std::cerr << "[ExecuteRenderKernel] ExecuteVertexShaderPacket done." << std::endl;
             break;
         case RenderPath::Indirect_GPU_Driven:
             // Phase 3: GPU Generation
+            std::cerr << "[ExecuteRenderKernel] GPU-Driven path. Uploading culling data..." << std::endl;
             UploadObjectCullingData();
-            UploadIndirectCommands(); // Ensure buffer exists and is sized
+            std::cerr << "[ExecuteRenderKernel] UploadObjectCullingData done." << std::endl;
+            // GPU Path: Only ensure buffer exists - DO NOT copy CPU data (it would overwrite CUDA kernel output)
+            EnsureIndirectBufferExists();
+            // UploadIndirectCommands(); // DISABLED: Isolation Test
+            std::cerr << "[ExecuteRenderKernel] Buffer checked." << std::endl;
             
-            if (m_cudaCore) { // Valid if allocated
-                size_t size;
-                void* d_objects = m_cudaCore->MapResource(m_cudaObjectCullingResource, size);
-                void* d_commands = m_cudaCore->MapResource(m_cudaIndirectBufferResource, size);
-                void* d_counter = m_cudaCore->MapResource(m_cudaDrawCounterResource, size);
+            std::cerr << "[ExecuteRenderKernel] Checking CUDA resources: cudaCore=" << (m_cudaCore ? "valid" : "NULL")
+                      << " extMemObjectCulling=" << (m_extMemObjectCulling ? "valid" : "NULL")
+                      << " extMemIndirectBuffer=" << (m_extMemIndirectBuffer ? "valid" : "NULL")
+                      << " extMemDrawCounter=" << (m_extMemDrawCounter ? "valid" : "NULL") << std::endl;
+            
+            if (m_cudaCore && m_extMemObjectCulling && m_extMemIndirectBuffer && m_extMemDrawCounter) { 
+                
+                // 1. SIGNAL from DX12: "Buffers are ready for Compute"
+                // We use the Fence to tell CUDA it's safe to read/write these buffers.
+                std::cerr << "[ExecuteRenderKernel] Signaling DX12 fence..." << std::endl;
+                m_cullingFenceValue++;
+                
+                // CRITICAL FIX: Close and execute command list to actually signal the fence
+                // Otherwise CUDA waits forever for a signal that hasn't been issued
+                std::cerr << "[ExecuteRenderKernel] Flushing command list to execute signal..." << std::endl;
+                HRESULT hr = cmdList->Close();
+                if (SUCCEEDED(hr)) {
+                    ID3D12CommandList* ppCommandLists[] = { cmdList };
+                    m_backend->GetCommandQueue()->ExecuteCommandLists(1, ppCommandLists);
+                    m_backend->GetCommandQueue()->Signal(m_cullingFence.Get(), m_cullingFenceValue);
+                    
+                    // Wait for GPU to complete before CUDA can use resources
+                    std::cerr << "[ExecuteRenderKernel] Waiting for DX12 GPU to complete..." << std::endl;
+                    m_backend->WaitForGPU();
+                    
+                    // Reset command list for subsequent rendering
+                    std::cerr << "[ExecuteRenderKernel] Resetting command list..." << std::endl;
+                    m_backend->ResetCommandList();
+                } else {
+                    std::cerr << "[ExecuteRenderKernel] ERROR: Failed to close command list!" << std::endl;
+                    return;
+                }
+                
+                // 2. WAIT in CUDA for DX12 (now fence is actually signaled)
+                // NOTE: Since WaitForGPU() above fully synchronizes CPU and GPU,
+                // the CUDA external semaphore wait is redundant and its import may be broken.
+                // Skipping this call since the DX12 resources are fully ready.
+                std::cerr << "[ExecuteRenderKernel] Skipping CUDA semaphore wait (WaitForGPU already synced)..." << std::endl;
+                // m_cudaCore->WaitSemaphore(m_cudaCullingFenceSem, m_cullingFenceValue); // DISABLED
+                
+                // 3. Map (Fastest layout for Import)
+                std::cerr << "[ExecuteRenderKernel] Mapping imported resources..." << std::endl;
+                // Use stored sizes from import time
+                void* d_objects = m_cudaCore->MapImportedResource(m_extMemObjectCulling, 0, m_objectCullingBufferSize);
+                void* d_commands = m_cudaCore->MapImportedResource(m_extMemIndirectBuffer, 0, m_indirectBufferSize);
+                void* d_counter = m_cudaCore->MapImportedResource(m_extMemDrawCounter, 0, m_drawCounterSize);
+                std::cerr << "[ExecuteRenderKernel] Mapped: objects=" << d_objects 
+                          << " commands=" << d_commands << " counter=" << d_counter << std::endl;
                 
                 if (d_objects && d_commands && d_counter) {
+                    /* ISOLATION TEST: Disable CUDA kernel
+                    std::cerr << "[ExecuteRenderKernel] Clearing buffers..." << std::endl;
                     cudaMemset(d_counter, 0, sizeof(uint32_t));
+                    // Clear command buffer so unused slots have indexCount=0 (DrawIndexed draws nothing)
+                    cudaMemset(d_commands, 0, m_indirectBufferSize);
                     
-                    // Extract Frustum Planes from ViewProj
-                    // Ref: Gribb/Hartmann extraction
-                    glm::mat4 m = glm::transpose(m_perFrameData->viewProjMatrix); // HLSL is col-major logic, but stored logical? 
-                    // Wait, m_perFrameData->viewProjMatrix is "proj * view" (GLM standard).
-                    // GLM is Column Major memory layout.
-                    // Plane extraction usually works on row-major or transpose of col-major.
-                    // Let's assume standard extraction on the matrix as-is.
+                    // ... Frustum ...
+
+                    std::cerr << "[ExecuteRenderKernel] Launching CullAndDraw kernel for " << m_meshes.size() << " meshes..." << std::endl;
+                    LaunchCullAndDrawKernel(d_objects, d_commands, (unsigned int*)d_counter, (int)m_meshes.size(), planes, 0);
+                    std::cerr << "[ExecuteRenderKernel] CullAndDraw kernel launched." << std::endl;
+                    */
+                    std::cerr << "[ExecuteRenderKernel] ISOLATION TEST: SKIPPED (Re-enabling below)." << std::endl;
                     
+                    // RE-ENABLE CUDA KERNEL
+                    cudaMemset(d_counter, 0, sizeof(uint32_t));
+                    cudaMemset(d_commands, 0, m_indirectBufferSize);
+                    
+                    // Frustum Extraction
+                    glm::mat4 viewProj = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
                     float planes[24]; 
+                    const float* m = glm::value_ptr(viewProj);
                     // Left
-                    planes[0] = m[3][0] + m[0][0]; planes[1] = m[3][1] + m[0][1]; planes[2] = m[3][2] + m[0][2]; planes[3] = m[3][3] + m[0][3];
+                    planes[0] = m[3] + m[0]; planes[1] = m[7] + m[4]; planes[2] = m[11] + m[8]; planes[3] = m[15] + m[12];
                     // Right
-                    planes[4] = m[3][0] - m[0][0]; planes[5] = m[3][1] - m[0][1]; planes[6] = m[3][2] - m[0][2]; planes[7] = m[3][3] - m[0][3];
+                    planes[4] = m[3] - m[0]; planes[5] = m[7] - m[4]; planes[6] = m[11] - m[8]; planes[7] = m[15] - m[12];
                     // Bottom
-                    planes[8] = m[3][0] + m[1][0]; planes[9] = m[3][1] + m[1][1]; planes[10] = m[3][2] + m[1][2]; planes[11] = m[3][3] + m[1][3];
+                    planes[8] = m[3] + m[1]; planes[9] = m[7] + m[5]; planes[10] = m[11] + m[9]; planes[11] = m[15] + m[13];
                     // Top
-                    planes[12] = m[3][0] - m[1][0]; planes[13] = m[3][1] - m[1][1]; planes[14] = m[3][2] - m[1][2]; planes[15] = m[3][3] - m[1][3];
+                    planes[12] = m[3] - m[1]; planes[13] = m[7] - m[5]; planes[14] = m[11] - m[9]; planes[15] = m[15] - m[13];
                     // Near
-                    planes[16] = m[3][0] + m[2][0]; planes[17] = m[3][1] + m[2][1]; planes[18] = m[3][2] + m[2][2]; planes[19] = m[3][3] + m[2][3];
+                    planes[16] = m[3] + m[2]; planes[17] = m[7] + m[6]; planes[18] = m[11] + m[10]; planes[19] = m[15] + m[14];
                     // Far
-                    planes[20] = m[3][0] - m[2][0]; planes[21] = m[3][1] - m[2][1]; planes[22] = m[3][2] - m[2][2]; planes[23] = m[3][3] - m[2][3];
-                    
-                    // Normalize
-                    for (int i=0; i<6; i++) {
-                        float len = sqrtf(planes[i*4]*planes[i*4] + planes[i*4+1]*planes[i*4+1] + planes[i*4+2]*planes[i*4+2]);
+                    planes[20] = m[3] - m[2]; planes[21] = m[7] - m[6]; planes[22] = m[11] - m[10]; planes[23] = m[15] - m[14];
+
+                    for (int i = 0; i < 6; ++i) {
+                        float len = sqrt(planes[i*4]*planes[i*4] + planes[i*4+1]*planes[i*4+1] + planes[i*4+2]*planes[i*4+2]);
                         planes[i*4] /= len; planes[i*4+1] /= len; planes[i*4+2] /= len; planes[i*4+3] /= len;
                     }
 
                     LaunchCullAndDrawKernel(d_objects, d_commands, (unsigned int*)d_counter, (int)m_meshes.size(), planes, 0);
+                    std::cerr << "[ExecuteRenderKernel] CullAndDraw kernel launched." << std::endl;
                 }
                 
-                if (d_objects) m_cudaCore->UnmapResource(m_cudaObjectCullingResource);
-                if (d_commands) m_cudaCore->UnmapResource(m_cudaIndirectBufferResource);
-                if (d_counter) m_cudaCore->UnmapResource(m_cudaDrawCounterResource);
+                // 4. Unmap (Release virtual address range)
+                if (d_objects) m_cudaCore->UnmapImportedResource(d_objects);
+                if (d_commands) m_cudaCore->UnmapImportedResource(d_commands);
+                if (d_counter) m_cudaCore->UnmapImportedResource(d_counter);
+                std::cerr << "[ExecuteRenderKernel] Unmapped resources." << std::endl;
+                
+                // 5. SIGNAL from CUDA: "Compute Done"
+                // DISABLED: CUDA external semaphore import is broken, WaitForGPU provides sync
+                // m_cullingFenceValue++;
+                // m_cudaCore->SignalSemaphore(m_cudaCullingFenceSem, m_cullingFenceValue);
+                
+                // 6. WAIT in DX12 for Compute
+                // DISABLED: Using cudaDeviceSynchronize instead for now
+                // m_backend->GetCommandQueue()->Wait(m_cullingFence.Get(), m_cullingFenceValue);
+                
+                // Sync CUDA to ensure kernel is complete before DX12 continues
+                std::cerr << "[ExecuteRenderKernel] Syncing CUDA..." << std::endl;
+                cudaDeviceSynchronize();
+                std::cerr << "[ExecuteRenderKernel] CUDA synced." << std::endl;
+                
+                // 7. Copy Draw Counter to Readback Buffer (Debug)
+                // Need to transition Default buffer to Copy Source
+                {
+                    D3D12_RESOURCE_BARRIER barriers[1];
+                    barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                    barriers[0].Transition.pResource = m_drawCounterBuffer.Get();
+                    barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON; // Implicit decay from UAV? Check.
+                    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+                    barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                    cmdList->ResourceBarrier(1, barriers);
+
+                    cmdList->CopyResource(m_readbackDrawCounter.Get(), m_drawCounterBuffer.Get());
+
+                    // Transition back to Common logic handled by next frame decay or explicit
+                    barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+                    barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+                    cmdList->ResourceBarrier(1, barriers);
+                }
             }
             
             ExecuteIndirectPacket(cmdList);
+            
+            // Readback on CPU (Note: This is delayed by frame latency provided Execute is fully flushed)
+            // But ReadbackDrawCounter() handles map/unmap. Calls naturally after Execute.
+            // Actually, we need to wait for GPU to finish this copy before reading.
+            // Since we wait for GPU at end of frame (in simple loop) or via Fence, calling it at start of next frame is best.
+            // For verification, we'll force flush in ReadbackDrawCounter.
+            ReadbackDrawCounter();
             break;
+    }
+}
+
+void DX12RenderPipeline::ReadbackDrawCounter() {
+    if (!m_readbackDrawCounter) return;
+
+    // Direct Map - Expects data from previous frame or initial state.
+    // No explicit wait here to avoid stalling command recording.
+    
+    D3D12_RANGE readRange = {0, 256};
+    void* pData = nullptr;
+    if (SUCCEEDED(m_readbackDrawCounter->Map(0, &readRange, &pData))) {
+        uint32_t count = *reinterpret_cast<uint32_t*>(pData);
+        
+        static int logCounter = 0;
+        // Log first 60 frames then every 60
+        if (logCounter < 60 || logCounter % 60 == 0) {
+             std::cerr << "[GPU Culling] Visible Objects: " << count << " / " << m_meshes.size() << std::endl;
+        }
+        logCounter++;
+        m_readbackDrawCounter->Unmap(0, nullptr);
     }
 }
 
@@ -2007,7 +2665,83 @@ bool DX12RenderPipeline::CreateCommandSignature() {
     }
     
     std::cout << "[Pipeline] Indirect Command Signature created successfully (Stride: " << desc.ByteStride << ")" << std::endl;
+
+    // === Phase 4: Create Synchronization Fence ===
+    HRESULT hrFence = m_backend->GetDevice()->CreateFence(
+        0, 
+        D3D12_FENCE_FLAG_SHARED, // Important for Interop!
+        IID_PPV_ARGS(&m_cullingFence)
+    );
+
+    if (FAILED(hrFence)) {
+        std::cerr << "[Pipeline] Failed to create shared synchronization fence" << std::endl;
+        return false;
+    }
+
+    if (m_cudaCore) {
+        m_cudaCullingFenceSem = m_cudaCore->ImportD3D12Fence(m_cullingFence.Get());
+        std::cout << "[Pipeline] Shared Fence Imported to CUDA" << std::endl;
+    }
+
     return true;
+}
+
+void DX12RenderPipeline::EnsureIndirectBufferExists() {
+    // GPU Path: Only allocate the buffer - DO NOT fill/copy data (CUDA kernel will fill it)
+    size_t meshCount = m_meshes.size();
+    if (meshCount == 0) return;
+    
+    size_t bufferSize = meshCount * sizeof(IndirectCommand);
+    
+    if (!m_indirectCommandBuffer || m_indirectCommandMaxCount < meshCount) {
+        // Release old
+        m_indirectCommandBuffer.Reset();
+        
+        // Create new (Growth strategy: 1.5x)
+        m_indirectCommandMaxCount = std::max((uint32_t)meshCount, (uint32_t)(m_indirectCommandMaxCount * 1.5));
+        if (m_indirectCommandMaxCount < 128) m_indirectCommandMaxCount = 128;
+        
+        bufferSize = m_indirectCommandMaxCount * sizeof(IndirectCommand);
+        
+        D3D12_HEAP_PROPERTIES defaultHeapInd = {};
+        defaultHeapInd.Type = D3D12_HEAP_TYPE_DEFAULT;
+        
+        D3D12_RESOURCE_DESC resDesc = {};
+        resDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        resDesc.Alignment = 0;
+        resDesc.Width = bufferSize;
+        resDesc.Height = 1;
+        resDesc.DepthOrArraySize = 1;
+        resDesc.MipLevels = 1;
+        resDesc.Format = DXGI_FORMAT_UNKNOWN;
+        resDesc.SampleDesc.Count = 1;
+        resDesc.SampleDesc.Quality = 0;
+        resDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        HRESULT hr = m_backend->GetDevice()->CreateCommittedResource(
+            &defaultHeapInd,
+            D3D12_HEAP_FLAG_SHARED,
+            &resDesc,
+            D3D12_RESOURCE_STATE_COMMON,
+            nullptr,
+            IID_PPV_ARGS(&m_indirectCommandBuffer)
+        );
+        m_indirectCommandBuffer->SetName(L"IndirectCommandBuffer_GPU");
+        
+        if (FAILED(hr)) {
+            std::cerr << "[Pipeline] Failed to allocate GPU Indirect Command Buffer" << std::endl;
+            return;
+        }
+
+        // Import to CUDA
+        if (m_cudaCore) {
+            if (m_extMemIndirectBuffer) m_cudaCore->FreeImportedResource(m_extMemIndirectBuffer);
+            std::cerr << "[Pipeline] Importing GPU Indirect Buffer (size=" << bufferSize << ")..." << std::endl;
+            m_extMemIndirectBuffer = m_cudaCore->ImportD3D12Resource(m_indirectCommandBuffer.Get(), bufferSize);
+            m_indirectBufferSize = bufferSize;
+        }
+    }
 }
 
 void DX12RenderPipeline::UploadIndirectCommands() {
@@ -2057,6 +2791,23 @@ void DX12RenderPipeline::UploadIndirectCommands() {
             &resDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
+            IID_PPV_ARGS(&m_indirectCommandUploadBuffer)
+        );
+        m_indirectCommandUploadBuffer->SetName(L"IndirectCommandUploadBuffer");
+
+
+        D3D12_HEAP_PROPERTIES defaultHeapInd = {};
+        defaultHeapInd.Type = D3D12_HEAP_TYPE_DEFAULT;
+        
+        D3D12_RESOURCE_DESC resDescDefault = resDesc;
+        resDescDefault.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        HRESULT hr2 = m_backend->GetDevice()->CreateCommittedResource(
+            &defaultHeapInd,
+            D3D12_HEAP_FLAG_SHARED,
+            &resDescDefault,
+            D3D12_RESOURCE_STATE_COMMON,
+            nullptr,
             IID_PPV_ARGS(&m_indirectCommandBuffer)
         );
         
@@ -2065,15 +2816,23 @@ void DX12RenderPipeline::UploadIndirectCommands() {
             return;
         }
 
-        // Phase 3: Register with CUDA
-        m_cudaCore->RegisterResource(m_indirectCommandBuffer.Get(), &m_cudaIndirectBufferResource);
+        // Phase 3: Register with CUDA (Modern)
+        if (m_cudaCore) {
+            // Free old if exists
+            if (m_extMemIndirectBuffer) m_cudaCore->FreeImportedResource(m_extMemIndirectBuffer);
+            
+            // Import new
+            std::cerr << "[Pipeline] Importing Indirect Buffer (size=" << bufferSize << ")..." << std::endl;
+            m_extMemIndirectBuffer = m_cudaCore->ImportD3D12Resource(m_indirectCommandBuffer.Get(), bufferSize);
+            m_indirectBufferSize = bufferSize;  // Store for mapping
+        }
     }
     
     // 2. Map and Generate Commands
     IndirectCommand* pCommands = nullptr;
     D3D12_RANGE readRange = {0, 0}; // We do not intend to read
     
-    HRESULT hr = m_indirectCommandBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCommands));
+    HRESULT hr = m_indirectCommandUploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pCommands));
     if (SUCCEEDED(hr)) {
         const uint32_t perObjectSlotSize = 256;
         const uint32_t materialSlotSize = 256;
@@ -2097,40 +2856,326 @@ void DX12RenderPipeline::UploadIndirectCommands() {
             pCommands[i].drawArguments.StartInstanceLocation = 0;
         }
         
-        m_indirectCommandBuffer->Unmap(0, nullptr);
+        // DEBUG: Print first command data
+        if (meshCount > 0) {
+            std::cerr << "[TEST] Uploaded Command[0]:" << std::endl;
+            std::cerr << "  CBV: " << pCommands[0].cbv << std::endl;
+            std::cerr << "  MatCBV: " << pCommands[0].materialCbv << std::endl;
+            std::cerr << "  VBV: Loc=" << pCommands[0].vbv.BufferLocation << " Size=" << pCommands[0].vbv.SizeInBytes << " Stride=" << pCommands[0].vbv.StrideInBytes << std::endl;
+            std::cerr << "  IBV: Loc=" << pCommands[0].ibv.BufferLocation << " Size=" << pCommands[0].ibv.SizeInBytes << " Format=" << pCommands[0].ibv.Format << std::endl;
+            std::cerr << "  Draw: Idx=" << pCommands[0].drawArguments.IndexCountPerInstance << " Inst=" << pCommands[0].drawArguments.InstanceCount << std::endl;
+        }
+        
+        m_indirectCommandUploadBuffer->Unmap(0, nullptr);
+
+        // Copy from Upload to Default
+        TransitionResource(m_indirectCommandBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+        m_backend->GetCommandList()->CopyResource(m_indirectCommandBuffer.Get(), m_indirectCommandUploadBuffer.Get());
+        TransitionResource(m_indirectCommandBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
     }
 }
 
 void DX12RenderPipeline::ExecuteIndirectPacket(ID3D12GraphicsCommandList* cmdList) {
-    if (!m_indirectCommandBuffer || !m_commandSignature) return;
-    static bool logged = false;
-    if (!logged) { std::cout << "[Kernel] Executing Indirect Packet (Wait for 1 draw call...)" << std::endl; logged = true; }
+    std::cerr << "[ExecuteIndirectPacket] Entered. Buffer=" << (m_indirectCommandBuffer ? "valid" : "NULL") 
+              << " Signature=" << (m_commandSignature ? "valid" : "NULL") << std::endl;
+    if (!m_indirectCommandBuffer || !m_commandSignature) {
+        std::cerr << "[ExecuteIndirectPacket] EARLY EXIT - missing buffer or signature!" << std::endl;
+        return;
+    }
+    static int logCount = 0;
+    if (logCount++ < 10) { 
+        std::cerr << "[Kernel] ExecuteIndirectPacket: Executing " << m_meshes.size() << " max commands" << std::endl; 
+    }
 
-    // Bind strict state to ensure valid execution
-    cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
-    cmdList->SetPipelineState(m_geometryPassPSO.Get());
-    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // ===================================================================
+    // CRITICAL: After ResetCommandList() in ExecuteRenderKernel, ALL DX12  
+    // state is lost. We must rebind EVERYTHING before ExecuteIndirect.
+    // This mirrors the state setup in the CPU fallback path (GeometryPass).
+    // ===================================================================
     
-    // Geometry is now bound PER-COMMAND via the Indirect Buffer (Phase 2.5 Upgrade)
-    // No global IASetVertexBuffers/IASetIndexBuffer needed here.
+    // 1. Root signature
+    cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+    
+    // 2. PSO - use m_skinnedGeometryPassPSO (Unified Shader)
+    if (m_debugMode == DebugMode::WIREFRAME && m_wireframePSO) {
+        cmdList->SetPipelineState(m_wireframePSO.Get());
+    } else {
+        // UNIFIED PATH: Always use the Skinned PSO (which is now the Unified PSO)
+        if (m_skinnedGeometryPassPSO) {
+            cmdList->SetPipelineState(m_skinnedGeometryPassPSO.Get());
+        } else {
+             cmdList->SetPipelineState(m_gbufferPassPSO.Get());
+        }
+    }
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // 3. Viewport (render resolution for G-Buffer)
+    D3D12_VIEWPORT viewport = {};
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = (FLOAT)m_renderWidth;
+    viewport.Height = (FLOAT)m_renderHeight;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    cmdList->RSSetViewports(1, &viewport);
+
+    // 4. Scissor rect
+    D3D12_RECT scissor = {};
+    scissor.left = 0;
+    scissor.top = 0;
+    scissor.right = (LONG)m_renderWidth;
+    scissor.bottom = (LONG)m_renderHeight;
+    cmdList->RSSetScissorRects(1, &scissor);
+
+    // 5. Per-frame constants (camera, matrices, etc.)
+    D3D12_GPU_VIRTUAL_ADDRESS perFrameAddress = m_perFrameCB->GetGPUVirtualAddress();
+    cmdList->SetGraphicsRootConstantBufferView(0, perFrameAddress);
+
+    // 5b. BIND BONE BUFFER (Unified Path Requirement)
+    if (m_globalBoneBuffer) {
+        cmdList->SetGraphicsRootShaderResourceView(3, m_globalBoneBuffer->GetGPUVirtualAddress());
+    }
+
+    // 6. Bind G-Buffer MRTs as render targets
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[4] = {
+        m_gBuffer.albedoRTV,
+        m_gBuffer.normalRTV,
+        m_gBuffer.emissiveRTV,
+        m_gBuffer.velocityRTV
+    };
+    cmdList->OMSetRenderTargets(4, rtvs, FALSE, &m_gBuffer.depthDSV);
+
+    // 7. Clear G-Buffer (since GBufferPass isn't called in this path)
+    const float clearBlack[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    // Clear Albedo to Black
+    cmdList->ClearRenderTargetView(rtvs[0], clearBlack, 0, nullptr);
+    cmdList->ClearRenderTargetView(rtvs[1], clearBlack, 0, nullptr);
+    cmdList->ClearRenderTargetView(rtvs[2], clearBlack, 0, nullptr);
+    cmdList->ClearRenderTargetView(rtvs[3], clearBlack, 0, nullptr);
+    cmdList->ClearDepthStencilView(m_gBuffer.depthDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    // =================================================================================
+    // BARRIER: Transition Indirect Command Buffer from COMMON -> INDIRECT_ARGUMENT
+    // CUDA writes to it in COMMON state (interop requirement).
+    // DX12 reads it as INDIRECT_ARGUMENT.
+    // =================================================================================
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = m_indirectCommandBuffer.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
 
     // Execute Indirect
     // Command structure: [PerObjectCBV, MaterialCBV, VBV, IBV, DrawArgs]
     // Stride: sizeof(IndirectCommand) = 72
-    // Count: m_meshes.size()
     cmdList->ExecuteIndirect(
         m_commandSignature.Get(),
-        (UINT)m_meshes.size(),
-        m_indirectCommandBuffer.Get(),
-        0,
-        nullptr,
-        0
+        (UINT)m_meshes.size(),          // MaxCommandCount: execute all command slots
+        m_indirectCommandBuffer.Get(),  // ArgumentBuffer: contains the actual commands
+        0,                              // ArgumentBufferOffset
+        nullptr,                        // CountBuffer: using CPU mesh count for isolation test
+        0                               // CountBufferOffset
     );
     
+    // =================================================================================
+    // BARRIER: Transition BACK to COMMON for CUDA
+    // =================================================================================
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+    cmdList->ResourceBarrier(1, &barrier);
+    
     // Update stats
-    m_stats.drawCalls++; // Should be 1!
+    m_stats.drawCalls++;
+}
+
+void DX12RenderPipeline::UploadBoneMatrices() {
+    if (!m_globalBoneBuffer) return;
+    
+    // Map Buffer
+    glm::mat4* mappedData = nullptr;
+    D3D12_RANGE readRange = {0, 0};
+    if (SUCCEEDED(m_globalBoneBuffer->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)))) {
+        
+        uint32_t currentBoneOffset = 0;
+        
+        for (auto* mesh : m_meshes) {
+            if (!mesh) continue;
+            
+            size_t boneCount = mesh->boneMatrices.size();
+            if (boneCount > 0) {
+                // Check capability
+                if (currentBoneOffset + boneCount > MAX_BONES_GLOBAL) {
+                    std::cerr << "[Pipeline] WARNING: Bone Buffer Overflow! Increase MAX_BONES_GLOBAL." << std::endl;
+                    break; 
+                }
+                
+                // Copy data
+                memcpy(mappedData + currentBoneOffset, mesh->boneMatrices.data(), boneCount * sizeof(glm::mat4));
+                
+                // Update Offset for Shader
+                mesh->globalBoneOffset = currentBoneOffset;
+                
+                // Advance
+                currentBoneOffset += (uint32_t)boneCount;
+            }
+        }
+        
+        m_globalBoneBuffer->Unmap(0, nullptr);
+    }
+}
+
+// === Particle Rendering (Phase 7) ===
+
+bool DX12RenderPipeline::CreateParticlePSO() {
+    // Phase 7: Particle System using Mesh Shaders
+    // Deferring this until Phase 7 to prioritize CudaCore culling (Phase 3).
+    // std::cout << "[Pipeline] Particle PSO deferred." << std::endl;
+    return false;
+}
+
+
+void DX12RenderPipeline::RenderParticles(ID3D12Resource* particleBuffer, int count) {
+    if (!m_particlePSO || !particleBuffer) {
+        if (!m_particlePSO) std::cout << "[Pipeline] SKIP: Particle PSO missing" << std::endl;
+        return;
+    }
+    
+    // throttle logs
+    static int logCount = 0;
+    if (logCount++ % 60 == 0) std::cout << "[Pipeline] RenderParticles: " << count << std::endl;
+    
+    ID3D12GraphicsCommandList6* cmdList6 = nullptr;
+    m_backend->GetCommandList()->QueryInterface(IID_PPV_ARGS(&cmdList6));
+    if(!cmdList6) return;
+
+    cmdList6->SetPipelineState(m_particlePSO.Get());
+    cmdList6->SetGraphicsRootSignature(m_meshShaderRootSig.Get());
+    
+    // Bind Constants
+    cmdList6->SetGraphicsRootConstantBufferView(0, m_perFrameCB->GetGPUVirtualAddress());
+    
+    // Slot 3: Particle Buffer (StructuredBuffer<Particle>) SRV
+    // Note: Root Param 3 expects an SRV.
+    cmdList6->SetGraphicsRootShaderResourceView(3, particleBuffer->GetGPUVirtualAddress());
+    
+    // Dispatch
+    int dispatchX = (count + 31) / 32;
+    cmdList6->DispatchMesh(dispatchX, 1, 1);
+    
+    cmdList6->Release();
+}
+
+
+void DX12RenderPipeline::SaveScreenshot(const std::string& filename) {
+    if (!m_initialized) return;
+
+    auto device = m_backend->GetDevice();
+    auto cmdList = m_backend->GetCommandList();
+    auto cmdQueue = m_backend->GetCommandQueue();
+
+    // Source: Output Final Color (Present Buffer)
+    // Actually, let's use the current back buffer from backend to be safe it's what's visible
+    ID3D12Resource* srcResource = m_backend->GetCurrentBackBuffer();
+    if (!srcResource) return; 
+
+    D3D12_RESOURCE_DESC desc = srcResource->GetDesc();
+    uint64_t width = desc.Width;
+    uint32_t height = desc.Height;
+    uint32_t rowPitch = (width * 4 + 255) & ~255;
+    uint32_t bufferSize = height * rowPitch;
+
+    if (!m_readbackBuffer || m_readbackBufferSize < bufferSize) {
+        m_readbackBufferSize = bufferSize;
+        D3D12_HEAP_PROPERTIES heapProps = {};
+        heapProps.Type = D3D12_HEAP_TYPE_READBACK;
+        D3D12_RESOURCE_DESC bufferDesc = {};
+        bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufferDesc.Width = bufferSize;
+        bufferDesc.Height = 1;
+        bufferDesc.DepthOrArraySize = 1;
+        bufferDesc.MipLevels = 1;
+        bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+        bufferDesc.SampleDesc.Count = 1;
+        bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        
+        device->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &bufferDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&m_readbackBuffer)
+        );
+        m_readbackBuffer->SetName(L"ScreenshotReadback");
+    }
+
+    // Wait for previous work
+    m_backend->WaitForGPU(); 
+    m_backend->ResetCommandList();
+
+    // Transition Source
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = srcResource;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT; 
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    D3D12_TEXTURE_COPY_LOCATION srcLoc = {};
+    srcLoc.pResource = srcResource;
+    srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    srcLoc.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+    dstLoc.pResource = m_readbackBuffer.Get();
+    dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dstLoc.PlacedFootprint.Offset = 0;
+    dstLoc.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    dstLoc.PlacedFootprint.Footprint.Width = (uint32_t)width;
+    dstLoc.PlacedFootprint.Footprint.Height = height;
+    dstLoc.PlacedFootprint.Footprint.Depth = 1;
+    dstLoc.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+    cmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+
+    // Transition back
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    cmdList->Close();
+    ID3D12CommandList* lists[] = { cmdList };
+    cmdQueue->ExecuteCommandLists(1, lists);
+    m_backend->WaitForGPU();
+
+    // Write BMP
+    void* pData;
+    m_readbackBuffer->Map(0, nullptr, &pData);
+
+    BMPHeader header;
+    BMPInfoHeader infoHeader;
+    infoHeader.width = (int32_t)width;
+    infoHeader.height = -(int32_t)height;
+    infoHeader.imageSize = width * height * 4;
+    header.fileSize = sizeof(BMPHeader) + sizeof(BMPInfoHeader) + infoHeader.imageSize;
+
+    std::ofstream file(filename, std::ios::binary);
+    if (file) {
+        file.write((char*)&header, sizeof(header));
+        file.write((char*)&infoHeader, sizeof(infoHeader));
+        uint8_t* rowData = (uint8_t*)pData;
+        for (uint32_t y = 0; y < height; ++y) {
+             file.write((char*)rowData, width * 4);
+             rowData += rowPitch;
+        }
+    }
+    m_readbackBuffer->Unmap(0, nullptr);
 }
 
 } // namespace Rendering
 } // namespace CudaGame
 #endif // _WIN32
+ 

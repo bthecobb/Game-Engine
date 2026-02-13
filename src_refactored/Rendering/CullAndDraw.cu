@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#include <cstdio>
 //#include "Rendering/CullAndDraw.h" 
 // Note: We need to define the kernel logic again or include it. 
 // Since CullAndDraw.h only has the struct, we need the full implementation here.
@@ -65,12 +66,16 @@ __device__ float3 TransformPoint(float3 p, Matrix4x4 m) {
 }
 
 __device__ bool IsVisible(float3 center, float radius) {
-    #pragma unroll
-    for (int i = 0; i < 6; ++i) {
-        float dist = c_frustumPlanes[i].x * center.x + c_frustumPlanes[i].y * center.y + c_frustumPlanes[i].z * center.z + c_frustumPlanes[i].w;
-        if (dist < -radius) return false;
-    }
+    // TEMPORARY: Disable frustum culling to debug black screen
     return true;
+    
+    // Original frustum culling code:
+    // #pragma unroll
+    // for (int i = 0; i < 6; ++i) {
+    //     float dist = c_frustumPlanes[i].x * center.x + c_frustumPlanes[i].y * center.y + c_frustumPlanes[i].z * center.z + c_frustumPlanes[i].w;
+    //     if (dist < -radius) return false;
+    // }
+    // return true;
 }
 
 __global__ void CullAndDrawKernel(
@@ -96,6 +101,13 @@ __global__ void CullAndDrawKernel(
 
     if (IsVisible(worldCenter, worldRadius)) {
         unsigned int cmdIdx = atomicAdd(drawCounter, 1);
+        
+        // Debug: Print first few command data
+        // if (idx < 2) {
+        //     printf("[CUDA] obj[%d]: cbv=%llu vbv_loc=%llu ibv_loc=%llu indexCount=%u\n", 
+        //            idx, obj.cbv, obj.vbv_loc, obj.ibv_loc, obj.indexCount);
+        // }
+        
         IndirectCommand cmd;
         cmd.cbv = obj.cbv;
         cmd.materialCbv = obj.materialCbv;

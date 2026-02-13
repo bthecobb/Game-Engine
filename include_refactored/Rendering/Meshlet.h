@@ -103,6 +103,11 @@ public:
         const std::vector<glm::vec3>& normals,
         const std::vector<uint32_t>& vertexIndices
     );
+
+    /**
+     * @brief Validate and prune degenerate meshlets
+     */
+    static void ValidateMeshlets(MeshletMesh& mesh);
 };
 
 } // namespace Rendering

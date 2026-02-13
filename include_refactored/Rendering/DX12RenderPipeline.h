@@ -1,6 +1,7 @@
 #pragma once
 #ifdef _WIN32
 
+#include <cuda_runtime.h> // Required for cudaExternalMemory_t
 #include <d3d12.h>
 #include <memory>
 #include <vector>
@@ -19,7 +20,7 @@ namespace CudaGame {
         class CudaCore;
     }
 }
-struct cudaGraphicsResource; // Forward decl for CUDA handle
+// struct cudaGraphicsResource; // Removed - using cuda_runtime.h
 
 namespace CudaGame {
 namespace Rendering {
@@ -30,6 +31,16 @@ class DX12RenderPipeline {
 public:
     DX12RenderPipeline();
     ~DX12RenderPipeline();
+
+
+// ... (skipping unchanged parts for brevity in tool call if possible, but I must match Target) ...
+// Actually, I can't skip parts in ReplacementContent easily without separate chunks.
+// I will target the include block first, then the member block. 
+// Using Multi-Edit is better or just 2 replace calls.
+// The tool supports multiple chunks? No, this is replace_file_content (single block).
+// I will just use two calls or one big one if contiguous.
+// They are far apart (Lines 4 and 299). Two calls.
+
 
     // Initialization
     struct InitParams {
@@ -47,6 +58,7 @@ public:
     // Frame rendering (main entry point)
     void BeginFrame(Camera* camera);
     void RenderFrame();
+
     void EndFrame();
     
     // Scene management
@@ -79,6 +91,7 @@ public:
     bool IsDLSSEnabled() const { return m_dlssEnabled; }
     bool IsRayTracingEnabled() const { return m_rayTracingEnabled; }
     DX12RenderBackend* GetBackend() const { return m_backend.get(); }
+    CudaGame::Core::CudaCore* GetCudaCore() const { return m_cudaCore.get(); }
     
     // Performance stats
     struct FrameStats {
@@ -91,6 +104,11 @@ public:
         uint32_t triangles = 0;
     };
     FrameStats GetFrameStats() const { return m_stats; }
+    
+    // === Visual Verification (Testing) ===
+    // Saves the current back buffer to a BMP file.
+    // Ensure this is called at the end of a frame (Engine Loop).
+    void SaveScreenshot(const std::string& filename);
 
 private:
     // Maximum number of meshes/materials we support per frame for constant buffers
@@ -151,6 +169,8 @@ private:
     void PostProcessPass();   // Bloom, tone mapping, etc.
     void UIPass();            // Render UI at display res
     void RenderMeshesWithMeshShader(ID3D12GraphicsCommandList* cmdList); // DX12 Ultimate path
+    void ExecuteRenderKernel(void* pCmdList);           // GPU-driven kernel dispatch
+    void EnsureIndirectBufferExists();                  // GPU path: allocate buffer only (no data copy)
 
     // === Resource Management ===
     bool CreateGBuffer();
@@ -195,6 +215,10 @@ private:
     LightingBuffers m_lightingBuffers;
     OutputBuffers m_outputBuffers;
     
+    // Screenshot Readback
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_readbackBuffer;
+    uint32_t m_readbackBufferSize = 0;
+    
     // === Shaders & Pipeline State ===
     Microsoft::WRL::ComPtr<ID3DBlob> m_geometryVS;
     Microsoft::WRL::ComPtr<ID3DBlob> m_gbufferPS;     // Geometry pass → G-Buffer MRTs
@@ -204,6 +228,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gbufferPassPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_geometryPassPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_wireframePSO;  // Debug wireframe mode
+    
+    // Animation Support
+    Microsoft::WRL::ComPtr<ID3DBlob> m_skinningVS;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_skinnedGeometryPassPSO;
+    bool CreateSkinnedGeometryPassPSO();
     
     // Skybox rendering
     Microsoft::WRL::ComPtr<ID3DBlob> m_skyboxVS;
@@ -217,9 +246,27 @@ private:
     Microsoft::WRL::ComPtr<ID3DBlob> m_meshPixelShader;       // PBR shading
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_meshShaderPSO;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_meshShaderRootSig;
-    bool m_meshShadersEnabled = false;  // Enable when ready
     bool m_meshShadersSupported = false; // Set during init
+    bool m_meshShadersEnabled = false;   // Runtime toggle
     
+    // Particle Rendering (Phase 7)
+    Microsoft::WRL::ComPtr<ID3DBlob> m_particleMeshShader;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_particlePSO;
+    bool CreateParticlePSO();
+    
+    struct ParticleBatch {
+        ID3D12Resource* buffer;
+        int count;
+    };
+    std::vector<ParticleBatch> m_particleBatches;
+    
+public:
+    void RenderParticles(ID3D12Resource* particleBuffer, int count); // Internal use mostly
+    void SubmitParticles(ID3D12Resource* particleBuffer, int count) {
+        m_particleBatches.push_back({particleBuffer, count});
+    }
+    
+private:    
     // === Constant Buffers ===
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perFrameCB;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_perObjectCB;
@@ -244,7 +291,7 @@ private:
     };
 
     // === Kernel Execution Methods ===
-    void ExecuteRenderKernel(ID3D12GraphicsCommandList* cmdList);
+    // void ExecuteRenderKernel_Fix(void* cmdList);
     void ExecuteVertexShaderPacket(ID3D12GraphicsCommandList* cmdList);
     void ExecuteIndirectPacket(ID3D12GraphicsCommandList* cmdList);
     
@@ -254,6 +301,7 @@ private:
     
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_commandSignature;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectCommandBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_indirectCommandUploadBuffer;
     uint32_t m_indirectCommandMaxCount = 0;
 
     RenderPath m_activePath = RenderPath::VertexShader_Fallback;
@@ -272,15 +320,44 @@ private:
     FrameStats m_stats;
 
     // === CUDA Interop (Phase 3) ===
+    // === CUDA Interop (Phase 3) ===
     std::unique_ptr<CudaGame::Core::CudaCore> m_cudaCore;
-    struct cudaGraphicsResource* m_cudaIndirectBufferResource = nullptr;
-    struct cudaGraphicsResource* m_cudaObjectCullingResource = nullptr;
-    struct cudaGraphicsResource* m_cudaPerObjectResource = nullptr;
-    struct cudaGraphicsResource* m_cudaDrawCounterResource = nullptr;
+    
+    // External Memory Handles (Modern)
+    cudaExternalMemory_t m_extMemIndirectBuffer = nullptr;
+    cudaExternalMemory_t m_extMemObjectCulling = nullptr;
+    cudaExternalMemory_t m_extMemDrawCounter = nullptr;
+    
+    // Buffer sizes for CUDA mapping
+    size_t m_objectCullingBufferSize = 0;
+    size_t m_indirectBufferSize = 0;
+    size_t m_drawCounterSize = 0;
+    
+    // Synchronization (Fences)
+    Microsoft::WRL::ComPtr<ID3D12Fence> m_cullingFence;
+    cudaExternalSemaphore_t m_cudaCullingFenceSem = nullptr;
+    uint64_t m_cullingFenceValue = 0;
+    
+    // Mapped Device Pointers (for Kernel)
+    void* m_devIndirectBuffer = nullptr;
+    void* m_devObjectCulling = nullptr;
+    void* m_devDrawCounter = nullptr;
     
     Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCullingDataBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_objectCullingUploadBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_drawCounterBuffer;
+    
+    // Debug Readback (Phase 3 Verification)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_readbackDrawCounter;
+    void ReadbackDrawCounter();
+
     void UploadObjectCullingData();
+    
+    // === Animation System (Phase 4) ===
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_globalBoneBuffer;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_boneSrvHeap;
+    static const uint32_t MAX_BONES_GLOBAL = 10000; // 100 characters * 100 bones
+    void UploadBoneMatrices();
 };
 
 } // namespace Rendering
