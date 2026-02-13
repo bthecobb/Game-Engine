@@ -2,7 +2,6 @@
 
 #include "Core/System.h"
 #include "Animation/BoneTransform.h"
-#include "Animation/AnimationComponent.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -20,6 +19,45 @@ class AnimationClip;
 class Skeleton;
 class BlendTree;
 
+// Animation states for AAA-quality character animation
+enum class AnimationState {
+    IDLE,
+    IDLE_BORED,
+    WALKING,
+    RUNNING,
+    SPRINTING,
+    JUMPING,
+    AIRBORNE,
+    FALLING,
+    LANDING,
+    DIVING,
+    WALL_RUNNING,
+    SLIDING,
+    COMBAT_IDLE,
+    ATTACKING,
+    PARRYING,
+    GRABBING,
+    STUNNED,
+    DEATH,
+    // Weapon-specific animations
+    SWORD_IDLE,
+    SWORD_ATTACK_1,
+    SWORD_ATTACK_2,
+    SWORD_COMBO_FINISHER,
+    STAFF_CAST,
+    STAFF_SPIN,
+    HAMMER_CHARGE,
+    HAMMER_SLAM
+};
+
+// Animation blend modes for smooth transitions
+enum class BlendMode {
+    REPLACE,     // Replace current animation
+    ADDITIVE,    // Add to current animation
+    MULTIPLY,    // Multiply with current animation
+    OVERLAY      // Overlay on top of current animation
+};
+
 // Animation keyframe
 struct Keyframe {
     float time;
@@ -28,12 +66,28 @@ struct Keyframe {
 
 // AnimationClip is forward declared above and defined in AnimationResources.h
 
+// Animation component for entities
+struct AnimationComponent {
+    AnimationState currentState = AnimationState::IDLE;
+    AnimationState previousState = AnimationState::IDLE;
+    float animationTime = 0.0f;
+    float blendWeight = 1.0f;
+    float playbackSpeed = 1.0f;
+    bool isPlaying = true;
+    bool hasTransitioned = false;
+    
+    // Blend tree parameters
+    float movementSpeed = 0.0f;
+    float combatIntensity = 0.0f;
+    float rhythmSync = 0.0f;
+    glm::vec2 movementDirection{0.0f};
+};
+
 // Animation state machine
-// Animation state machine (Legacy/Simple)
-class SimpleAnimationStateMachine {
+class AnimationStateMachine {
 public:
-    SimpleAnimationStateMachine();
-    ~SimpleAnimationStateMachine();
+    AnimationStateMachine();
+    ~AnimationStateMachine();
     
     void update(float deltaTime);
     void transitionTo(AnimationState newState, float transitionTime = 0.2f);
@@ -80,10 +134,6 @@ public:
     AnimationClip* getAnimationClip(const std::string& name);
     void registerAnimationClip(std::unique_ptr<AnimationClip> clip);
     
-    // Component management
-    void AddComponent(uint32_t entityId, const AnimationComponent& component);
-    AnimationComponent* GetComponent(uint32_t entityId);
-    
     // Entity animation control
     void playAnimation(uint32_t entityId, AnimationState state, float transitionTime = 0.2f);
     void setAnimationSpeed(uint32_t entityId, float speed);
@@ -119,7 +169,7 @@ private:
     bool m_initialized;
     std::unordered_map<std::string, std::unique_ptr<AnimationClip>> m_animationClips;
     std::unordered_map<uint32_t, AnimationComponent> m_animationComponents;
-    std::unordered_map<uint32_t, std::unique_ptr<SimpleAnimationStateMachine>> m_stateMachines;
+    std::unordered_map<uint32_t, std::unique_ptr<AnimationStateMachine>> m_stateMachines;
     
     // Rhythm system integration
     float m_currentBPM;
@@ -133,10 +183,6 @@ private:
     void updateEntityAnimation(uint32_t entityId, AnimationComponent& component, float deltaTime);
     void applyBoneTransforms(uint32_t entityId, const std::vector<BoneTransform>& transforms);
     BoneTransform blendBoneTransforms(const BoneTransform& a, const BoneTransform& b, float weight);
-    
-    // Procedural Animation (Phase 2)
-    void GenerateProceduralPose(uint32_t entityId, AnimationComponent& component, float deltaTime);
-    glm::mat4 ComputeProceduralBoneTransform(int boneId, const AnimationComponent& anim, float speed);
     
     // Default animations creation
     void createDefaultAnimations();

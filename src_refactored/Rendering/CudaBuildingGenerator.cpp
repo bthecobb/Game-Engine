@@ -305,50 +305,7 @@ void CudaBuildingGenerator::GenerateBaseGeometry(BuildingMesh& mesh, const Build
     // Copy index data
     mesh.indices.resize(indexCount);
     cudaMemcpy(mesh.indices.data(), d_indices, indexCount * sizeof(uint32_t), cudaMemcpyDeviceToHost);
-
-    // Post-process: enforce correct roof vertex normals and winding for top faces
-    {
-        // Determine top plane from generated mesh to avoid style/precision mismatch
-        float maxY = -FLT_MAX;
-        for (const auto& p : mesh.positions) maxY = std::max(maxY, p.y);
-        const float epsMax = 0.02f; // slightly looser to catch float jitter
-        const float epsStyle = 0.01f;
-        // Mark top vertices (either at mesh maxY or at style.height plane)
-        std::vector<uint8_t> isTop(mesh.positions.size(), 0);
-        for (size_t vi = 0; vi < mesh.positions.size(); ++vi) {
-            float y = mesh.positions[vi].y;
-            if (std::abs(y - maxY) < epsMax || std::abs(y - style.height) < epsStyle) {
-                isTop[vi] = 1;
-            }
-        }
-        // Fix triangle winding for top faces to ensure upward normals when viewed from above (CCW)
-        for (size_t ii = 0; ii + 2 < mesh.indices.size(); ii += 3) {
-            uint32_t i0 = mesh.indices[ii + 0];
-            uint32_t i1 = mesh.indices[ii + 1];
-            uint32_t i2 = mesh.indices[ii + 2];
-            if (i0 < mesh.positions.size() && i1 < mesh.positions.size() && i2 < mesh.positions.size()) {
-                if (isTop[i0] && isTop[i1] && isTop[i2]) {
-                    const glm::vec3& v0 = mesh.positions[i0];
-                    const glm::vec3& v1 = mesh.positions[i1];
-                    const glm::vec3& v2 = mesh.positions[i2];
-                    glm::vec3 n = glm::normalize(glm::cross(v1 - v0, v2 - v0));
-                    if (!std::isfinite(n.x) || !std::isfinite(n.y) || !std::isfinite(n.z) || glm::length(n) < 1e-6f) {
-                        // Degenerate; skip
-                    } else if (n.y < 0.0f) {
-                        // Flip winding by swapping two indices
-                        std::swap(mesh.indices[ii + 1], mesh.indices[ii + 2]);
-                    }
-                }
-            }
-        }
-        // Force top vertex normals to strict up vector
-        for (size_t vi = 0; vi < mesh.positions.size(); ++vi) {
-            if (isTop[vi]) {
-                mesh.normals[vi] = glm::vec3(0.0f, 1.0f, 0.0f);
-            }
-        }
-    }
-
+    
     // Calculate bounding box
     mesh.boundsMin = glm::vec3(FLT_MAX);
     mesh.boundsMax = glm::vec3(-FLT_MAX);

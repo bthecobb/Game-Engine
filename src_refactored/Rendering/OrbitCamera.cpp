@@ -9,7 +9,7 @@ namespace Rendering {
 
 OrbitCamera::OrbitCamera(ProjectionType type) : Camera(type),
     m_currentMode(CameraMode::ORBIT_FOLLOW),
-    m_yaw(0.0f),   // Start looking along +Z axis (camera behind target by default)
+    m_yaw(-90.0f),  // Start looking along negative Z axis
     m_pitch(25.0f),  // Start with a slight downward angle for better initial view
     m_targetDistance(15.0f), // Use explicit default value
     m_currentDistance(15.0f), // Match target distance
@@ -35,11 +35,9 @@ OrbitCamera::OrbitCamera(ProjectionType type) : Camera(type),
 }
 
 void OrbitCamera::Update(float deltaTime, const glm::vec3& targetPosition, const glm::vec3& targetVelocity) {
-    // Apply anti-jitter target position filtering
-    glm::vec3 filteredTarget = FilterTargetPosition(targetPosition, deltaTime);
-    
-    // Apply height offset and store as target
-    m_targetPosition = filteredTarget + glm::vec3(0.0f, m_orbitSettings.heightOffset, 0.0f);
+    // Always update the target position regardless of mode
+    // This ensures all modes have the latest player position
+    m_targetPosition = targetPosition + glm::vec3(0.0f, m_orbitSettings.heightOffset, 0.0f);
     
     switch (m_currentMode) {
         case CameraMode::ORBIT_FOLLOW:
@@ -57,27 +55,15 @@ void OrbitCamera::Update(float deltaTime, const glm::vec3& targetPosition, const
 }
 
 void OrbitCamera::ApplyMouseDelta(float xDelta, float yDelta) {
-    // Apply anti-jitter mouse input filtering
-    glm::vec2 filtered = FilterMouseInput(xDelta, yDelta);
-    
     float inverted = m_orbitSettings.invertY ? -1.0f : 1.0f;
-    m_yaw += filtered.x * m_orbitSettings.mouseSensitivity;
-    m_pitch += filtered.y * m_orbitSettings.mouseSensitivity * inverted;
+    m_yaw += xDelta * m_orbitSettings.mouseSensitivity;
+    m_pitch += yDelta * m_orbitSettings.mouseSensitivity * inverted;
     ClampAngles();
 }
-
 
 void OrbitCamera::ApplyZoom(float zoomDelta) {
     m_targetDistance -= zoomDelta * m_orbitSettings.zoomSpeed;
     m_targetDistance = glm::clamp(m_targetDistance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
-}
-
-void OrbitCamera::SetDistance(float distance, bool instant) {
-    float clamped = glm::clamp(distance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
-    m_targetDistance = clamped;
-    if (instant) {
-        m_currentDistance = clamped;
-    }
 }
 
 void OrbitCamera::SetCameraMode(CameraMode mode) {
@@ -145,35 +131,14 @@ void OrbitCamera::UpdateOrbitFollow(float deltaTime, const glm::vec3& targetPosi
     // Target position already updated in Update() method
     
     // Smoothly update current distance towards target distance
-    m_currentDistance = glm::mix(m_currentDistance, m_targetDistance, glm::clamp(deltaTime, 0.0f, 0.1f) * m_orbitSettings.smoothSpeed);
-    m_currentDistance = glm::clamp(m_currentDistance, m_orbitSettings.minDistance, m_orbitSettings.maxDistance);
+    m_currentDistance = glm::mix(m_currentDistance, m_targetDistance, deltaTime * m_orbitSettings.smoothSpeed);
     
     // Calculate desired position based on current angles and distance
     m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
     
-    // VELOCITY-BASED FOLLOWING: When player is moving fast, follow nearly instantly
-    // This ensures player always stays in frame
-    float targetSpeed = glm::length(targetVelocity);
-    
-    // Determine follow factor based on player speed
-    float clampedDelta = glm::min(deltaTime, 0.1f);
-    float smoothFactor;
-    
-    if (targetSpeed > 15.0f) {
-        // Player is sprinting/fast - near-instant follow (0.95 blend)
-        smoothFactor = 0.95f;
-    } else if (targetSpeed > 5.0f) {
-        // Player is running - fast follow
-        float speedBlend = (targetSpeed - 5.0f) / 10.0f; // 0-1 over speed 5-15
-        smoothFactor = glm::mix(0.5f, 0.95f, speedBlend);
-    } else if (targetSpeed > 0.5f) {
-        // Player is walking - moderate follow
-        smoothFactor = glm::clamp(clampedDelta * m_orbitSettings.positionFollowSpeed, 0.3f, 0.7f);
-    } else {
-        // Player is stationary - smooth follow with anti-jitter
-        smoothFactor = glm::clamp(clampedDelta * m_orbitSettings.smoothSpeed, 0.0f, 0.4f);
-    }
-    
+    // Smooth camera position with clamped delta time to prevent large jumps
+    float clampedDelta = glm::min(deltaTime, 0.1f); // Prevent large time steps from causing jumps
+    float smoothFactor = glm::clamp(clampedDelta * m_orbitSettings.smoothSpeed, 0.0f, 1.0f);
     m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, smoothFactor);
 
     if (m_collisionSettings.enableCollision && m_collisionCallback) {
@@ -195,9 +160,8 @@ void OrbitCamera::UpdateFreeLook(float deltaTime) {
     // Calculate desired position based on current angles and distance
     m_desiredPosition = CalculateDesiredPosition(m_targetPosition);
     
-    // Smooth camera positioning - use positionFollowSpeed for faster player tracking
-    float followFactor = glm::clamp(deltaTime * m_orbitSettings.positionFollowSpeed, 0.0f, 1.0f);
-    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, followFactor);
+    // Smooth camera positioning for free look
+    m_currentPosition = glm::mix(m_currentPosition, m_desiredPosition, deltaTime * m_orbitSettings.smoothSpeed * 0.8f);
     
     // Handle collision if enabled
     if (m_collisionSettings.enableCollision && m_collisionCallback) {
@@ -257,6 +221,14 @@ void OrbitCamera::ClampAngles() {
     // Normalize yaw to [-180, 180] to prevent angle accumulation
     while (m_yaw > 180.0f) m_yaw -= 360.0f;
     while (m_yaw < -180.0f) m_yaw += 360.0f;
+    
+    // Debug logging every 300 frames (reduced frequency)
+    static int debugFrameCount = 0;
+    debugFrameCount++;
+    if (debugFrameCount % 300 == 0) {
+        std::cout << "[DEBUG] Camera angles - Yaw: " << m_yaw << ", Pitch: " << m_pitch 
+                  << ", Distance: " << m_currentDistance << std::endl;
+    }
 }
 
 void OrbitCamera::UpdateCameraVectorsFromPosition() {
@@ -264,25 +236,11 @@ void OrbitCamera::UpdateCameraVectorsFromPosition() {
     SetPosition(m_currentPosition);
     
     // Calculate camera vectors from current position to target
-    glm::vec3 diff = m_targetPosition - m_currentPosition;
-    float diffLen2 = glm::dot(diff, diff);
-    glm::vec3 direction = (diffLen2 > 1e-8f) ? (diff / glm::sqrt(diffLen2)) : glm::vec3(0.0f, 0.0f, -1.0f);
-    
-    // Always use world up (0,1,0) for LookAt to prevent flipping
+    glm::vec3 direction = glm::normalize(m_targetPosition - m_currentPosition);
     glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
     
-    // Calculate right and up vectors with stability
-    glm::vec3 right = glm::cross(direction, worldUp);
-    float rightLen2 = glm::dot(right, right);
-    
-    // If direction is nearly vertical, use a stable fallback
-    if (rightLen2 < 0.01f) {
-        // Camera looking straight up/down - use forward axis as reference
-        right = glm::vec3(1.0f, 0.0f, 0.0f);
-    } else {
-        right = right / glm::sqrt(rightLen2);
-    }
-    
+    // Re-orthonormalize to prevent drift
+    glm::vec3 right = glm::normalize(glm::cross(direction, worldUp));
     glm::vec3 up = glm::normalize(glm::cross(right, direction));
     
     // Store the vectors
@@ -290,8 +248,20 @@ void OrbitCamera::UpdateCameraVectorsFromPosition() {
     m_right = right;
     m_up = up;
     
-    // Update view matrix using LookAt with world up (stable)
-    LookAt(m_targetPosition, worldUp);
+    // Update view matrix using lookAt
+    LookAt(m_targetPosition, up);
+    
+    // Debug camera position every 300 frames (reduced frequency)
+    static int debugPosCount = 0;
+    debugPosCount++;
+    if (debugPosCount % 300 == 0) {
+        std::cout << "[DEBUG] Camera pos: (" << m_currentPosition.x << ", " 
+                  << m_currentPosition.y << ", " << m_currentPosition.z << ")\n";
+        std::cout << "[DEBUG] Target pos: (" << m_targetPosition.x << ", " 
+                  << m_targetPosition.y << ", " << m_targetPosition.z << ")\n";
+        std::cout << "[DEBUG] Forward: (" << m_forward.x << ", " 
+                  << m_forward.y << ", " << m_forward.z << ")" << std::endl;
+    }
 }
 
 glm::vec3 OrbitCamera::SphericalToCartesian(float yaw, float pitch, float distance) const {
@@ -370,6 +340,7 @@ void OrbitCamera::InitializeCameraMode(CameraMode mode) {
             // No specific initialization needed yet
             break;
             
+        case CameraMode::COMBAT_FOCUS:
             // Combat focus might need tighter following parameters
             if (m_currentDistance <= 0.0f) {
                 m_currentDistance = m_orbitSettings.distance * 0.8f; // Closer for combat
@@ -382,144 +353,6 @@ void OrbitCamera::InitializeCameraMode(CameraMode mode) {
     ClampAngles();
 }
 
-// === AAA Anti-Jitter Implementation ===
-
-void OrbitCamera::ApplyTuningPreset(TuningPreset preset) {
-    m_currentPreset = preset;
-    
-    switch (preset) {
-        case TuningPreset::RESPONSIVE:
-            // Fast, twitchy - minimal smoothing for action games
-            m_orbitSettings.smoothSpeed = 12.0f;
-            m_orbitSettings.positionFollowSpeed = 18.0f;
-            m_orbitSettings.mouseSensitivity = 0.08f;
-            m_antiJitterSettings.enabled = true;
-            m_antiJitterSettings.deadZone = 0.3f;
-            m_antiJitterSettings.microMovementThreshold = 1.0f;
-            m_antiJitterSettings.temporalSmoothingFactor = 0.7f;
-            m_antiJitterSettings.velocityDamping = 0.85f;
-            m_antiJitterSettings.useAdaptiveSmoothing = true;
-            m_antiJitterSettings.adaptiveMinSmooth = 6.0f;
-            m_antiJitterSettings.adaptiveMaxSmooth = 14.0f;
-            break;
-            
-        case TuningPreset::CINEMATIC:
-            // Smooth, filmic - heavy smoothing for exploration
-            m_orbitSettings.smoothSpeed = 4.0f;
-            m_orbitSettings.positionFollowSpeed = 6.0f;
-            m_orbitSettings.mouseSensitivity = 0.04f;
-            m_antiJitterSettings.enabled = true;
-            m_antiJitterSettings.deadZone = 1.0f;
-            m_antiJitterSettings.microMovementThreshold = 3.0f;
-            m_antiJitterSettings.temporalSmoothingFactor = 0.95f;
-            m_antiJitterSettings.velocityDamping = 0.98f;
-            m_antiJitterSettings.useAdaptiveSmoothing = true;
-            m_antiJitterSettings.adaptiveMinSmooth = 2.0f;
-            m_antiJitterSettings.adaptiveMaxSmooth = 8.0f;
-            break;
-            
-        case TuningPreset::COMBAT:
-            // Balanced - tight tracking with some smoothing
-            m_orbitSettings.smoothSpeed = 10.0f;
-            m_orbitSettings.positionFollowSpeed = 15.0f;
-            m_orbitSettings.mouseSensitivity = 0.06f;
-            m_antiJitterSettings.enabled = true;
-            m_antiJitterSettings.deadZone = 0.4f;
-            m_antiJitterSettings.microMovementThreshold = 1.5f;
-            m_antiJitterSettings.temporalSmoothingFactor = 0.8f;
-            m_antiJitterSettings.velocityDamping = 0.9f;
-            m_antiJitterSettings.useAdaptiveSmoothing = true;
-            m_antiJitterSettings.adaptiveMinSmooth = 5.0f;
-            m_antiJitterSettings.adaptiveMaxSmooth = 12.0f;
-            break;
-            
-        case TuningPreset::CUSTOM:
-            // Keep current settings
-            break;
-    }
-}
-
-float OrbitCamera::CalculateAdaptiveSmoothing(float targetSpeed) const {
-    if (!m_antiJitterSettings.useAdaptiveSmoothing) {
-        return m_orbitSettings.smoothSpeed;
-    }
-    
-    // Slower target = more smoothing (reduce jitter), faster target = less smoothing (stay responsive)
-    const float speedNormalized = glm::clamp(targetSpeed / 10.0f, 0.0f, 1.0f);
-    
-    // Lerp between max smoothing (stationary) and min smoothing (fast movement)
-    return glm::mix(m_antiJitterSettings.adaptiveMaxSmooth, 
-                    m_antiJitterSettings.adaptiveMinSmooth, 
-                    speedNormalized);
-}
-
-glm::vec2 OrbitCamera::FilterMouseInput(float xDelta, float yDelta) {
-    if (!m_antiJitterSettings.enabled) {
-        return glm::vec2(xDelta, yDelta);
-    }
-    
-    glm::vec2 rawDelta(xDelta, yDelta);
-    float magnitude = glm::length(rawDelta);
-    
-    // Dead zone: ignore micro-movements
-    if (magnitude < m_antiJitterSettings.deadZone) {
-        return glm::vec2(0.0f);
-    }
-    
-    // Temporal smoothing: blend with previous frame
-    glm::vec2 smoothedDelta = glm::mix(rawDelta, m_previousMouseDelta, 
-                                        m_antiJitterSettings.temporalSmoothingFactor);
-    
-    // Apply velocity damping
-    smoothedDelta *= m_antiJitterSettings.velocityDamping;
-    
-    // Store for next frame
-    m_previousMouseDelta = smoothedDelta;
-    m_smoothedMouseDelta = smoothedDelta;
-    
-    return smoothedDelta;
-}
-
-glm::vec3 OrbitCamera::FilterTargetPosition(const glm::vec3& rawTarget, float deltaTime) {
-    if (!m_antiJitterSettings.enabled) {
-        m_smoothedTargetPosition = rawTarget;
-        m_previousTargetPosition = rawTarget;
-        return rawTarget;
-    }
-    
-    // Calculate target velocity for adaptive smoothing
-    glm::vec3 targetVelocity = (rawTarget - m_previousTargetPosition) / glm::max(deltaTime, 0.001f);
-    float targetSpeed = glm::length(targetVelocity);
-    
-    // Filter micro-movements
-    if (targetSpeed < m_antiJitterSettings.microMovementThreshold) {
-        // Target is nearly stationary - use heavy smoothing
-        float heavySmooth = glm::clamp(deltaTime * m_antiJitterSettings.adaptiveMaxSmooth, 0.0f, 1.0f);
-        m_smoothedTargetPosition = glm::mix(m_smoothedTargetPosition, rawTarget, heavySmooth);
-    } else {
-        // Target is moving - use adaptive smoothing
-        float adaptiveSmooth = CalculateAdaptiveSmoothing(targetSpeed);
-        float smoothFactor = glm::clamp(deltaTime * adaptiveSmooth, 0.0f, 1.0f);
-        m_smoothedTargetPosition = glm::mix(m_smoothedTargetPosition, rawTarget, smoothFactor);
-    }
-    
-    m_previousTargetPosition = rawTarget;
-    m_previousTargetPosition = rawTarget;
-    return m_smoothedTargetPosition;
-}
-
-void OrbitCamera::SetViewAngles(float yaw, float pitch) {
-    m_yaw = yaw;
-    m_pitch = glm::clamp(pitch, m_orbitSettings.minPitch, m_orbitSettings.maxPitch);
-    m_previousYaw = m_yaw;
-    m_previousPitch = m_pitch;
-    
-    // Reset velocities
-    m_yawVelocity = 0.0f;
-    m_pitchVelocity = 0.0f;
-
-    UpdateCameraVectorsFromPosition();
-}
-
 } // namespace Rendering
 } // namespace CudaGame
+

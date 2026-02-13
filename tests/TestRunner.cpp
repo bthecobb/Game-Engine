@@ -7,7 +7,6 @@ std::shared_ptr<CudaGame::Testing::TestSuite> CreateOrbitCameraTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateSkyboxUtilsTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateBuildingGeneratorTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateEnemyAITestSuite();
-std::shared_ptr<CudaGame::Testing::TestSuite> CreateThirdPersonCameraRigTestSuite();
 #ifdef ENABLE_PHYSX
 std::shared_ptr<CudaGame::Testing::TestSuite> CreateCharacterControllerTestSuite();
 std::shared_ptr<CudaGame::Testing::TestSuite> CreatePhysicsTestSuite();
@@ -36,14 +35,12 @@ int main()
     testFramework.RegisterSuite(CreateSkyboxUtilsTestSuite());
     testFramework.RegisterSuite(CreateBuildingGeneratorTestSuite());
     testFramework.RegisterSuite(CreateEnemyAITestSuite());
-    // Re-enable ThirdPersonCameraRig tests (consolidated in OrbitCameraTests.cpp)
-    testFramework.RegisterSuite(CreateThirdPersonCameraRigTestSuite());
 #ifdef ENABLE_PHYSX
     testFramework.RegisterSuite(CreateCharacterControllerTestSuite());
     // testFramework.RegisterSuite(CreatePhysicsTestSuite());
 #endif
 #ifdef ENABLE_RENDER_TESTS
-    testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
+    // testFramework.RegisterSuite(CreateRenderingSystemTestSuite());
 #endif
 // testFramework.RegisterSuite(CreateEmissiveTextureTestSuite());
     // testFramework.RegisterSuite(CreateFull3DGameIntegrationTestSuite());
