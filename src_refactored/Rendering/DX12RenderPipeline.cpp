@@ -1,3 +1,4 @@
+// Module: Rendering (DX12) - Implements Mesh Shaders, DLSS, and Deferred Pipeline
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #ifdef _WIN32
 #include "Rendering/DX12RenderPipeline.h"
