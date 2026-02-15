@@ -348,50 +348,43 @@ See [docs/BUG_TRACKER.md](./docs/BUG_TRACKER.md) for complete fix history.
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Structure & File Manifest
 
-```
-CudaGame/
-├── src_refactored/              # Modern ECS engine implementation
-│   ├── Core/                   # ECS foundation (Coordinator, Entity, Component)
-│   ├── Rendering/              # Deferred pipeline, shaders, framebuffers
-│   ├── Physics/                # PhysX integration, collision, character control
-│   ├── Gameplay/               # Game systems (input, camera, movement)
-│   ├── Particles/              # CUDA-accelerated particle systems
-│   └── Debug/                  # RenderDebugSystem, diagnostics, profiling
-│
-├── tests/                      # Comprehensive test suite
-│   ├── ECSTest.cpp             # Entity/component lifecycle tests
-│   ├── TransformTest.cpp       # Transform system validation
-│   ├── PhysicsTest.cpp         # PhysX integration tests
-│   ├── RenderingTest.cpp       # Framebuffer and shader tests
-│   ├── OrbitCameraTest.cpp     # Camera system tests
-│   ├── CharacterControllerTest.cpp
-│   └── TestDebugger.h/.cpp     # Custom test debugging utility
-│
-├── docs/                       # Comprehensive documentation
-│   ├── BUG_TRACKER.md          # Bug database with root causes
-│   ├── KANBAN_BOARD.md         # Sprint tracking and progress
-│   ├── 00_TEST_FIX_INDEX.md    # Documentation master index
-│   └── AAA_Engine_Documentation.md
-│
-├── assets/
-│   ├── shaders/                # GLSL vertex/fragment shaders
-│   ├── models/                 # 3D assets (FBX, OBJ)
-│   └── textures/               # Material textures
-│
-├── vendor/                     # Third-party dependencies
-│   ├── PhysX/                  # NVIDIA PhysX SDK
-│   ├── glfw/                   # Window management
-│   └── glad/                   # OpenGL loader
-│
-└── build-vs/                   # Visual Studio build output
-    ├── Release/
-    │   ├── Full3DGame.exe      # Main engine demo
-    │   ├── TestRunner.exe      # Test suite executable
-    │   └── [Demo executables]
-    └── Testing/                # CTest output and logs
-```
+### `src_refactored/` (Active Engine Core)
+The modern ECS-based engine implementation.
+- **Core/**: Foundation of the engine.
+    - `EntityManager.cpp`: Manages entity creation, destruction, and signatures.
+    - `ComponentManager.cpp`: Handles contiguous data arrays for all components.
+    - `SystemManager.cpp`: Orchestrates system execution and priorities.
+- **Rendering/**: DirectX 12 deferred rendering pipeline.
+    - `DX12RenderPipeline.cpp`: Main replacement for the OpenGL pipeline. Handles device, swap chain, and command lists.
+    - `D3D12Mesh.cpp`: Manages vertex/index buffers and BLAS for ray tracing.
+    - `Meshlet.cpp`: Data structure for Mesh Shader geometry clusters.
+    - `camera.cpp`: Base camera class for view/projection matrices.
+- **Physics/**: NVIDIA PhysX integration.
+    - `PhysXPhysicsSystem.cpp`: Bridges ECS transforms with PhysX actors.
+    - `CharacterControllerSystem.cpp`: State machine for player movement (Run, Jump, Wall-Run).
+- **Gameplay/**: Game logic systems.
+    - `EnemyAISystem.cpp`: Behavior tree logic for enemy agents.
+    - `InputSystem.cpp`: Maps GLFW events to game actions.
+- **Particles/**: CUDA-accelerated visual effects.
+    - `ParticleSystem.cu`: CUDA kernel launchers for updating particle positions.
+    - `ParticleSystem.cpp`: CPU-side management of GPU memory.
+
+### `tests/` (Automated Test Suite)
+- `TestRunner.cpp`: Main entry point for GoogleTest execution.
+- `AnimationSystemTests.cpp`: Validates skeletal skinning and blend trees.
+- `BuildingGeneratorTests.cpp`: Checks procedural city building logic.
+- `DX12RenderPipelineTests.cpp`: Unit tests for DX12 initialization (headless).
+- `PhysicsTests.cpp`: Verifies collision callbacks and rigid body dynamics.
+
+### `assets/` (Game Assets)
+- **shaders/**: HLSL and GLSL shaders.
+    - `MeshShader.hlsl`: Handles meshlet culling and amplification.
+    - `PixelShader.hlsl`: PBR lighting calculations.
+- **models/**: Source geometry (FBX/OBJ).
+- **textures/**: PBR materials (Albedo, Normal, Roughness).
+
 
 ## PhysX Setup
 
