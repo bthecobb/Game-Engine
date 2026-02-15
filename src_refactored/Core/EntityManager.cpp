@@ -1,3 +1,4 @@
+// Module: Core - Entity Component System (ECS) Foundation
 #include "Core/EntityManager.h"
 
 namespace CudaGame {
