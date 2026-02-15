@@ -1,4 +1,5 @@
-﻿# CMakeLists.txt for AAA Game Engine
+﻿# Build Config: CMake 3.20+ for Windows (MSVC)
+# CMakeLists.txt for AAA Game Engine
 
 cmake_minimum_required(VERSION 3.20)
 
