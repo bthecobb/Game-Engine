@@ -1,3 +1,4 @@
+// Module: ECS Coordinator - Manages Entities, Components, and Systems
 #pragma once
 
 #include "ECS_Types.h"
