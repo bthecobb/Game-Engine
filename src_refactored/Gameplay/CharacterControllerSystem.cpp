@@ -30,8 +30,6 @@ CharacterControllerSystem::CharacterControllerSystem()
 }
 
 bool CharacterControllerSystem::Initialize() {
-    auto& coordinator = Core::Coordinator::GetInstance();
-    
     // Get physics system reference
     m_physicsSystem = Core::Coordinator::GetInstance().GetSystem<Physics::PhysXPhysicsSystem>().get();
     if (!m_physicsSystem) {
@@ -62,12 +60,17 @@ void CharacterControllerSystem::Update(float deltaTime) {
     }
     
     for (auto const& entity : mEntities) {
-        // Get all required components
+        // Get required components (Assumed present due to Signature, but safer to check or ensure Signature is correct)
+        // We really should update the Signature in Demo to include Rigidbody/Transform/Movement if we rely on them.
         auto& charController = coordinator.GetComponent<Physics::CharacterControllerComponent>(entity);
         auto& rigidbody = coordinator.GetComponent<Physics::RigidbodyComponent>(entity);
         auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
         auto& movement = coordinator.GetComponent<PlayerMovementComponent>(entity);
-        auto& input = coordinator.GetComponent<PlayerInputComponent>(entity);
+        
+        // Input is OPTIONAL (NPCs don't have it)
+        PlayerInputComponent dummyInput = {}; 
+        bool hasInput = coordinator.HasComponent<PlayerInputComponent>(entity);
+        const auto& input = hasInput ? coordinator.GetComponent<PlayerInputComponent>(entity) : dummyInput;
         
         // Update timers
         UpdateTimers(charController, deltaTime);
@@ -84,8 +87,8 @@ void CharacterControllerSystem::Update(float deltaTime) {
         // Apply movement forces
         ApplyMovement(charController, movement, rigidbody, moveDirection, deltaTime);
         
-        // Check for wall running opportunities
-        CheckWallRunning(entity, charController, transform, rigidbody, input);
+        // Wall Running Logic is now handled by WallRunningSystem
+        // CheckWallRunning(entity, charController, transform, rigidbody, input);
         
         // Handle dashing
         HandleDashing(charController, movement, rigidbody, input, moveDirection, deltaTime);
@@ -107,6 +110,7 @@ void CharacterControllerSystem::UpdateAnimationController(
     const Gameplay::PlayerMovementComponent& movement,
     Gameplay::AnimationControllerComponent& animCtrl)
 {
+    (void)movement; // Silence warning
     // Write Physics State to Blackboard
     float horizontalSpeed = glm::length(glm::vec3(rb.velocity.x, 0, rb.velocity.z));
     
@@ -225,6 +229,7 @@ void CharacterControllerSystem::CheckGrounding(Core::Entity entity,
                                               Physics::CharacterControllerComponent& controller,
                                               const Rendering::TransformComponent& transform,
                                               const Physics::RigidbodyComponent& rigidbody) {
+    (void)entity; // Silence warning
     // Perform raycast down from character position
     const float GROUND_CHECK_DISTANCE = 0.2f;
     const float CHARACTER_HEIGHT = 1.8f;
@@ -394,7 +399,8 @@ void CharacterControllerSystem::ApplyMovement(Physics::CharacterControllerCompon
     
     // Wall running movement
     if (controller.isWallRunning) {
-        ApplyWallRunMovement(controller, rigidbody, deltaTime);
+        // ApplyWallRunMovement(controller, rigidbody, deltaTime);
+        // Physics handled by WallRunningSystem
         return;
     }
     
@@ -447,6 +453,7 @@ void CharacterControllerSystem::ApplyMovement(Physics::CharacterControllerCompon
 void CharacterControllerSystem::ApplyWallRunMovement(Physics::CharacterControllerComponent& controller,
                                                     Physics::RigidbodyComponent& rigidbody,
                                                     float deltaTime) {
+    (void)deltaTime; // Silence warning
     // Calculate wall run direction (perpendicular to wall normal)
     glm::vec3 wallRunDir = glm::cross(controller.wallNormal, glm::vec3(0, 1, 0));
     
@@ -567,6 +574,9 @@ void CharacterControllerSystem::HandleDashing(Physics::CharacterControllerCompon
                                              const PlayerInputComponent& input,
                                              const glm::vec3& moveDirection,
                                              float deltaTime) {
+    (void)movement; // Silence unused parameter warning
+    (void)deltaTime; // Silence unused parameter warning
+
     // Check for dash input
     static bool dashPressed = false;
     bool dashThisFrame = input.keys[GLFW_KEY_LEFT_CONTROL] && !dashPressed;

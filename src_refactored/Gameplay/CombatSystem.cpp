@@ -123,6 +123,7 @@ void CombatSystem::SyncWeaponTransform(Core::Entity ownerID, Core::Entity weapon
 }
 
 void CombatSystem::PerformHitScan(Core::Entity attacker, const WeaponComponent& weapon, const Physics::RigidbodyComponent& rb) {
+    (void)rb; // Silence unused warning
     // Simple Box Check for Demo
     auto& coordinator = Core::Coordinator::GetInstance();
     

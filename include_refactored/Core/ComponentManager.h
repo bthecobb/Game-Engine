@@ -8,6 +8,7 @@
 #include <cassert>
 #include <iostream>
 #include <sstream>
+#include <cstring>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -172,7 +173,21 @@ public:
 
     template<typename T>
     void AddComponent(Entity entity, T component) {
-        GetComponentArray<T>()->InsertData(entity, component);
+        auto array = GetComponentArray<T>();
+        if (!array) {
+            std::cerr << "CRITICAL: GetComponentArray returned NULL." << std::endl;
+            std::cerr << "Looking for Type: '" << typeid(T).name() << "' Length: " << std::strlen(typeid(T).name()) << std::endl;
+             // Dump map keys
+            std::cerr << "Registered Types in Map (" << mComponentArrays.size() << "):" << std::endl;
+            for (auto const& [key, val] : mComponentArrays) {
+                std::cerr << " - '" << key << "' Length: " << key.length() << std::endl;
+                if (key == typeid(T).name()) std::cerr << "   (MATCH FOUND! But lookup failed?)" << std::endl;
+            }
+            std::cerr << "End of Registered Types." << std::endl;
+            __debugbreak();
+            return;
+        }
+        array->InsertData(entity, component);
     }
 
     template<typename T>
@@ -203,7 +218,10 @@ public:
     std::shared_ptr<ComponentArray<T>> GetComponentArray() {
         const char* typeName = typeid(T).name();
 
-        assert(mComponentTypes.find(typeName) != mComponentTypes.end() && "Component not registered before use.");
+        if (mComponentArrays.find(typeName) == mComponentArrays.end()) {
+             std::cerr << "CRITICAL: Component type NOT FOUND in mComponentArrays: " << typeName << std::endl;
+             return nullptr;
+        }
 
         return std::static_pointer_cast<ComponentArray<T>>(mComponentArrays[typeName]);
     }

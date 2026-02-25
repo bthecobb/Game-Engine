@@ -1,10 +1,23 @@
 #include "Animation/IKSolver.h"
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/vector_angle.hpp>
+#include <algorithm>
 #include <iostream>
 
 namespace CudaGame {
 namespace Animation {
+
+// Helper: Get position from matrix
+static glm::vec3 GetPosition(const glm::mat4& mat) {
+    return glm::vec3(mat[3]);
+}
+
+// Helper: Set position in matrix
+static void SetPosition(glm::mat4& mat, const glm::vec3& pos) {
+    mat[3] = glm::vec4(pos, 1.0f);
+}
 
 bool IKSolver::SolveTwoBoneIK(
     const glm::vec3& rootPos, 
@@ -42,13 +55,7 @@ bool IKSolver::SolveTwoBoneIK(
     cosBeta = glm::clamp(cosBeta, -1.0f, 1.0f);
     
     float alpha = acos(cosAlpha);
-    float beta = acos(cosBeta); // Internal angle (usually < 180)
-    // The actual bend deviation from straight line involves (PI - beta) usually?
-    // Let's think: if beta is small, leg is folded. if beta is 180 (PI), leg is straight.
-    // joint rotation usually starts at 0 (straight) or 0 (folded).
-    // For a knee, 0 usually means straight. 
-    // Wait, Bind Pose dictates this. 
-    // Let's assume we output GLOBAL rotation corrections.
+    // float beta = acos(cosBeta); // Unused variable
     
     // 3. Solving Rotation
     
@@ -64,16 +71,8 @@ bool IKSolver::SolveTwoBoneIK(
     }
     planeNormal = glm::normalize(planeNormal);
     
-    // Compute local Up vector for the root joint (perpendicular to target vector in the plane)
-    glm::vec3 rootUp = glm::cross(planeNormal, rootToTarget);
-    
     // Angle Alpha is how much we rotate AWAY from the target vector, INTO the plane (towards pole).
     // Rotation Axis is 'planeNormal'.
-    // If pole vector is "Forward" (Knee), we rotate 'alpha' around planeNormal.
-    
-    // ROTATION 1: Pivot Root to look at Target
-    // Simple LookAt from Root to Target, with Up as planeNormal? 
-    // Ideally we want Root->Joint vector to be rotated by Alpha from the Root->Target line.
     
     // Let's compute the desired direction of the Upper Leg (Root->Joint).
     // It lies in the plane, rotated by Alpha from Root->Target.
@@ -81,31 +80,21 @@ bool IKSolver::SolveTwoBoneIK(
     glm::vec3 desiredUpperDir = alphaRot * rootToTarget;
     
     // Now we need the rotation that takes the INITIAL bind Upper Dir to this DESIRED dir.
-    // BUT usually IK outputs absolute rotations or overrides.
-    // Since we are outputting "New Global Rotation", let's construct it.
-    // We need to know the bone's local forward axis.
-    // Assumption: Bones point along Y axis? Or X? 
-    // In our `ProceduralAnimation`, legs point down (-Y).
+    // Assumption: Bones point along -Y axis in our procedural skeleton.
     glm::vec3 boneForward = glm::vec3(0.0f, -1.0f, 0.0f); 
     
     // Create Root Rotation
     // Align BoneForward (-Y) to DesiredUpperDir
     outRootRot = glm::rotation(boneForward, desiredUpperDir);
-    // But this leaves Twist undefined. We need to align the "Knee Axis" too.
-    // The Knee Axis (rotation axis) is the Plane Normal.
-    // The bone's local rotation axis (e.g. X axis) should align with Plane Normal.
+    
+    // Twist correction: Align the "Knee Axis" (X) with Plane Normal
     glm::vec3 boneAxis = glm::vec3(1.0f, 0.0f, 0.0f); // X axis is knee bend axis
     glm::vec3 currentAxis = outRootRot * boneAxis;
     glm::quat twist = glm::rotation(currentAxis, planeNormal);
     outRootRot = twist * outRootRot;
     
     // Create Joint Rotation (Knee)
-    // The Lower Leg direction is rotated from Upper Leg by (PI - Beta).
-    // Or simpler: We know where the Joint IS (Root + DesiredUpper * a).
-    // We know where End IS (Target).
-    // LowerDir = normalize(Target - Joint).
-    // Joint Rotation should align BoneForward to LowerDir.
-    // And ensure its axis aligns with plane normal.
+    // The Lower Leg direction is derived from Joint -> Target
     glm::vec3 desiredLowerDir = glm::normalize(targetPos - (rootPos + desiredUpperDir * a));
     outJointRot = glm::rotation(boneForward, desiredLowerDir);
     
@@ -115,6 +104,161 @@ bool IKSolver::SolveTwoBoneIK(
     outJointRot = twist * outJointRot;
     
     return true;
+}
+
+// FABRIK Solver
+void IKSolver::SolveFABRIK(const Skeleton& skeleton, std::vector<glm::mat4>& globalTransforms, const IKChain& chain, const glm::vec3& target) {
+    if (chain.jointIndices.empty()) return;
+    
+    // 1. Extract chain positions
+    std::vector<glm::vec3> chainPositions;
+    std::vector<float> boneLengths;
+    std::vector<int> indices = chain.jointIndices; // Ordered Parent -> Child
+    
+    for (int idx : indices) {
+        if (idx >= 0 && idx < (int)globalTransforms.size()) {
+            chainPositions.push_back(GetPosition(globalTransforms[idx]));
+        } else {
+            return; // Invalid index
+        }
+    }
+    
+    // Calculate lengths
+    for (size_t i = 0; i < chainPositions.size() - 1; ++i) {
+        boneLengths.push_back(glm::length(chainPositions[i+1] - chainPositions[i]));
+    }
+    
+    // Root position (fixed)
+    glm::vec3 rootPos = chainPositions[0];
+    
+    // Check reachability
+    float totalLength = 0.0f;
+    for (float l : boneLengths) totalLength += l;
+    
+    float distToTarget = glm::distance(rootPos, target);
+    
+    if (distToTarget > totalLength) {
+        // Target unreachable - stretch
+        for (size_t i = 0; i < boneLengths.size(); ++i) {
+            float r = glm::distance(target, rootPos);
+            float lambda = boneLengths[i] / r;
+            chainPositions[i+1] = (1.0f - lambda) * chainPositions[i] + lambda * target;
+        }
+    } else {
+        // Target reachable - iterate
+        int n = (int)chainPositions.size();
+        for (int iter = 0; iter < chain.iterationCount; ++iter) {
+            // Backward: Set end effector to target
+            chainPositions[n-1] = target;
+            for (int i = n - 2; i >= 0; --i) {
+                float r = glm::distance(chainPositions[i+1], chainPositions[i]);
+                float lambda = boneLengths[i] / r;
+                chainPositions[i] = (1.0f - lambda) * chainPositions[i+1] + lambda * chainPositions[i];
+            }
+            
+            // Forward: Set root to original
+            chainPositions[0] = rootPos;
+            for (int i = 0; i < n - 1; ++i) {
+                float r = glm::distance(chainPositions[i+1], chainPositions[i]);
+                float lambda = boneLengths[i] / r;
+                chainPositions[i+1] = (1.0f - lambda) * chainPositions[i] + lambda * chainPositions[i+1];
+            }
+            
+            // Check tolerance
+            if (glm::distance(chainPositions[n-1], target) < chain.tolerance) {
+                break;
+            }
+        }
+    }
+    
+    // Apply new positions to rotations
+    for (size_t i = 0; i < indices.size() - 1; ++i) {
+        int currentIndex = indices[i];
+        int nextIndex = indices[i+1];
+        
+        glm::vec3 currentPos = GetPosition(globalTransforms[currentIndex]);
+        glm::vec3 nextPos = GetPosition(globalTransforms[nextIndex]); // Old next pos (from matrix)
+        
+        glm::vec3 desiredNextPos = chainPositions[i+1];
+        
+        glm::vec3 currentDir = glm::normalize(nextPos - currentPos);
+        glm::vec3 desiredDir = glm::normalize(desiredNextPos - currentPos);
+        
+        // Compute rotation from currentDir to desiredDir
+        if (glm::dot(currentDir, desiredDir) < 0.999f) {
+           glm::quat rot = glm::rotation(currentDir, desiredDir);
+           glm::mat4 rotMat = glm::toMat4(rot);
+           
+           // Apply to current bone: Rotate orientation
+           glm::vec3 pos = GetPosition(globalTransforms[currentIndex]);
+           globalTransforms[currentIndex][3] = glm::vec4(0,0,0,1); // zero pos
+           globalTransforms[currentIndex] = rotMat * globalTransforms[currentIndex];
+           globalTransforms[currentIndex][3] = glm::vec4(pos, 1.0f); // restore pos
+        }
+        
+        // Set exact position
+        SetPosition(globalTransforms[indices[i+1]], chainPositions[i+1]);
+    }
+}
+
+// CCD Solver
+void IKSolver::SolveCCD(const Skeleton& skeleton, std::vector<glm::mat4>& globalTransforms, const IKChain& chain, const glm::vec3& target) {
+    if (chain.jointIndices.empty()) return;
+    int endEffectorIdx = chain.jointIndices.back();
+    
+    for (int iter = 0; iter < chain.iterationCount; ++iter) {
+         // Check distance
+         glm::vec3 currentEffectorPos = GetPosition(globalTransforms[endEffectorIdx]);
+         if (glm::distance(currentEffectorPos, target) < chain.tolerance) break;
+         
+         // Iterate backwards from second-to-last joint
+         for (int i = (int)chain.jointIndices.size() - 2; i >= 0; --i) {
+             int jointIdx = chain.jointIndices[i];
+             glm::mat4& jointMat = globalTransforms[jointIdx];
+             glm::vec3 jointPos = GetPosition(jointMat);
+             
+             glm::vec3 toEffector = glm::normalize(GetPosition(globalTransforms[endEffectorIdx]) - jointPos);
+             glm::vec3 toTarget = glm::normalize(target - jointPos);
+             
+             // Rotate joint to align toEffector with toTarget
+             float cosTheta = glm::clamp(glm::dot(toEffector, toTarget), -1.0f, 1.0f);
+             if (cosTheta < 0.9999f) {
+                 float angle = glm::acos(cosTheta);
+                 glm::vec3 axis = glm::normalize(glm::cross(toEffector, toTarget));
+                 
+                 // Apply rotation around jointPos
+                 glm::mat4 rot = glm::rotate(angle, axis);
+                 
+                 // Apply to this joint's rotation
+                 glm::vec3 pos = GetPosition(jointMat);
+                 jointMat[3] = glm::vec4(0,0,0,1);
+                 jointMat = rot * jointMat;
+                 jointMat[3] = glm::vec4(pos, 1.0f);
+                 
+                 // Propagate change to children
+                 for (size_t j = i + 1; j < chain.jointIndices.size(); ++j) {
+                     int childIdx = chain.jointIndices[j];
+                     glm::mat4& childMat = globalTransforms[childIdx];
+                     
+                     // childNew = rot * (childOld - pivot) + pivot
+                     // Simplified translation logic
+                     glm::vec3 childPos = GetPosition(childMat);
+                     glm::vec3 relPos = childPos - jointPos;
+                     // Rotate Position
+                     // glm::vec3 newRelPos = glm::rotate(rot, relPos); // glm::rotate takes mat4 or quat
+                     glm::vec3 newRelPos = glm::vec3(rot * glm::vec4(relPos, 1.0f));
+                     
+                     // Rotate Orientation (simple approximation)
+                     // childMat = rot * childMat; // This rotates around global origin? No.
+                     
+                     // Correct way: Apply 'rot' to childMat
+                     childMat[3] = glm::vec4(0,0,0,1);
+                     childMat = rot * childMat;
+                     childMat[3] = glm::vec4(jointPos + newRelPos, 1.0f);
+                 }
+             }
+         }
+    }
 }
 
 } // namespace Animation

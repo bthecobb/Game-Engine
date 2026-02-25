@@ -12,7 +12,7 @@ namespace Rendering {
 
 // Represents a 3D mesh asset
 struct MeshComponent {
-    std::string modelPath;
+    char modelPath[64] = ""; // Fixed size to avoid std::string ABI issues
     // OpenGL resources
     uint32_t vaoId = 0;
     uint32_t vbo = 0;

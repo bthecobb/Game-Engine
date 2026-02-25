@@ -4,6 +4,7 @@
 #include "Rendering/RenderComponents.h"
 #include "Animation/AnimationComponent.h"
 #include "Animation/IKSolver.h"
+#include "Physics/PhysXPhysicsSystem.h" // Added
 #include <iostream>
 
 namespace CudaGame {
@@ -56,21 +57,63 @@ void IKSystem::Update(float deltaTime) {
 
 // Placeholder implementations for IK system methods...
 
-void IKSystem::UpdateFootPlacement(uint32_t entityId, float deltaTime) {
-    // Check if entity has required components
-    if (!m_coordinator->HasComponent<Rendering::TransformComponent>(entityId) ||
-        !m_coordinator->HasComponent<IKComponent>(entityId)) {
+void IKSystem::TriggerFootstep(Core::Entity entity, const std::string& chainName) {
+    if (!m_coordinator->HasComponent<IKComponent>(entity) || !m_physicsSystem) return;
+    auto& ikComp = m_coordinator->GetComponent<IKComponent>(entity);
+    
+    // Find the chain to enable ground tracking
+    for (auto& chain : ikComp.chains) {
+        if (chain.name == chainName) {
+            chain.isEnabled = true; // Actively adapt to ground
+            
+            // We use a simple custom timer stored in ikTargets to track IK fade-out,
+            // or we just leave it governed by the procedural generation. 
+            // For now, enable it so Update() will solve it each frame.
+            return;
+        }
+    }
+}
+
+void IKSystem::UpdateFootPlacement(uint32_t entityId, float /*deltaTime*/) {
+    if (!m_physicsSystem || !m_coordinator->HasComponent<Rendering::TransformComponent>(entityId) ||
+        !m_coordinator->HasComponent<IKComponent>(entityId) ||
+        !m_coordinator->HasComponent<AnimationComponent>(entityId)) {
         return;
     }
     
     auto& transform = m_coordinator->GetComponent<Rendering::TransformComponent>(entityId);
-    auto& ikData = m_coordinator->GetComponent<IKComponent>(entityId);
+    auto& ikComp = m_coordinator->GetComponent<IKComponent>(entityId);
+    auto& anim = m_coordinator->GetComponent<AnimationComponent>(entityId);
     
-    // Placeholder implementation for foot placement
-    // Would perform raycasts to ground and adjust foot positions
+    // Only adapt chains that are currently flagged as planted (e.g. by Footstep event)
+    glm::mat4 modelMatrix = transform.getMatrix();
+    
+    for (auto& chain : ikComp.chains) {
+        if (!chain.isEnabled || chain.endJointIndex < 0 || chain.endJointIndex >= (int)anim.globalTransforms.size()) {
+            continue;
+        }
+        
+        // 1. Where does the animation *want* the foot to be in World Space?
+        glm::mat4 localFootMat = anim.globalTransforms[chain.endJointIndex];
+        glm::vec3 worldFootPos = glm::vec3(modelMatrix * localFootMat[3]);
+        
+        // 2. Cast a ray down from above the foot
+        glm::vec3 origin = worldFootPos + glm::vec3(0.0f, 0.5f, 0.0f); // Start 0.5m above foot
+        glm::vec3 dir(0.0f, -1.0f, 0.0f); // Straight down
+        glm::vec3 hitPos;
+        
+        if (m_physicsSystem->Raycast(origin, dir, 1.0f, hitPos)) {
+            // 3. Set the target to the hit position (+ ankle offset)
+            float ankleHeight = 0.1f; // Adjust based on character geometry
+            ikComp.SetTarget(chain.name, hitPos + glm::vec3(0.0f, ankleHeight, 0.0f));
+        } else {
+            // No ground found beneath foot, disable IK for this leg
+            chain.isEnabled = false;
+        }
+    }
 }
 
-void IKSystem::UpdateHandPlacement(uint32_t entityId, float deltaTime) {
+void IKSystem::UpdateHandPlacement(uint32_t entityId, float /*deltaTime*/) {
     // Check if entity has required components
     if (!m_coordinator->HasComponent<Rendering::TransformComponent>(entityId) ||
         !m_coordinator->HasComponent<IKComponent>(entityId)) {
@@ -84,7 +127,7 @@ void IKSystem::UpdateHandPlacement(uint32_t entityId, float deltaTime) {
     // Would solve hand positions for interactions
 }
 
-void IKSystem::UpdateLookAt(uint32_t entityId, float deltaTime) {
+void IKSystem::UpdateLookAt(uint32_t entityId, float /*deltaTime*/) {
     // Check if entity has required components
     if (!m_coordinator->HasComponent<Rendering::TransformComponent>(entityId) ||
         !m_coordinator->HasComponent<IKComponent>(entityId)) {
@@ -133,7 +176,7 @@ void IKSystem::SolveIKChain(uint32_t entityId, const IKChain& chain) {
     // If 'targetPos' is World Space, we need to transform it to Model Space.
     
     // Assume targetPos is World Space. We need it in Model Space.
-    glm::mat4 modelMatrix = transform.GetTransform();
+    glm::mat4 modelMatrix = transform.getMatrix();
     glm::mat4 invModel = glm::inverse(modelMatrix);
     glm::vec3 modelTarget = glm::vec3(invModel * glm::vec4(targetPos, 1.0f));
     

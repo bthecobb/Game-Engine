@@ -1,3 +1,4 @@
+// Shader: Deferred Geometry Pass (G-Buffer Output)
 #version 330 core
 
 layout (location = 0) out vec3 gPosition;      // World position

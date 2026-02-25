@@ -3001,7 +3001,9 @@ void DX12RenderPipeline::UploadBoneMatrices() {
     if (SUCCEEDED(m_globalBoneBuffer->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)))) {
         
         uint32_t currentBoneOffset = 0;
-        
+        static int logCounter = 0;
+        logCounter++;
+
         for (auto* mesh : m_meshes) {
             if (!mesh) continue;
             
@@ -3016,6 +3018,8 @@ void DX12RenderPipeline::UploadBoneMatrices() {
                 // Copy data
                 memcpy(mappedData + currentBoneOffset, mesh->boneMatrices.data(), boneCount * sizeof(glm::mat4));
                 
+
+
                 // Update Offset for Shader
                 mesh->globalBoneOffset = currentBoneOffset;
                 

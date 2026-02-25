@@ -7,6 +7,7 @@
 #include "Gameplay/LevelComponents.h"
 #include "Gameplay/PlayerComponents.h"
 #include "Rendering/RenderComponents.h"
+#include "Gameplay/AnimationControllerComponent.h"
 #include <memory>
 
 // GLFW key constants (to avoid including GLFW header in tests)
@@ -47,6 +48,7 @@ public:
         coordinator->RegisterComponent<CudaGame::Gameplay::WallComponent>();
         coordinator->RegisterComponent<CudaGame::Gameplay::PlayerInputComponent>();
         coordinator->RegisterComponent<CudaGame::Gameplay::PlayerMovementComponent>();
+        coordinator->RegisterComponent<CudaGame::Gameplay::AnimationControllerComponent>();
         
         // Register systems with Coordinator (or get existing ones after Cleanup)
         // Cleanup() recreates SystemManager, so we need fresh system pointers
@@ -132,6 +134,7 @@ private:
         
         // Input (empty by default)
         coordinator->AddComponent(entity, CudaGame::Gameplay::PlayerInputComponent{});
+        coordinator->AddComponent(entity, CudaGame::Gameplay::AnimationControllerComponent{});
     }
 
 public:

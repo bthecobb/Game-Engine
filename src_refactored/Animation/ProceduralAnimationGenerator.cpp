@@ -73,109 +73,186 @@ std::shared_ptr<Skeleton> ProceduralAnimationGenerator::CreateHumanoidSkeleton()
 std::shared_ptr<AnimationClip> ProceduralAnimationGenerator::CreateIdleClip(std::shared_ptr<Skeleton> skeleton) {
     auto clip = std::make_shared<AnimationClip>();
     clip->name = "Procedural_Idle";
-    clip->duration = 1.0f;
-    // clip->ticksPerSecond = 30.0f; // Removed
+    clip->duration = 2.0f;
+    clip->isLooping = true;
     
-    // Create trivial keyframes for all bones (Identity)
+    const float D = clip->duration;
+    const float f = 0.5f; // breathing Hz
+    const int   K = 32;   // keyframes
+    const float dt = D / (K - 1);
+
     for (const auto& bone : skeleton->bones) {
         AnimationClip::Channel channel;
         channel.boneName = bone.name;
         
-        // Determine frames (Spine needs 3 for breathing, others 1)
-        std::vector<float> keyTimes = {0.0f};
-        if (bone.name == "Spine") {
-            keyTimes = {0.0f, 0.5f, 1.0f};
-        }
-        
-        // Base Position (Bind Pose approximation)
-        glm::vec3 basePos = glm::vec3(0.0f);
-        if (bone.name == "Hips") basePos = glm::vec3(0.0f, 1.0f, 0.0f);
+        // Initialize channel with K keyframes at bind-pose
+        glm::vec3 basePos(0.0f);
+        if (bone.name == "Hips")       basePos = glm::vec3(0.0f, 1.0f, 0.0f);
         else if (bone.name == "Spine") basePos = glm::vec3(0.0f, 0.2f, 0.0f);
-        else if (bone.name == "LeftUpLeg") basePos = glm::vec3(-0.15f, -0.1f, 0.0f);
-        else if (bone.name == "LeftLeg") basePos = glm::vec3(0.0f, -0.4f, 0.0f);
-        else if (bone.name == "RightUpLeg") basePos = glm::vec3(0.15f, -0.1f, 0.0f);
-        else if (bone.name == "RightLeg") basePos = glm::vec3(0.0f, -0.4f, 0.0f);
-        
-        for (float t : keyTimes) {
+        else if (bone.name == "LeftUpLeg")  basePos = glm::vec3(-0.15f, -0.1f, 0.0f);
+        else if (bone.name == "RightUpLeg") basePos = glm::vec3( 0.15f, -0.1f, 0.0f);
+        else if (bone.name == "LeftLeg" || bone.name == "RightLeg") basePos = glm::vec3(0.0f, -0.4f, 0.0f);
+
+        for (int i = 0; i < K; ++i) {
+            float t = i * dt;
+            float s = std::sin(t * f * 6.28318f);
+
             channel.times.push_back(t);
-            channel.positions.push_back(basePos);
-            channel.scales.push_back(glm::vec3(1.0f));
-            
-            // Rotation
-            glm::quat rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            glm::vec3 pos = basePos;
+            glm::quat rot(1.0f, 0.0f, 0.0f, 0.0f);
+
             if (bone.name == "Spine") {
-                if (t > 0.4f && t < 0.6f) { // approx 0.5
-                    rot = glm::quat(glm::vec3(0.05f, 0.0f, 0.0f));
-                }
+                rot = glm::quat(glm::vec3(0.04f * s, 0.0f, 0.02f * s)); // breathe + micro sway
+            } else if (bone.name == "Hips") {
+                pos.z += 0.012f * s;    // lateral sway
+                pos.y += 0.008f * s;    // micro bob
+            } else if (bone.name == "Head") {
+                rot = glm::quat(glm::vec3(0.025f * s, 0.0f, 0.0f)); // slow nod
+            } else if (bone.name == "LeftForeArm" || bone.name == "RightForeArm") {
+                rot = glm::quat(glm::vec3(0.30f, 0.0f, 0.0f)); // hang angle
             }
+
+            channel.positions.push_back(pos);
             channel.rotations.push_back(rot);
+            channel.scales.push_back(glm::vec3(1.0f));
         }
-        
         clip->channels.push_back(channel);
     }
-    
     return clip;
 }
 
 std::shared_ptr<AnimationClip> ProceduralAnimationGenerator::CreateWalkClip(std::shared_ptr<Skeleton> skeleton) {
     auto clip = std::make_shared<AnimationClip>();
     clip->name = "Procedural_Walk";
-    clip->duration = 1.0f;
-    // clip->ticksPerSecond = 30.0f; // Removed
-    
-    int frames = 30;
-    
+    clip->duration = 1.2f;
+    clip->isLooping = true;
+
+    const int   K  = 32;
+    const float D  = clip->duration;
+    const float dt = D / (K - 1);
+    const float f  = 1.0f / D; // cycle Hz
+
     for (const auto& bone : skeleton->bones) {
         AnimationClip::Channel channel;
         channel.boneName = bone.name;
-        
-        // Bind Pose Position (Simplified - assuming matches Skeleton)
+
         glm::vec3 bindPos(0.0f);
-        if (bone.name == "Hips") bindPos = glm::vec3(0.0f, 1.0f, 0.0f);
-        if (bone.name == "LeftUpLeg") bindPos = glm::vec3(-0.15f, -0.1f, 0.0f);
-        if (bone.name == "RightUpLeg") bindPos = glm::vec3(0.15f, -0.1f, 0.0f);
+        if (bone.name == "Hips")       bindPos = glm::vec3(0.0f, 1.0f, 0.0f);
+        if (bone.name == "LeftUpLeg")  bindPos = glm::vec3(-0.15f, -0.1f, 0.0f);
+        if (bone.name == "RightUpLeg") bindPos = glm::vec3( 0.15f, -0.1f, 0.0f);
         if (bone.name == "LeftLeg" || bone.name == "RightLeg") bindPos = glm::vec3(0.0f, -0.4f, 0.0f);
-        // ... others
-        
-        for (int i = 0; i <= frames; ++i) {
-            float time = (float)i / 30.0f; // 0 to 1
-            float angle = time * 6.28318f; // 2*PI
-            
-            // Rotation
-            glm::quat rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-            
-            if (bone.name == "LeftUpLeg") {
-                // Sine wave X-axis
-                rot = glm::angleAxis(sin(angle) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+        for (int i = 0; i <= K; ++i) {
+            float t = (float)i * dt;
+            float a = t * 6.28318f * f; // angle in radians
+
+            glm::vec3 pos = bindPos;
+            glm::quat rot(1.0f, 0.0f, 0.0f, 0.0f);
+
+            if (bone.name == "Hips") {
+                pos.y += 0.05f * std::sin(a * 2.0f); // bob 2x per step
+                pos.z += 0.04f * std::sin(a);         // lateral sway
+            } else if (bone.name == "Spine") {
+                rot = glm::quat(glm::vec3(0.0f, 0.10f * std::sin(a + 3.14f), 0.0f)); // counter-rotation
+            } else if (bone.name == "LeftUpLeg") {
+                rot = glm::angleAxis( std::sin(a)         * 0.50f, glm::vec3(1,0,0));
             } else if (bone.name == "RightUpLeg") {
-                // Cosine wave (phase shift)
-                rot = glm::angleAxis(sin(angle + 3.14f) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.50f, glm::vec3(1,0,0));
             } else if (bone.name == "LeftLeg") {
-                // Knee bends only positive
-                rot = glm::angleAxis(abs(sin(angle)) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+                rot = glm::angleAxis(std::abs(std::sin(a))         * 0.50f + 0.25f, glm::vec3(1,0,0));
             } else if (bone.name == "RightLeg") {
-                // Knee bends only positive (match RightUpLeg phase)
-                rot = glm::angleAxis(abs(sin(angle + 3.14f)) * 0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+                rot = glm::angleAxis(std::abs(std::sin(a + 3.14f)) * 0.50f + 0.25f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftFoot") {
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.25f, glm::vec3(1,0,0)); // ankle push-off
+            } else if (bone.name == "RightFoot") {
+                rot = glm::angleAxis( std::sin(a)         * 0.25f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftArm") {
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.30f, glm::vec3(1,0,0)); // opposite legs
+            } else if (bone.name == "RightArm") {
+                rot = glm::angleAxis( std::sin(a)         * 0.30f, glm::vec3(1,0,0));
+            } else if (bone.name == "Head") {
+                pos.y += 0.015f * std::sin(a * 2.0f); // head bob
             }
-            
-            channel.times.push_back(time);
-            channel.positions.push_back(bindPos);
+
+            channel.times.push_back(t);
+            channel.positions.push_back(pos);
             channel.rotations.push_back(rot);
             channel.scales.push_back(glm::vec3(1.0f));
         }
         clip->channels.push_back(channel);
     }
-    
     return clip;
 }
 
 std::shared_ptr<AnimationClip> ProceduralAnimationGenerator::CreateRunClip(std::shared_ptr<Skeleton> skeleton) {
-     auto clip = CreateWalkClip(skeleton);
-     clip->name = "Procedural_Run";
-     // Increase Amplitude by modifying keys? 
-     // For simplicity, just return walk for now, but name it run so graph treats it diff
-     // In real implementation we'd scale the rotation angles.
-     return clip;
+    auto clip = std::make_shared<AnimationClip>();
+    clip->name = "Procedural_Run";
+    clip->duration = 0.8f;
+    clip->isLooping = true;
+
+    const int   K  = 32;
+    const float D  = clip->duration;
+    const float dt = D / (K - 1);
+    const float f  = 1.0f / D;
+
+    for (const auto& bone : skeleton->bones) {
+        AnimationClip::Channel channel;
+        channel.boneName = bone.name;
+
+        glm::vec3 bindPos(0.0f);
+        if (bone.name == "Hips")       bindPos = glm::vec3(0.0f, 0.95f, 0.0f); // slight crouch
+        if (bone.name == "LeftUpLeg")  bindPos = glm::vec3(-0.15f, -0.1f, 0.0f);
+        if (bone.name == "RightUpLeg") bindPos = glm::vec3( 0.15f, -0.1f, 0.0f);
+        if (bone.name == "LeftLeg" || bone.name == "RightLeg") bindPos = glm::vec3(0.0f, -0.4f, 0.0f);
+
+        for (int i = 0; i <= K; ++i) {
+            float t = (float)i * dt;
+            float a = t * 6.28318f * f;
+
+            glm::vec3 pos = bindPos;
+            glm::quat rot(1.0f, 0.0f, 0.0f, 0.0f);
+
+            if (bone.name == "Hips") {
+                pos.y += 0.10f * std::sin(a * 2.0f);
+                pos.z += 0.05f * std::sin(a);
+            } else if (bone.name == "Spine") {
+                float lean = 0.15f; // constant forward lean
+                rot = glm::quat(glm::vec3(lean, 0.15f * std::sin(a + 3.14f), 0.0f));
+            } else if (bone.name == "LeftUpLeg") {
+                rot = glm::angleAxis( std::sin(a)         * 0.80f + 0.20f, glm::vec3(1,0,0));
+            } else if (bone.name == "RightUpLeg") {
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.80f + 0.20f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftLeg") {
+                rot = glm::angleAxis(std::abs(std::sin(a))         * 0.80f + 0.60f, glm::vec3(1,0,0));
+            } else if (bone.name == "RightLeg") {
+                rot = glm::angleAxis(std::abs(std::sin(a + 3.14f)) * 0.80f + 0.60f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftFoot") {
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.55f + 0.05f, glm::vec3(1,0,0));
+            } else if (bone.name == "RightFoot") {
+                rot = glm::angleAxis( std::sin(a)         * 0.55f + 0.05f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftArm") {
+                rot = glm::angleAxis( std::sin(a + 3.14f) * 0.60f + 0.20f, glm::vec3(1,0,0));
+            } else if (bone.name == "RightArm") {
+                rot = glm::angleAxis( std::sin(a)         * 0.60f + 0.20f, glm::vec3(1,0,0));
+            } else if (bone.name == "LeftForeArm" || bone.name == "RightForeArm") {
+                rot = glm::quat(glm::vec3(1.50f, 0.0f, 0.0f)); // bent elbow pump
+            } else if (bone.name == "Head") {
+                pos.y += 0.04f * std::sin(a * 2.0f);
+            }
+
+            channel.times.push_back(t);
+            channel.positions.push_back(pos);
+            channel.rotations.push_back(rot);
+            channel.scales.push_back(glm::vec3(1.0f));
+        }
+        clip->channels.push_back(channel);
+    }
+
+    // Footstep events (for parity with AnimationBuilder path)
+    clip->AddEvent(0.0f,   "Footstep_Left",  nullptr);
+    clip->AddEvent(D * 0.5f, "Footstep_Right", nullptr);
+
+    return clip;
 }
 
 std::shared_ptr<AnimationClip> ProceduralAnimationGenerator::CreateWaveClip(std::shared_ptr<Skeleton> skeleton) {

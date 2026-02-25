@@ -300,6 +300,23 @@ void PhysXPhysicsSystem::SyncTransformToPhysX(Core::Entity entity, physx::PxRigi
     }
 }
 
+bool PhysXPhysicsSystem::Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance, glm::vec3& outHitPosition) {
+    if (!m_pxScene) return false;
+
+    physx::PxVec3 pxOrigin(origin.x, origin.y, origin.z);
+    physx::PxVec3 pxDir(direction.x, direction.y, direction.z);
+    pxDir.normalize();
+
+    physx::PxRaycastBuffer hit;
+    bool status = m_pxScene->raycast(pxOrigin, pxDir, maxDistance, hit);
+    
+    if (status && hit.hasBlock) {
+        outHitPosition = glm::vec3(hit.block.position.x, hit.block.position.y, hit.block.position.z);
+        return true;
+    }
+    return false;
+}
+
 } // namespace Physics
 } // namespace CudaGame
 

@@ -21,7 +21,7 @@ struct BlendInput {
 class BlendNode {
 public:
     virtual ~BlendNode() = default;
-    virtual void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) = 0;
+    virtual void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) = 0;
     
     std::string GetName() const { return m_name; }
     void SetName(const std::string& name) { m_name = name; }
@@ -36,7 +36,7 @@ public:
     ClipNode(AnimationClip* clip, float playbackSpeed = 1.0f) 
         : m_clip(clip), m_playbackSpeed(playbackSpeed) {}
 
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) override;
 
 private:
     AnimationClip* m_clip;
@@ -49,7 +49,7 @@ public:
     LinearBlendNode(std::shared_ptr<BlendNode> inputA, std::shared_ptr<BlendNode> inputB, const std::string& blendInputName)
         : m_inputA(inputA), m_inputB(inputB), m_blendInputName(blendInputName) {}
     
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) override;
 
 private:
     std::shared_ptr<BlendNode> m_inputA;
@@ -63,7 +63,7 @@ public:
     void AddChild(std::shared_ptr<BlendNode> node, float threshold);
     void SetBlendInput(const std::string& inputName) { m_blendInputName = inputName; }
 
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) override;
 
 private:
     struct ChildNode {
@@ -86,7 +86,7 @@ public:
         m_blendInputYName = inputYName;
     }
 
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) override;
 
 private:
     std::shared_ptr<BlendNode> m_children[4]; // TL, TR, BL, BR
@@ -94,10 +94,7 @@ private:
     std::string m_blendInputYName;
 };
 
-// Mask defining per-bone weights (0.0 = Base, 1.0 = Overlay)
-struct BoneMask {
-    std::vector<float> weights;
-};
+
 
 // A node that layers an overlay animation on top of a base animation using a mask
 class LayeredBlendNode : public BlendNode {
@@ -106,7 +103,7 @@ public:
                      std::shared_ptr<BoneMask> mask, const std::string& alphaInputName = "")
         : m_baseNode(base), m_overlayNode(overlay), m_mask(mask), m_alphaInputName(alphaInputName) {}
         
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs) override;
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton) override;
 
 private:
     std::shared_ptr<BlendNode> m_baseNode;
@@ -123,7 +120,7 @@ public:
     void SetRoot(std::shared_ptr<BlendNode> root) { m_rootNode = root; }
     std::shared_ptr<BlendNode> GetRoot() { return m_rootNode; }
     
-    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs);
+    void Evaluate(float time, std::vector<BoneTransform>& outPose, const std::vector<BlendInput>& inputs, const Skeleton& skeleton);
 
 private:
     std::shared_ptr<BlendNode> m_rootNode;
