@@ -36,11 +36,26 @@ void WallRunningSystem::Update(float deltaTime) {
 }
 
 void WallRunningSystem::UpdateWallRunning(float deltaTime) {
-// Get coordinator to access entity components
     auto& coordinator = Core::Coordinator::GetInstance();
     
-    // TODO: Implement entity queries when ECS system is ready
-    // For now, placeholder implementation
+    // Iterate over all entities with CharacterController + Rigidbody + Transform
+    // Note: We normally cache this group in mEntities if the system signature is set
+    // But for safety/robustness we'll iterate the entities registered to this system
+    
+    for (auto const& entity : mEntities) {
+        // Double check components exist (safety)
+        if (!coordinator.HasComponent<CharacterControllerComponent>(entity) ||
+            !coordinator.HasComponent<RigidbodyComponent>(entity) ||
+            !coordinator.HasComponent<Rendering::TransformComponent>(entity)) {
+            continue;
+        }
+
+        auto& controller = coordinator.GetComponent<CharacterControllerComponent>(entity);
+        auto& rigidbody = coordinator.GetComponent<RigidbodyComponent>(entity);
+        const auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
+        
+        UpdateCharacterController(entity, controller, rigidbody, transform, deltaTime);
+    }
 }
 
 void WallRunningSystem::UpdateCharacterController(Core::Entity entity, CharacterControllerComponent& controller, 

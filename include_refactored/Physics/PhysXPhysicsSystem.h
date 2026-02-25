@@ -2,6 +2,7 @@
 
 #include "Core/System.h"
 #include <PxPhysicsAPI.h>
+#include <glm/glm.hpp>
 #include <memory>
 #include <unordered_map>
 
@@ -23,6 +24,9 @@ public:
     // PhysX scene access
     physx::PxScene* GetScene() { return m_pxScene; }
     physx::PxPhysics* GetPhysics() { return m_pxPhysics; }
+    
+    // Core Physics Queries
+    bool Raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance, glm::vec3& outHitPosition);
 
 private:
     // PhysX core objects

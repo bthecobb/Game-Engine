@@ -22,11 +22,115 @@ void ParticleSystem::Shutdown() {
 }
 
 void ParticleSystem::Update(float deltaTime) {
-    // Main update loop for all particle systems
-    // This will be expanded with CUDA integration and full simulation
+    auto& coordinator = Core::Coordinator::GetInstance();
+    
+    // Update Camera Position for Sorting/LOD
+    // (In a real system, we'd get the main camera entity)
+    // For now, assume origin or wait for specific SetCamera call
+    
+    for (auto const& entity : mEntities) {
+        auto& system = coordinator.GetComponent<ParticleSystemComponent>(entity);
+        const auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
+        
+        UpdateParticleSystem(entity, system, transform, deltaTime);
+    }
 }
 
-// Placeholder implementations for other ParticleSystem methods...
+void ParticleSystem::UpdateParticleSystem(Core::Entity entity, ParticleSystemComponent& system, 
+                                        const Rendering::TransformComponent& transform, float deltaTime) {
+    if (!system.isPlaying) return;
+    
+    // 1. Update Lifetime
+    system.systemAge += deltaTime;
+    if (!system.isLooping && system.systemAge >= system.systemLifetime) {
+        system.isPlaying = false;
+        return;
+    }
+    
+    // 2. Emission
+    UpdateEmission(system, transform.position, deltaTime);
+    
+    // 3. Simulation
+    if (system.useGPUSimulation) {
+        UpdateGPUSimulation(entity, system, deltaTime);
+    } else {
+        SimulateParticles(system, deltaTime);
+    }
+    
+    // 4. Update Stats
+    system.stats.particlesActiveThisFrame = system.activeParticles;
+}
+
+void ParticleSystem::UpdateEmission(ParticleSystemComponent& system, const glm::vec3& systemPosition, float deltaTime) {
+    // Continuous Emission
+    if (system.emission.continuous) {
+        float emissionInterval = 1.0f / system.emission.emissionRate;
+        system.emissionTimer += deltaTime;
+        
+        while (system.emissionTimer >= emissionInterval) {
+            EmitParticle(system, systemPosition);
+            system.emissionTimer -= emissionInterval;
+            system.stats.particlesEmittedThisFrame++;
+        }
+    }
+    
+    // Burst Emission (Simplified)
+    // In a real system, we'd track bursts in a list
+}
+
+void ParticleSystem::EmitParticle(ParticleSystemComponent& system, const glm::vec3& systemPosition) {
+    Particle* p = system.GetFreeParticle();
+    if (!p) return;
+    
+    // Init Properties
+    p->position = GetEmissionPosition(system.emission, systemPosition);
+    p->velocity = GetEmissionVelocity(system.emission);
+    p->acceleration = glm::vec3(0.0f);
+    
+    p->lifetime = system.emission.particleLifetime + GetRandomFloat(-0.5f, 0.5f) * system.emission.lifetimeVariation;
+    p->age = 0.0f;
+    p->normalizedAge = 0.0f;
+    p->isActive = true;
+    
+    p->size = 1.0f; // Simplified
+    p->color = glm::vec4(1.0f); // Simplified
+}
+
+void ParticleSystem::SimulateParticles(ParticleSystemComponent& system, float deltaTime) {
+    for (int i = 0; i < system.maxParticles; ++i) {
+        auto& p = system.particles[i];
+        if (!p.isActive) continue;
+        
+        // 1. Update Age
+        p.age += deltaTime;
+        if (p.age >= p.lifetime) {
+            system.ReturnParticle(i);
+            continue;
+        }
+        p.normalizedAge = p.age / p.lifetime;
+        
+        // 2. Physics
+        // Apply Gravity
+        p.velocity += system.physics.gravity * deltaTime;
+        
+        // Apply Drag
+        if (system.physics.drag > 0.0f) {
+            p.velocity *= (1.0f - system.physics.drag * deltaTime);
+        }
+        
+        // Integrate Position
+        p.position += p.velocity * deltaTime;
+        
+        // 3. Visuals (Interpolation)
+        if (system.physics.colorOverLifetime) {
+            p.color = glm::mix(p.startColor, p.endColor, p.normalizedAge);
+        }
+        
+        if (system.physics.sizeOverLifetime) {
+            p.size = glm::mix(p.startSize, p.endSize, p.normalizedAge);
+        }
+    }
+}
 
 void ParticleSystem::InitializeDefaultPresets() {
     std::cout << "[ParticleSystem] Creating default effect presets..." << std::endl;
@@ -115,5 +219,87 @@ void ParticleSystem::RegisterEffectPreset(const std::string& name, const Particl
     std::cout << "Particle effect preset '" << name << "' registered." << std::endl;
 }
 
-} // namespace Particles
+// Helper Implementations
+glm::vec3 ParticleSystem::GetEmissionPosition(const EmissionProperties& emission, const glm::vec3& systemPosition) {
+    // Simple sphere/point emission for now
+    if (emission.shape == EmissionProperties::EmissionShape::POINT) {
+        return systemPosition;
+    }
+    
+    // Sphere
+    glm::vec3 randomDir = GetRandomDirection();
+    float radius = GetRandomFloat(0.0f, emission.emissionRadius);
+    return systemPosition + randomDir * radius;
+}
+
+glm::vec3 ParticleSystem::GetEmissionVelocity(const EmissionProperties& emission) {
+    glm::vec3 baseDir = emission.velocityDirection;
+    // Add variation (Simplified)
+    glm::vec3 randomDir = GetRandomDirection();
+    glm::vec3 finalDir = glm::normalize(baseDir + randomDir * emission.velocityVariation);
+    return finalDir * emission.velocityMagnitude;
+}
+
+float ParticleSystem::GetRandomFloat(float min, float max) {
+    return std::uniform_real_distribution<float>(min, max)(m_randomEngine);
+}
+
+glm::vec3 ParticleSystem::GetRandomDirection() {
+    float theta = GetRandomFloat(0.0f, 6.28318f);
+    float z = GetRandomFloat(-1.0f, 1.0f);
+    float temp = sqrt(1.0f - z * z);
+    return glm::vec3(temp * cos(theta), temp * sin(theta), z);
+}
+
+// Unused Placeholders
+void ParticleSystem::UpdateGPUSimulation(Core::Entity entity, ParticleSystemComponent& system, float deltaTime) {}
+void ParticleSystem::DrawParticleSystem(const ParticleSystemComponent& system, const glm::vec3& systemPosition) {}
+
+// Force Field Stubs
+void ParticleSystem::RegisterForceField(Core::Entity entity) {}
+void ParticleSystem::UnregisterForceField(Core::Entity entity) {}
+Core::Entity ParticleSystem::CreateParticleSystem(const ParticleEffectPreset& preset) {
+    auto& coordinator = Core::Coordinator::GetInstance();
+    Core::Entity entity = coordinator.CreateEntity();
+    
+    ParticleSystemComponent psc;
+    psc.maxParticles = 500; // Default limit
+    psc.Initialize();
+    
+    psc.emission = preset.emission;
+    psc.rendering = preset.rendering;
+    psc.physics = preset.physics;
+    psc.animation = preset.animation;
+    
+    // Copy name for debugging
+    // psc.name = preset.name;
+    
+    coordinator.AddComponent(entity, psc);
+    
+    Rendering::TransformComponent transform;
+    transform.scale = glm::vec3(1.0f);
+    coordinator.AddComponent(entity, transform);
+    
+    return entity;
+}
+
+Core::Entity ParticleSystem::CreateEffectFromPreset(const std::string& presetName, const glm::vec3& position) {
+    if (m_effectPresets.find(presetName) == m_effectPresets.end()) {
+        std::cerr << "[ParticleSystem] Preset not found: " << presetName << std::endl;
+        return 0; // Invalid entity
+    }
+    
+    Core::Entity entity = CreateParticleSystem(m_effectPresets[presetName]);
+    auto& coordinator = Core::Coordinator::GetInstance();
+    auto& transform = coordinator.GetComponent<Rendering::TransformComponent>(entity);
+    transform.position = position;
+    
+    return entity;
+}
+void ParticleSystem::SetCollisionSystem(std::shared_ptr<Physics::PhysicsSystem> physicsSystem) { m_physicsSystem = physicsSystem; }
+void ParticleSystem::DrawDebugInfo() {}
+void ParticleSystem::RegisterParticleSpawnCallback(ParticleSpawnCallback callback) {}
+void ParticleSystem::RegisterParticleDeathCallback(ParticleDeathCallback callback) {}
+void ParticleSystem::RegisterParticleCollisionCallback(ParticleCollisionCallback callback) {}
+
 } // namespace CudaGame

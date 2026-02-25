@@ -15,6 +15,7 @@ struct RigidbodyComponent {
     float mass = 1.0f;
     float inverseMass = 1.0f; // Pre-calculated for efficiency
     float friction = 0.1f;
+    float restitution = 0.5f; // Bounciness (0.0 = no bounce, 1.0 = perfect bounce)
     bool useGravity = true; // Apply gravity?
     bool isKinematic = false; // Kinematic objects are not affected by forces
     bool overridePhysicsTransform = false; // Set to true when game logic should override physics

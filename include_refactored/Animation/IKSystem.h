@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Animation/IK.h"
+#include "Animation/IKSolver.h"
 #include "Core/System.h"
 #include <memory>
 #include <unordered_map>
@@ -10,6 +10,10 @@ namespace CudaGame {
 // Forward declarations
 namespace Core {
     class Coordinator;
+}
+
+namespace Physics {
+    class PhysXPhysicsSystem;
 }
 
 namespace Animation {
@@ -44,12 +48,7 @@ public:
     void Shutdown() override;
 
     // Entity management
-    void RegisterSkeleton(uint32_t entityId, std::shared_ptr<Skeleton> skeleton);
-    void UnregisterSkeleton(uint32_t entityId);
-    
-    // IK component management
-    void AddIKComponent(uint32_t entityId, const IKComponent& ikComponent);
-    IKComponent* GetIKComponent(uint32_t entityId);
+    // (Standard Systems use mEntities, no manual registration needed)
     
     // Procedural animation helpers
     void EnableFootPlacement(uint32_t entityId, const FootPlacementSettings& settings);
@@ -60,15 +59,21 @@ public:
     // Manual IK target setting
     void SetIKTarget(uint32_t entityId, const std::string& chainName, const glm::vec3& target);
     void ClearIKTarget(uint32_t entityId, const std::string& chainName);
+    // Physics Raycast access for Ground IK
+    void SetPhysicsSystem(Physics::PhysXPhysicsSystem* physics) { m_physicsSystem = physics; }
+    
+    // Animation Event Hooks
+    void TriggerFootstep(Core::Entity entity, const std::string& chainName);
     
     // Debugging
     void EnableDebugVisualization(bool enable) { m_debugVisualization = enable; }
     void DrawDebugInfo() const;
-
+    
 private:
     // Internal data structures
-    std::unordered_map<uint32_t, std::shared_ptr<Skeleton>> m_skeletonRegistry;
-    std::unordered_map<uint32_t, IKComponent> m_ikComponents;
+    // m_skeletonRegistry removed - access via AnimationComponent
+    // m_ikComponents removed - access via Coordinator
+    
     std::unordered_map<uint32_t, FootPlacementSettings> m_footPlacementSettings;
     std::unordered_map<uint32_t, HandPlacementSettings> m_handPlacementSettings;
     std::unordered_map<uint32_t, float> m_groundHeights;
@@ -76,8 +81,9 @@ private:
     
     bool m_debugVisualization = false;
     
-    // Coordinator reference
+    // Coordinator & Subsystem references
     Core::Coordinator* m_coordinator = nullptr;
+    Physics::PhysXPhysicsSystem* m_physicsSystem = nullptr;
     
     // Helper functions
     void UpdateFootPlacement(uint32_t entityId, float deltaTime);

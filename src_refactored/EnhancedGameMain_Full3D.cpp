@@ -14,6 +14,8 @@
 #include "Rendering/RenderSystem.h"
 #include "Physics/PhysicsComponents.h"
 #include "Rendering/RenderComponents.h"
+#include "Animation/IKSystem.h"
+#include "Animation/IKSolver.h"
 #include "Rendering/Camera.h"
 #include "Rendering/OrbitCamera.h"
 #include "Rendering/ThirdPersonCameraRig.h"
@@ -545,6 +547,8 @@ int main() {
     coordinator.RegisterComponent<Rendering::TransformComponent>();
     coordinator.RegisterComponent<Rendering::MeshComponent>();
     coordinator.RegisterComponent<Rendering::MaterialComponent>();
+    coordinator.RegisterComponent<Animation::AnimationComponent>();
+    coordinator.RegisterComponent<Animation::IKComponent>();
     
     // Register and initialize systems
     auto playerMovementSystem = coordinator.RegisterSystem<Gameplay::PlayerMovementSystem>();
@@ -556,6 +560,8 @@ int main() {
     auto wallRunSystem = coordinator.RegisterSystem<Physics::WallRunningSystem>();
     auto renderSystem = coordinator.RegisterSystem<Rendering::RenderSystem>();
     g_renderSystemPtr = renderSystem.get();
+    auto animationSystem = coordinator.RegisterSystem<Animation::AnimationSystem>();
+    auto ikSystem = coordinator.RegisterSystem<Animation::IKSystem>();
     auto particleSystem = coordinator.RegisterSystem<Particles::ParticleSystem>();
     
     // Set system signatures
@@ -606,7 +612,23 @@ Core::Signature enemyAISignature;
     coordinator.SetSystemSignature<Physics::WallRunningSystem>(wallRunSignature);
 
     Core::Signature particleSignature;
+    particleSignature.set(coordinator.GetComponentType<Particles::ParticleSystemComponent>());
+    particleSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
     coordinator.SetSystemSignature<Particles::ParticleSystem>(particleSignature);
+
+    Core::Signature animationSignature;
+    animationSignature.set(coordinator.GetComponentType<Animation::AnimationComponent>());
+    animationSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
+    coordinator.SetSystemSignature<Animation::AnimationSystem>(animationSignature);
+
+    Core::Signature ikSignature;
+    ikSignature.set(coordinator.GetComponentType<Animation::IKComponent>());
+    // IKSystem iterates all entities with IKComponent. It also checks for AnimationComponent internally.
+    // If we require AnimationComponent in signature, entities without it won't be processed.
+    // This is safer.
+    ikSignature.set(coordinator.GetComponentType<Animation::AnimationComponent>());
+    ikSignature.set(coordinator.GetComponentType<Rendering::TransformComponent>());
+    coordinator.SetSystemSignature<Animation::IKSystem>(ikSignature);
     
     // Create and initialize RenderDebugSystem
     auto renderDebugSystem = coordinator.RegisterSystem<Rendering::RenderDebugSystem>();
@@ -628,6 +650,8 @@ Core::Signature enemyAISignature;
     // Start with skybox disabled to isolate startup artifacts; user can toggle with 'B'
     renderSystem->SetSkyboxEnabled(false);
     particleSystem->Initialize();
+    animationSystem->Initialize();
+    ikSystem->Initialize();
     
     // Load HDR skybox
     std::cout << "Loading HDR skybox..." << std::endl;
@@ -746,6 +770,26 @@ Core::Signature enemyAISignature;
     playerTransform.position = glm::vec3(0.0f, 2.0f, 0.0f);  // Start closer to ground
     playerTransform.scale = glm::vec3(1.0f); // natural scale; mesh is ~2.0 units tall
     coordinator.AddComponent(player, playerTransform);
+
+    // Animation Component
+    Animation::AnimationComponent animComp;
+    animComp.playbackSpeed = 1.0f;
+    animComp.isLooping = true;
+    animComp.blendWeight = 1.0f;
+    animComp.useProceduralGeneration = false; // Default to false, let state machine take over if set
+    // Note: State Machine setup should happen in a specific "PlayerAnimationSetup" or similar, 
+    // or loaded from data. For now, we add the component so the system processes it.
+    coordinator.AddComponent(player, animComp);
+
+    // IK Component
+    Animation::IKComponent ikComp;
+    // Setup default chains (arms/legs) if needed, or leave empty for now
+    Animation::IKChain lFootChain; lFootChain.name = "LeftFoot"; lFootChain.isEnabled = true;
+    Animation::IKChain rFootChain; rFootChain.name = "RightFoot"; rFootChain.isEnabled = true;
+    ikComp.chains.push_back(lFootChain);
+    ikComp.chains.push_back(rFootChain);
+    coordinator.AddComponent(player, ikComp);
+
     std::cout << "[DEBUG] Player spawned at y=2.0, collider halfHeight=0.9, should rest at y=0.4" << std::endl;
     
     // Create procedural character GPU mesh once
@@ -1052,6 +1096,10 @@ const float FIXED_TIMESTEP = 1.0f / 60.0f; // Fixed timestep for physics simulat
 
     // wallRunSystem->Update(deltaTime);  // Disabled - CharacterControllerSystem handles wall-running
         particleSystem->Update(deltaTime);
+        
+        // Update Animation then IK
+        animationSystem->Update(deltaTime);
+        ikSystem->Update(deltaTime);
         
         // Clear screen
         glClearColor(0.1f, 0.1f, 0.15f, 1.0f);

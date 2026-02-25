@@ -129,6 +129,9 @@ private:
     // Debug
     bool m_debugVisualization;
     
+    // Animation event registry: name -> callback
+    std::unordered_map<std::string, std::function<void()>> m_eventCallbacks;
+    
     // Internal methods
     void updateEntityAnimation(uint32_t entityId, AnimationComponent& component, float deltaTime);
     void applyBoneTransforms(uint32_t entityId, const std::vector<BoneTransform>& transforms);

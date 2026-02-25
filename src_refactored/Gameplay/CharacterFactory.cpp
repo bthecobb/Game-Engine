@@ -9,6 +9,7 @@
 #include "Rendering/DX12RenderPipeline.h" // For Mesh Creation
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <cstring>
 
 namespace CudaGame {
 namespace Gameplay {
@@ -28,7 +29,6 @@ CharacterFactory::~CharacterFactory() {
 }
 
 bool CharacterFactory::Initialize() {
-    std::cerr << "[CharacterFactory] Initialize ENTER" << std::endl;
     // Register Default Animation Sets
     AnimationSet warriorSet;
     warriorSet.name = "WarriorSet";
@@ -36,7 +36,6 @@ bool CharacterFactory::Initialize() {
     warriorSet.stateToClip[Animation::AnimationState::WALKING] = "Wuson_Walk"; 
     warriorSet.stateToClip[Animation::AnimationState::RUNNING] = "Wuson_Run";
     warriorSet.stateToClip[Animation::AnimationState::JUMPING] = "Wuson_Run"; 
-    std::cerr << "[CharacterFactory] Registering AnimationSet..." << std::endl;
     RegisterAnimationSet("WarriorSet", warriorSet);
     
     // Register Default Profiles
@@ -47,7 +46,6 @@ bool CharacterFactory::Initialize() {
     knight.skeletonID = "Humanoid"; 
     knight.baseHealth = 150.0f;
     knight.runSpeed = 5.0f;
-    std::cerr << "[CharacterFactory] Registering Profile Knight..." << std::endl;
     RegisterProfile("Knight", knight);
     
     CharacterProfile procTest;
@@ -57,10 +55,8 @@ bool CharacterFactory::Initialize() {
     procTest.skeletonID = "Humanoid"; 
     procTest.baseHealth = 100.0f;
     procTest.runSpeed = 5.0f;
-    std::cerr << "[CharacterFactory] Registering Profile ProceduralTest..." << std::endl;
     RegisterProfile("ProceduralTest", procTest);
     
-    std::cerr << "[CharacterFactory] Creating Skeleton..." << std::endl;
     auto skeleton = std::make_shared<Animation::Skeleton>();
     
     Animation::Skeleton::Bone root;
@@ -87,10 +83,8 @@ bool CharacterFactory::Initialize() {
     skeleton->bones.push_back(head);
     skeleton->boneNameToIndex["Head"] = 2;
 
-    std::cerr << "[CharacterFactory] Registering Skeleton..." << std::endl;
     RegisterSkeleton("Humanoid", skeleton);
     
-    std::cerr << "[CharacterFactory] Initialize EXIT Success" << std::endl;
     return true;
 }
 
@@ -121,6 +115,7 @@ Core::Entity CharacterFactory::SpawnCharacter(const std::string& profileName, co
     std::cerr << "[CharacterFactory] Profile found: " << profile.profileName << std::endl;
     
     auto& coordinator = Core::Coordinator::GetInstance();
+    std::cerr << "[CharacterFactory] Coordinator Address: " << &coordinator << std::endl;
     
     Core::Entity entity = coordinator.CreateEntity();
     std::cerr << "[CharacterFactory] Entity Created: " << entity << std::endl;
@@ -145,7 +140,7 @@ Core::Entity CharacterFactory::SpawnCharacter(const std::string& profileName, co
     }
     
     coordinator.AddComponent(entity, rb);
-    // std::cout << "[CharacterFactory] Rigidbody Added" << std::endl;
+    std::cerr << "[CharacterFactory] Rigidbody Added" << std::endl;
 
     // 2.5 Collider (Required for PhysX Actor creation)
     Physics::ColliderComponent collider;
@@ -153,13 +148,13 @@ Core::Entity CharacterFactory::SpawnCharacter(const std::string& profileName, co
     collider.radius = profile.colliderRadius;
     collider.halfExtents.y = profile.colliderHeight * 0.5f; // PhysXSystem uses halfExtents.y for capsule halfHeight
     coordinator.AddComponent(entity, collider);
-    // std::cout << "[CharacterFactory] Collider Added" << std::endl;
+    std::cerr << "[CharacterFactory] Collider Added" << std::endl;
     
     // 3. Gameplay Stats
     PlayerMovementComponent mv;
     mv.baseSpeed = profile.runSpeed; // Map from profile
     coordinator.AddComponent(entity, mv);
-    // std::cout << "[CharacterFactory] Movement Added" << std::endl;
+    std::cerr << "[CharacterFactory] Movement Added" << std::endl;
     
     // 4. Animation
     Animation::AnimationComponent animComp;
@@ -176,19 +171,35 @@ Core::Entity CharacterFactory::SpawnCharacter(const std::string& profileName, co
     }
 
     coordinator.AddComponent(entity, animComp);
-    // std::cout << "[CharacterFactory] AnimationComponent Added" << std::endl;
+    std::cerr << "[CharacterFactory] AnimationComponent Added" << std::endl;
     
     // 5. Logic (Animation Controller)
     AnimationControllerComponent animCtrl;
     animCtrl.animationSetID = profile.animSetID;
     coordinator.AddComponent(entity, animCtrl);
-    // std::cout << "[CharacterFactory] Controller Added" << std::endl;
+    std::cerr << "[CharacterFactory] Controller Added" << std::endl;
     
     // 6. Visuals (Mesh)
+    std::cerr << "MeshComponent Name: " << typeid(Rendering::MeshComponent).name() << " Size: " << sizeof(Rendering::MeshComponent) << std::endl;
+    
+    // Check if component registered
+    // Check if component registered (Debug)
+    // auto type = coordinator.GetComponentType<Rendering::MeshComponent>();
+    // std::cerr << "MeshComponent ID: " << (int)type << std::endl;
+
     Rendering::MeshComponent meshComp;
-    meshComp.modelPath = profile.meshID;
-    coordinator.AddComponent(entity, meshComp);
-    std::cout << "[CharacterFactory] MeshComponent Added: " << meshComp.modelPath << std::endl;
+    // meshComp.modelPath = profile.meshID;
+    std::strncpy(meshComp.modelPath, profile.meshID.c_str(), sizeof(meshComp.modelPath) - 1);
+    meshComp.modelPath[sizeof(meshComp.modelPath) - 1] = '\0';
+    
+    try {
+         coordinator.AddComponent(entity, meshComp);
+         std::cout << "[CharacterFactory] MeshComponent Added: " << meshComp.modelPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "CRASH in AddComponent<MeshComponent>: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "CRASH in AddComponent<MeshComponent>: Unknown error" << std::endl;
+    }
     
     // Setup Transform with Scale correction for imported mesh (0.5f = 5x previous size)
     // coordinator.AddComponent(entity, Rendering::TransformComponent{position, glm::vec3(0), glm::vec3(0.5f)});

@@ -55,10 +55,14 @@ public:
     
     // Runtime
     void SetStartState(const std::string& stateName);
-    void Update(float deltaTime, const std::vector<BlendInput>& inputs);
+    void Update(float deltaTime, const std::vector<BlendInput>& inputs, const Skeleton& skeleton);
     
     // Output
     const std::vector<BoneTransform>& GetGlobalPose() const { return m_finalPose; }
+    
+    // Time accessors (for event firing in AnimationSystem)
+    float GetAnimTime() const { return m_currentTime; }
+    float GetPrevAnimTime() const { return m_previousTime; }
     
     // Debug
     const std::string& GetCurrentStateName() const;
@@ -67,7 +71,8 @@ private:
     // Helper to evaluate a specific state's graph
     void EvaluateState(std::shared_ptr<AnimationGraphState> state, float time, 
                       std::vector<BoneTransform>& outPose, 
-                      const std::vector<BlendInput>& inputs);
+                      const std::vector<BlendInput>& inputs,
+                      const Skeleton& skeleton);
 
     // Blends two full poses together
     void BlendPoses(const std::vector<BoneTransform>& source, 
@@ -82,6 +87,7 @@ private:
     std::shared_ptr<AnimationGraphState> m_targetState; // For cross-fading
     
     float m_currentTime = 0.0f;       // Time in current state
+    float m_previousTime = 0.0f;      // Time from previous frame (for event detection)
     float m_transitionTime = 0.0f;    // Time elapsed in current transition
     float m_currentTransitionDuration = 0.0f;
     bool m_isTransitioning = false;

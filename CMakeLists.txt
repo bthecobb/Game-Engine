@@ -485,6 +485,8 @@ target_include_directories(LightingIntegrationDemo PRIVATE
 
 configure_msvc_runtime(LightingIntegrationDemo)
 
+endif() # BUILD_DEMOS
+
 # Test Framework and Test Suite
 set(TEST_SOURCES
     # Test runner and framework
@@ -549,10 +551,11 @@ list(APPEND TEST_SOURCES
 )
 
 if(ENABLE_CUDA)
+    set_source_files_properties("${CMAKE_BINARY_DIR}/Release/CudaBuildingKernels.obj" PROPERTIES GENERATED 1)
     list(APPEND TEST_SOURCES
         tests/EmissiveTextureTests.cpp
         src_refactored/Rendering/CudaBuildingGenerator.cpp
-        src_refactored/Rendering/CudaBuildingKernels.cu
+        "${CMAKE_BINARY_DIR}/Release/CudaBuildingKernels.obj"
     )
 else()
     list(APPEND TEST_SOURCES
@@ -596,6 +599,7 @@ endif()
 
 
 add_executable(TestRunner ${TEST_SOURCES})
+
 # Ensure ThirdPersonCameraRigTests is included even if list append misses due to cache
 if(EXISTS "${CMAKE_SOURCE_DIR}/tests/ThirdPersonCameraRigTests.cpp")
     target_sources(TestRunner PRIVATE tests/ThirdPersonCameraRigTests.cpp)
@@ -623,6 +627,7 @@ target_include_directories(TestRunner PRIVATE
     $<$<BOOL:${ENABLE_CUDA}>:${CUDAToolkit_INCLUDE_DIRS}>
     $<$<BOOL:${ENABLE_RENDER_TESTS}>:${ASSIMP_INCLUDE_DIR}>
     $<$<BOOL:${ENABLE_RENDER_TESTS}>:${assimp_BINARY_DIR}/include>
+    "${CMAKE_SOURCE_DIR}/vendor/streamline-sdk/include"
 )
 
 target_link_libraries(TestRunner PRIVATE
@@ -633,6 +638,7 @@ target_link_libraries(TestRunner PRIVATE
     glfw
     glad
     assimp
+    $<$<BOOL:${ENABLE_STREAMLINE}>:${STREAMLINE_LIBRARIES}>
 )
 
 if(ENABLE_CUDA)
@@ -664,7 +670,6 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     )
     target_compile_definitions(TestRunner PRIVATE 
         ENABLE_DX12_BACKEND
-        $<$<BOOL:${ENABLE_STREAMLINE}>:STREAMLINE_SDK_AVAILABLE>
     )
     
     # Copy DXC DLLs for tests
@@ -759,6 +764,8 @@ if(ENABLE_PHYSX AND WIN32)
 endif()
 
 # --- Target Linking ---
+
+if(BUILD_DEMOS)
 
 # Runtime library already configured above
 
@@ -1330,8 +1337,10 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     
     message(STATUS "DX12PipelineDemo executable will be built")
     
-    # CUDA Frustum Culling Library (AAA GPU optimization)
-    # Separate library to isolate CUDA compilation from DX12/PhysX includes
+endif() # WIN32 AND ENABLE_DX12_BACKEND
+
+# CUDA Frustum Culling Library (AAA GPU optimization)
+# Separate library to isolate CUDA compilation from DX12/PhysX includes
     # KERNEL COMPILATION WORKAROUND
     # MSBuild/NVCC integration is broken on this env ("single input file" error).
     # We compile the kernel MANUALLY using a custom command and link the object.
@@ -1411,6 +1420,7 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         add_custom_target(CompileBuildingKernels DEPENDS ${BUILDING_CUDA_OBJ})
     endif()
     
+if(WIN32 AND ENABLE_DX12_BACKEND)
     # Full3DGame DX12 - Game with D3D12 Renderer
     add_executable(Full3DGame_DX12_Debug3
         src_refactored/Demos/Full3DGame_DX12.cpp
@@ -1440,6 +1450,9 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
         # Character & Animation
         src_refactored/Gameplay/CharacterFactory.cpp
         src_refactored/Animation/AnimationSystem.cpp
+        src_refactored/Animation/IKSolver.cpp
+        src_refactored/Animation/IKSolver.cpp
+        src_refactored/Animation/IKSystemRefactored.cpp
         # Core ECS - use refactored versions with ECS-PhysX sync
         src_refactored/Core/EntityManager.cpp
         src_refactored/Core/ComponentManager.cpp
@@ -1464,6 +1477,10 @@ if(WIN32 AND ENABLE_DX12_BACKEND)
     
     if(ENABLE_CUDA)
         add_dependencies(Full3DGame_DX12_Debug3 CompileCudaKernel CompileParticleKernels CompileBuildingKernels)
+        # Also ensure TestRunner waits for kernels if being built
+        if(TARGET TestRunner)
+            add_dependencies(TestRunner CompileBuildingKernels)
+        endif()
     endif()
     
     target_include_directories(Full3DGame_DX12_Debug3 PRIVATE
@@ -1547,6 +1564,8 @@ if(BUILD_TESTING)
         src_refactored/Core/Logger.cpp
         src_refactored/Core/EntityManager.cpp
         src_refactored/Core/ComponentManager.cpp
+        src_refactored/Animation/IKSystemRefactored.cpp
+        src_refactored/Physics/PhysXPhysicsSystem.cpp
     )
     
     target_include_directories(AnimationSystemTests PRIVATE
@@ -1580,20 +1599,32 @@ add_executable(IntegratedAnimationDemo
     src_refactored/Rendering/Camera.cpp
     src_refactored/Core/CudaCore.cpp
     src_refactored/Rendering/NVIDIAReflex.cpp
-    src_refactored/Rendering/Meshlet.cpp
+    src_refactored/Rendering/MeshletGenerator.cpp
     src_refactored/Rendering/StreamlineDLSSWrapper.cpp
     src_refactored/Rendering/RayTracingSystem.cpp
+    src_refactored/Rendering/ShaderManager.cpp
+    src_refactored/Rendering/PipelineStateObject.cpp
     src_refactored/Animation/AnimationSystem.cpp
     src_refactored/Animation/AnimationResources.cpp
     src_refactored/Animation/AnimationStateMachine.cpp
+    src_refactored/Animation/AnimationBuilder.cpp
     src_refactored/Animation/BlendTree.cpp
     src_refactored/Animation/IKSolver.cpp
     src_refactored/Physics/PhysXPhysicsSystem.cpp
     src_refactored/Gameplay/CharacterControllerSystem.cpp
     src_refactored/Gameplay/AnimationControllerSystem.cpp
     src_refactored/Gameplay/CharacterFactory.cpp
+    src_refactored/Animation/IKSystemRefactored.cpp
+    ${CUDA_OBJ_FILE}
     src_refactored/Gameplay/CombatSystem.cpp
+    ${CUDA_OBJ_FILE}
 )
+
+if(ENABLE_CUDA)
+    if(TARGET CompileCudaKernel)
+        add_dependencies(IntegratedAnimationDemo CompileCudaKernel)
+    endif()
+endif()
 
 target_include_directories(IntegratedAnimationDemo PRIVATE
     ${CMAKE_SOURCE_DIR}/include_refactored
@@ -1605,10 +1636,15 @@ target_include_directories(IntegratedAnimationDemo PRIVATE
     ${PHYSX_INCLUDE_DIRS}
 )
 
+# Force path to existing object file since ENABLE_CUDA block logic is flaky
+set(CUDA_OBJ_FILE "${CMAKE_BINARY_DIR}/Release/CullAndDraw.obj")
+ 
 target_link_libraries(IntegratedAnimationDemo PRIVATE
     d3d12
+    ${CUDA_OBJ_FILE}
     dxgi
     d3dcompiler
+    dxcompiler
     glm::glm
     glfw
     assimp
@@ -1625,9 +1661,28 @@ target_compile_definitions(IntegratedAnimationDemo PRIVATE
 
 # Copy Assets/DLLs
 if(MSVC)
-    add_custom_command(TARGET IntegratedAnimationDemo POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/assets/Testwuson.X" # If exists
-        $<TARGET_FILE_DIR:IntegratedAnimationDemo>
-    )
+    if(EXISTS "${CMAKE_SOURCE_DIR}/assets/Testwuson.X")
+        add_custom_command(TARGET IntegratedAnimationDemo POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/assets/Testwuson.X"
+            $<TARGET_FILE_DIR:IntegratedAnimationDemo>
+        )
+    endif()
+
+    # Copy DXC DLLs 
+    set(DXC_SDK_BIN "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64")
+    if(EXISTS "${DXC_SDK_BIN}/dxcompiler.dll")
+        add_custom_command(TARGET IntegratedAnimationDemo POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxcompiler.dll"
+                $<TARGET_FILE_DIR:IntegratedAnimationDemo>
+            COMMENT "Copying dxcompiler.dll"
+        )
+        add_custom_command(TARGET IntegratedAnimationDemo POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DXC_SDK_BIN}/dxil.dll"
+                $<TARGET_FILE_DIR:IntegratedAnimationDemo>
+            COMMENT "Copying dxil.dll"
+        )
+    endif()
 endif()

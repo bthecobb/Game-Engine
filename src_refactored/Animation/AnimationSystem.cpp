@@ -1,5 +1,6 @@
 #include "Animation/AnimationSystem.h"
 #include "Animation/AnimationResources.h"
+#include "Animation/AnimationStateMachine.h"
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp> // Required for slerp
@@ -164,9 +165,15 @@ void AnimationSystem::update(float deltaTime) {
     auto& coordinator = Core::Coordinator::GetInstance();
     
     static int frameCount = 0;
-    bool debugLog = (frameCount++ < 10);
+    bool debugLog = (frameCount < 200);
+    frameCount++;
 
-    if (debugLog) std::cout << "[AnimSys] Update Start. Entities: " << mEntities.size() << std::endl; 
+    if (debugLog) {
+         std::cout << "[AnimSys] Update Start. Frame: " << frameCount << " Entities: " << mEntities.size() << std::endl;
+         if (mEntities.empty()) {
+             std::cout << "[AnimSys] WARNING: No entities registered in AnimationSystem!" << std::endl;
+         }
+    } 
     
     // Iterate over all entities registered with this system (Signature: AnimationComponent)
     int count = 0;
@@ -190,14 +197,124 @@ void AnimationSystem::updateEntityAnimation(uint32_t entityId, AnimationComponen
     }
     
     // Update time
-    // Update time
+    // Snapshot previous time before advancing (needed for event threshold detection)
+    component.previousAnimationTime = component.animationTime;
     component.animationTime += deltaTime * component.playbackSpeed;
     
+    // --- Fire Animation Events for the Legacy / Clip-based path ---
+    // (State Machine path fires via the active clip below)
+    // Helper lambda: check and fire events in a clip between [prevTime, currTime)
+    // Handles loop wrap-around correctly.
+    auto FireClipEvents = [](AnimationClip& clip, float prevTime, float currTime) {
+        if (clip.events.empty()) return;
+        bool looped = (currTime < prevTime);
+        for (auto& ev : clip.events) {
+            bool fired = false;
+            if (looped) {
+                // Clip wrapped: fire if event is in [prevTime, duration) OR [0, currTime)
+                fired = (ev.time >= prevTime || ev.time < currTime);
+            } else {
+                // Normal: fire if event is in [prevTime, currTime)
+                fired = (ev.time >= prevTime && ev.time < currTime);
+            }
+            if (fired && ev.callback) {
+                ev.callback();
+            }
+        }
+    };
+    (void)FireClipEvents; // suppress unused warning if path not reached
+    
+    if (component.stateMachine && component.skeleton) {
+        // --- Cross-Fade: smooth the blend parameter each frame ---
+        // Lerp smoothedSpeed toward movementSpeed at speedSmoothRate/s.
+        // All blend-tree inputs use smoothedSpeed so transitions are damped, not instant.
+        float lerpAlpha = glm::clamp(deltaTime * component.speedSmoothRate, 0.0f, 1.0f);
+        component.smoothedSpeed = glm::mix(component.smoothedSpeed, component.movementSpeed, lerpAlpha);
+        
+        // Prepare inputs
+        std::vector<BlendInput> inputs;
+        inputs.push_back({"Speed", component.smoothedSpeed}); // use smoothed, not raw
+        inputs.push_back({"DirectionX", component.movementDirection.x});
+        inputs.push_back({"DirectionY", component.movementDirection.y});
+        inputs.push_back({"Combat", component.combatIntensity});
+        
+        // Update Machine
+        component.stateMachine->Update(deltaTime * component.playbackSpeed, inputs, *component.skeleton);
+        
+        // Apply result to global transforms
+        const auto& pose = component.stateMachine->GetGlobalPose();
+        size_t boneCount = component.skeleton->bones.size();
+        
+        if (pose.size() == boneCount) {
+             if (component.globalTransforms.size() != boneCount) component.globalTransforms.resize(boneCount);
+             if (component.finalBoneMatrices.size() != boneCount) component.finalBoneMatrices.resize(boneCount);
+
+             for (size_t i = 0; i < boneCount; ++i) {
+                 const auto& bone = component.skeleton->bones[i];
+                 glm::mat4 localMat = pose[i].ToMatrix();
+                 
+                 if (bone.parentIndex == -1) {
+                     component.globalTransforms[i] = localMat;
+                 } else if (bone.parentIndex < (int)i) {
+                     component.globalTransforms[i] = component.globalTransforms[bone.parentIndex] * localMat;
+                 } else {
+                     component.globalTransforms[i] = localMat;
+                 }
+                 
+                 // Root Motion Handling (In-Loop)
+                 if (i == 0 && component.enableRootMotion) {
+                     component.globalTransforms[0][3][0] = 0.0f; // Lock X
+                     component.globalTransforms[0][3][2] = 0.0f; // Lock Z
+                 }
+                 
+                 component.finalBoneMatrices[i] = component.globalTransforms[i] * bone.inverseBindPose;
+             }
+        }
+        // --- Fire Animation Events for State Machine path ---
+        // Determine dominant clip from smoothed blend parameter
+        float speed = component.smoothedSpeed;
+        std::string dominantClipName;
+        if (speed >= 6.0f)       dominantClipName = "Run";   // Run is >= 50% blend weight above 6.0
+        else if (speed >= 2.0f)  dominantClipName = "Walk";  // Walk is >= 50% blend weight above 2.0
+        else                     dominantClipName = "Idle";
+        
+        AnimationClip* smClip = getAnimationClip(dominantClipName);
+        if (smClip && !smClip->events.empty()) {
+            float smPrev = component.stateMachine->GetPrevAnimTime();
+            float smCurr = component.stateMachine->GetAnimTime();
+            if (smClip->duration > 0.0f) {
+                // Wrap times into clip duration
+                float wrappedPrev = fmod(smPrev, smClip->duration);
+                float wrappedCurr = fmod(smCurr, smClip->duration);
+                FireClipEvents(*smClip, wrappedPrev, wrappedCurr);
+            }
+        }
+        
+        return;
+    }
+
     // Procedural Override
     if (component.useProceduralGeneration) {
         GenerateProceduralPose(entityId, component, deltaTime);
         return; // Skip clip sampling
     }
+    
+    // ... (procedural generation logic) ...
+    // ... (procedural generation logic) ...
+    static int logCounter = 0;
+    logCounter++;
+    if (logCounter < 200) {
+        if (!component.finalBoneMatrices.empty()) {
+            std::cout << "[AnimSys] Entity " << entityId << " FinalBoneMatrices: " << component.finalBoneMatrices.size() << std::endl;
+            // Print first bone translation
+            glm::vec3 pos = component.finalBoneMatrices[0][3];
+            std::cout << "  - Bone 0 Pos: " << pos.x << ", " << pos.y << ", " << pos.z << std::endl;
+        } else {
+            std::cout << "[AnimSys] Entity " << entityId << " FinalBoneMatrices EMPTY! (Procedural: " << component.useProceduralGeneration << ")" << std::endl;
+        }
+    }
+    
+    // ... Legacy Logic ...
     
     std::string clipName = "Idle"; // Default
     if (component.currentState == AnimationState::WALKING) clipName = "Walk";
@@ -229,10 +346,18 @@ void AnimationSystem::updateEntityAnimation(uint32_t entityId, AnimationComponen
         std::cout << "  Using Clip: " << clip->name << " Time: " << component.animationTime << std::endl;
 
         if (clip->isLooping) {
-            component.animationTime = fmod(component.animationTime, clip->duration);
+            float wrappedTime = fmod(component.animationTime, clip->duration);
+            // If the time wrapped, the previous time was > new time -> loop event firing
+            float prevTime = component.previousAnimationTime;
+            if (prevTime >= clip->duration) prevTime = fmod(prevTime, clip->duration); // normalize prev too
+            component.animationTime = wrappedTime;
+            FireClipEvents(*clip, prevTime, wrappedTime);
         } else if (component.animationTime > clip->duration) {
             component.animationTime = clip->duration;
             component.isPlaying = false;
+        } else {
+            // Normal (non-looping, still playing): fire events normally
+            FireClipEvents(*clip, component.previousAnimationTime, component.animationTime);
         }
         
         size_t boneCount = component.skeleton->bones.size();
@@ -343,7 +468,10 @@ void AnimationSystem::setBlendParameter(uint32_t entityId, const std::string& pa
 }
 
 void AnimationSystem::enableRootMotion(uint32_t entityId, bool enable) {
-    (void)entityId; (void)enable;
+    auto comp = GetComponent(entityId);
+    if (comp) {
+        comp->enableRootMotion = enable;
+    }
 }
 
 void AnimationSystem::setLayerWeight(uint32_t entityId, int layerIndex, float weight) {
@@ -371,11 +499,14 @@ void AnimationSystem::setIKTarget(uint32_t entityId, const std::string& chainNam
 }
 
 void AnimationSystem::registerAnimationEvent(const std::string& eventName, std::function<void()> callback) {
-    (void)eventName; (void)callback;
+    m_eventCallbacks[eventName] = std::move(callback);
 }
 
 void AnimationSystem::triggerAnimationEvent(const std::string& eventName) {
-    (void)eventName;
+    auto it = m_eventCallbacks.find(eventName);
+    if (it != m_eventCallbacks.end() && it->second) {
+        it->second();
+    }
 }
 
 void AnimationSystem::setDebugVisualization(bool enable) {
@@ -458,6 +589,12 @@ void AnimationSystem::GenerateProceduralPose(uint32_t entityId, AnimationCompone
         
         component.globalTransforms[i] = globalTransform;
         component.finalBoneMatrices[i] = globalTransform * component.skeleton->bones[i].inverseBindPose;
+    }
+
+    static int genLog = 0;
+    if (genLog++ < 5 && entityId == 0) {
+        std::cout << "[AnimSys] Generated " << component.finalBoneMatrices.size() 
+                  << " matrices for Entity " << entityId << std::endl;
     }
 }
 
